@@ -1,18 +1,28 @@
 FROM node:20-bookworm-slim
 
-ARG LARK_MCP_VERSION=0.5.1
+ARG LARK_CLI_VERSION=latest
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsecret-1-0 \
     ca-certificates \
+    curl \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @larksuiteoapi/lark-mcp@${LARK_MCP_VERSION}
-RUN npm install -g @aws-sdk/client-secrets-manager
+# Install lark-cli
+RUN npx @larksuite/cli@${LARK_CLI_VERSION} install 2>/dev/null || npm install -g @larksuite/cli@${LARK_CLI_VERSION}
 
-COPY header-rewrite.js /app/header-rewrite.js
+# Install skills (required by lark-cli)
+RUN npx skills add larksuite/cli -y -g 2>/dev/null || true
+
+COPY generate-tools.js /app/generate-tools.js
+COPY server.js /app/server.js
+COPY tier1.json /app/tier1.json
+
+# Generate tool catalog at build time
+RUN LARKSUITE_CLI_APP_ID=build LARKSUITE_CLI_APP_SECRET=build LARKSUITE_CLI_BRAND=feishu \
+    node /app/generate-tools.js
 
 USER node
 EXPOSE 8000
 
-ENTRYPOINT ["node", "/app/header-rewrite.js"]
+ENTRYPOINT ["node", "/app/server.js"]

@@ -1,4 +1,6 @@
+import { createHmac, timingSafeEqual } from 'crypto';
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { SignatureV4 } from '@smithy/signature-v4';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
@@ -7,29 +9,55 @@ import { defaultProvider } from '@aws-sdk/credential-provider-node';
 const SECRET_PREFIX = process.env.SECRET_PREFIX || 'lark-mcp/users';
 const RUNTIME_ARN = process.env.RUNTIME_ARN!;
 const AUTHORIZE_BASE = process.env.AUTHORIZE_BASE || '';
-const REGION = process.env.AWS_REGION || 'us-west-2';
+const REGION = process.env.DEPLOY_REGION || process.env.AWS_REGION || 'us-west-2';
 const TOKEN_BUFFER_SECONDS = 120;
 
 const sm = new SecretsManagerClient({});
+const ssm = new SSMClient({});
 
-// In-memory token cache (per Lambda instance)
-const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+let stateSecret: string | null = null;
 
 interface LambdaEvent {
   body?: string;
   isBase64Encoded?: boolean;
   headers?: Record<string, string>;
-  requestContext?: { authorizer?: { claims?: Record<string, string> } };
+  httpMethod?: string;
+  path?: string;
+  requestContext?: { http?: { method?: string } };
 }
 
+async function getStateSecret(): Promise<string> {
+  if (stateSecret) return stateSecret;
+  const resp = await ssm.send(new GetParameterCommand({ Name: '/lark-mcp/state-secret', WithDecryption: true }));
+  stateSecret = resp.Parameter!.Value!;
+  return stateSecret;
+}
+
+async function verifyMcpToken(token: string): Promise<{ valid: boolean; userId: string }> {
+  try {
+    const secret = await getStateSecret();
+    const decoded = Buffer.from(token, 'base64url').toString();
+    const lastColon = decoded.lastIndexOf(':');
+    const secondLastColon = decoded.lastIndexOf(':', lastColon - 1);
+    const sig = decoded.slice(lastColon + 1);
+    const expiresAt = parseInt(decoded.slice(secondLastColon + 1, lastColon));
+    const userId = decoded.slice(0, secondLastColon);
+    if (Date.now() / 1000 > expiresAt) return { valid: false, userId: '' };
+    const expected = createHmac('sha256', secret).update(`${userId}:${expiresAt}`).digest('hex');
+    const sigBuf = Buffer.from(sig, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return { valid: false, userId: '' };
+    return { valid: true, userId };
+  } catch { return { valid: false, userId: '' }; }
+}
+
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
 async function getUserToken(userId: string): Promise<string | null> {
-  // Check cache first
   const cached = tokenCache.get(userId);
   if (cached && cached.expiresAt - Date.now() / 1000 > TOKEN_BUFFER_SECONDS) {
     return cached.token;
   }
-
-  // Fetch from SM
   try {
     const resp = await sm.send(new GetSecretValueCommand({ SecretId: `${SECRET_PREFIX}/${userId}` }));
     const data = JSON.parse(resp.SecretString!);
@@ -37,22 +65,29 @@ async function getUserToken(userId: string): Promise<string | null> {
       tokenCache.set(userId, { token: data.access_token, expiresAt: data.expires_at });
       return data.access_token;
     }
-    // Token expiring soon — return null to trigger re-auth
-    // (EventBridge will refresh it; next request will succeed)
     return null;
   } catch { return null; }
 }
 
 export async function handler(event: LambdaEvent) {
-  const claims = event.requestContext?.authorizer?.claims || {};
-  const userId = claims.sub || claims['cognito:username'] || '';
+  const authHeader = event.headers?.authorization || event.headers?.Authorization || '';
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim();
 
+  let userId = '';
+  if (bearerToken) {
+    const { valid, userId: mcpUserId } = await verifyMcpToken(bearerToken);
+    if (valid) userId = mcpUserId;
+  }
   if (!userId) {
-    return { statusCode: 401, headers: { 'Content-Type': 'application/json' }, body: '{"error":"unauthorized"}' };
+    return {
+      statusCode: 401,
+      headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' },
+      body: '{"error":"unauthorized","error_description":"missing or invalid token"}',
+    };
   }
 
-  const token = await getUserToken(userId);
-  if (!token) {
+  const feishuToken = await getUserToken(userId);
+  if (!feishuToken) {
     const authorizeUrl = AUTHORIZE_BASE ? `${AUTHORIZE_BASE}/authorize?user_id=${encodeURIComponent(userId)}` : '';
     return { statusCode: 403, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'feishu_not_authorized', authorize_url: authorizeUrl, user_id: userId }) };
   }
@@ -66,19 +101,13 @@ export async function handler(event: LambdaEvent) {
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json, text/event-stream',
-      'X-User-Access-Token': token,
+      'X-User-Access-Token': feishuToken,
       'host': `bedrock-agentcore.${REGION}.amazonaws.com`,
     },
     body: mcpPayload,
   });
 
-  const signer = new SignatureV4({
-    credentials: defaultProvider(),
-    region: REGION,
-    service: 'bedrock-agentcore',
-    sha256: Sha256,
-  });
-
+  const signer = new SignatureV4({ credentials: defaultProvider(), region: REGION, service: 'bedrock-agentcore', sha256: Sha256 });
   const signed = await signer.sign(request);
 
   const resp = await fetch(`https://${signed.hostname}${signed.path}`, {
@@ -88,9 +117,5 @@ export async function handler(event: LambdaEvent) {
   });
 
   const responseBody = await resp.text();
-  return {
-    statusCode: resp.status,
-    headers: { 'Content-Type': resp.headers.get('content-type') || 'text/event-stream' },
-    body: responseBody,
-  };
+  return { statusCode: resp.status, headers: { 'Content-Type': resp.headers.get('content-type') || 'text/event-stream' }, body: responseBody };
 }

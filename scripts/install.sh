@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-liner installer: curl -fsSL <url>/install.sh | bash
+# 一键安装: curl -fsSL <url>/install.sh | bash
 
 REPO="https://github.com/ddpie/lark-mcp-on-agentcore.git"
 DIR="lark-mcp-on-agentcore"
@@ -12,7 +12,6 @@ echo "  ║   Lark MCP on AgentCore - 安装           ║"
 echo "  ╚══════════════════════════════════════════╝"
 echo ""
 
-# Detect OS
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 PKG=""
@@ -77,7 +76,6 @@ install_pkg() {
   fi
 }
 
-# Check and install prerequisites
 echo "  检查依赖..."
 echo ""
 for cmd in git node docker aws python3; do
@@ -88,10 +86,8 @@ for cmd in git node docker aws python3; do
   fi
 done
 
-# Check npm (comes with node)
 if ! command -v npm &>/dev/null; then install_pkg "node"; fi
 
-# Check CDK
 if ! command -v cdk &>/dev/null; then
   if ! npx cdk --version &>/dev/null 2>&1; then
     install_pkg "cdk"
@@ -99,10 +95,9 @@ if ! command -v cdk &>/dev/null; then
 fi
 printf "  %-10s ✓\n" "cdk"
 
-# Check boto3
 if ! python3 -c "import boto3" &>/dev/null; then
   echo ""
-  read -rp "  Missing python3 boto3. Install? (Y/n) " ans
+  read -rp "  缺少 python3 boto3，是否安装? (Y/n) " ans
   if [[ ! "${ans:-y}" =~ ^[nN] ]]; then
     pip3 install boto3 --quiet
   fi
@@ -110,30 +105,29 @@ fi
 printf "  %-10s ✓\n" "boto3"
 
 echo ""
-echo "  All dependencies ready. / 所有依赖就绪。"
+echo "  所有依赖就绪。"
 
-# Clone
 echo ""
 if [ -d "$DIR" ]; then
-  echo "  Directory exists, updating... / 目录已存在，更新..."
-  cd "$DIR" && git pull --ff-only
+  echo "  目录已存在，更新中..."
+  cd "$DIR" && git fetch origin && git reset --hard origin/main
 else
-  echo "  Cloning... / 克隆代码..."
+  echo "  克隆代码..."
   git clone --depth 1 "$REPO" "$DIR"
   cd "$DIR"
 fi
 
-# Install deps
-echo "  Installing npm packages..."
+echo "  安装 npm 依赖..."
+npm install --silent 2>/dev/null
 cd infra && npm install --silent 2>/dev/null && cd ..
 
 echo ""
-echo "  Install complete. / 安装完成。"
+echo "  安装完成。"
 echo ""
-read -rp "  Start deploy now? / 开始部署? (Y/n) " START
+read -rp "  现在开始部署? (Y/n) " START
 if [[ "${START:-y}" =~ ^[nN] ]]; then
   echo ""
-  echo "  To deploy later: cd ${DIR} && ./scripts/deploy.sh"
+  echo "  稍后部署: cd ${DIR} && ./scripts/deploy.sh"
   exit 0
 fi
 

@@ -4,71 +4,67 @@ set -euo pipefail
 REGION="${AWS_REGION:-us-west-2}"
 SECRET_PREFIX="lark-mcp/users"
 
+get_oauth_fn() {
+  aws cloudformation describe-stacks --stack-name LarkMcpOAuth --region $REGION \
+    --query 'Stacks[0].Outputs[?OutputKey==`OAuthFunctionName`].OutputValue' --output text 2>/dev/null || echo ""
+}
+
 case "${1:-help}" in
   list-users)
-    echo "Authorized users:"
+    echo "已授权用户:"
     aws secretsmanager list-secrets --region $REGION \
       --filters "Key=name,Values=${SECRET_PREFIX}" \
       --query 'SecretList[*].{Name:Name,Updated:LastChangedDate}' --output table
     ;;
-  check-token)
-    USER="${2:?Usage: ops.sh check-token <user_id>}"
-    python3 -c "
-import boto3, json
-from datetime import datetime
-sm = boto3.client('secretsmanager', region_name='${REGION}')
-try:
-    resp = sm.get_secret_value(SecretId='${SECRET_PREFIX}/${USER}')
-    d = json.loads(resp['SecretString'])
-    exp = datetime.fromtimestamp(d['expires_at'])
-    remaining = d['expires_at'] - __import__('time').time()
-    status = '✓ valid' if remaining > 0 else '✗ expired'
-    print(f'  User: ${USER}')
-    print(f'  Status: {status}')
-    print(f'  Expires: {exp} ({int(remaining/60)}min remaining)')
-    print(f'  Token: {d[\"access_token\"][:20]}...')
-except Exception as e:
-    print(f'  Not found or error: {e}')
-"
-    ;;
   revoke)
-    USER="${2:?Usage: ops.sh revoke <user_id>}"
-    read -rp "  Revoke token for ${USER}? (y/N) " CONFIRM
+    USER="${2:?用法: ops.sh revoke <user_id>}"
+    read -rp "  确认撤销 ${USER} 的 Token? (y/N) " CONFIRM
     if [[ "$CONFIRM" =~ ^[yY] ]]; then
       aws secretsmanager delete-secret --secret-id "${SECRET_PREFIX}/${USER}" --force-delete-without-recovery --region $REGION 2>&1
-      echo "  Revoked ✓"
+      echo "  已撤销 ✓"
     fi
     ;;
   refresh-all)
-    echo "Triggering manual refresh..."
-    aws lambda invoke --function-name lark-token-shim --payload '{"source":"aws.events"}' --region $REGION /tmp/refresh-out.json 2>&1 | head -2
+    echo "触发手动刷新..."
+    LAMBDA_FN=$(get_oauth_fn)
+    if [ -z "$LAMBDA_FN" ]; then echo "  未找到 OAuth Lambda"; exit 1; fi
+    aws lambda invoke --function-name "$LAMBDA_FN" --payload '{"source":"aws.events"}' --region $REGION /tmp/refresh-out.json 2>&1 | head -2
     cat /tmp/refresh-out.json | python3 -m json.tool
     ;;
   logs)
-    echo "Recent Lambda logs:"
-    aws logs tail "/aws/lambda/lark-token-shim" --region $REGION --since 1h --format short 2>/dev/null | tail -20 || echo "  No logs found"
+    echo "最近 Lambda 日志:"
+    LAMBDA_FN=$(get_oauth_fn)
+    if [ -z "$LAMBDA_FN" ]; then echo "  未找到 OAuth Lambda"; exit 1; fi
+    aws logs tail "/aws/lambda/${LAMBDA_FN}" --region $REGION --since 1h --format short 2>/dev/null | tail -20 || echo "  未找到日志"
     ;;
   status)
-    echo "=== System Status ==="
+    echo "=== 系统状态 ==="
     echo ""
     USERS=$(aws secretsmanager list-secrets --region $REGION --filters "Key=name,Values=${SECRET_PREFIX}" --query 'SecretList | length(@)' --output text 2>/dev/null || echo "?")
-    echo "  Authorized users: ${USERS}"
-    EB=$(aws events describe-rule --name lark-mcp-token-refresh --region $REGION --query 'State' --output text 2>/dev/null || echo "NOT_FOUND")
-    echo "  Token refresh:    ${EB}"
+    echo "  已授权用户: ${USERS}"
+    EB_RULE=$(aws events list-rules --name-prefix LarkMcpOAuth --region $REGION --query 'Rules[0].Name' --output text 2>/dev/null || echo "")
+    if [ -z "$EB_RULE" ] || [ "$EB_RULE" = "None" ]; then EB="未找到"; else
+    EB=$(aws events describe-rule --name "$EB_RULE" --region $REGION --query 'State' --output text 2>/dev/null || echo "未找到"); fi
+    echo "  Token 刷新:  ${EB}"
     echo ""
     ;;
   destroy)
-    echo "Destroying AgentCore Runtime..."
+    echo "销毁 AgentCore Runtime..."
     RUNTIME_ID=$(python3 -c "
 import boto3
 c = boto3.client('bedrock-agentcore-control', region_name='${REGION}')
-runtimes = c.list_agent_runtimes()
-for r in runtimes.get('agentRuntimeSummaries', []):
-    if 'larkmcp' in r.get('agentRuntimeName', ''):
-        print(r['agentRuntimeId']); break
+next_token = None
+while True:
+    kwargs = {'nextToken': next_token} if next_token else {}
+    resp = c.list_agent_runtimes(**kwargs)
+    for r in resp.get('agentRuntimes', []):
+        if r.get('agentRuntimeName') == 'larkmcp':
+            print(r['agentRuntimeId']); exit(0)
+    next_token = resp.get('nextToken')
+    if not next_token: break
 " 2>/dev/null)
     if [ -n "$RUNTIME_ID" ]; then
-      read -rp "  Delete runtime ${RUNTIME_ID}? (y/N) " CONFIRM
+      read -rp "  确认删除 Runtime ${RUNTIME_ID}? (y/N) " CONFIRM
       if [[ "$CONFIRM" =~ ^[yY] ]]; then
         python3 -c "
 import boto3, time
@@ -77,23 +73,51 @@ try: c.delete_agent_runtime_endpoint(agentRuntimeId='${RUNTIME_ID}', endpointNam
 except: pass
 time.sleep(3)
 c.delete_agent_runtime(agentRuntimeId='${RUNTIME_ID}')
-print('  Deleted ✓')
+print('  已删除 ✓')
 "
       fi
     else
-      echo "  No AgentCore Runtime found."
+      echo "  未找到 AgentCore Runtime。"
     fi
     ;;
-  help|*)
-    echo "Usage: ./scripts/ops.sh <command>"
+  rotate-secret)
+    echo "轮换 OAuth Client Secret..."
+    NEW_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+    aws ssm put-parameter --name "/lark-mcp/oauth-client-secret" --value "$NEW_SECRET" \
+      --type SecureString --overwrite --region $REGION >/dev/null 2>&1
+    # Update OAuth Lambda env (only OAUTH_CLIENT_SECRET, not STATE_SECRET)
+    LAMBDA_FN=$(get_oauth_fn)
+    if [ -n "$LAMBDA_FN" ]; then
+      CURRENT_ENV=$(aws lambda get-function-configuration --function-name "$LAMBDA_FN" --region $REGION \
+        --query 'Environment.Variables' --output json 2>/dev/null)
+      UPDATED_ENV=$(echo "$CURRENT_ENV" | python3 -c "
+import json, sys
+env = json.load(sys.stdin)
+env['OAUTH_CLIENT_SECRET'] = '${NEW_SECRET}'
+print(json.dumps({'Variables': env}))
+")
+      aws lambda update-function-configuration --function-name "$LAMBDA_FN" \
+        --environment "$UPDATED_ENV" --region $REGION >/dev/null 2>&1
+    fi
     echo ""
-    echo "Commands:"
-    echo "  list-users     List all authorized users"
-    echo "  check-token    Check token status for a user"
-    echo "  revoke         Revoke a user's token"
-    echo "  refresh-all    Manually trigger token refresh"
-    echo "  logs           Show recent Lambda logs"
-    echo "  status         System overview"
-    echo "  destroy        Delete AgentCore Runtime"
+    echo "  新 Client Secret: ${NEW_SECRET:0:8}..."
+    echo ""
+    echo "  ⚠ 注意:"
+    echo "    1. 已发放的 MCP Token 仍然有效 (STATE_SECRET 未变)"
+    echo "    2. 请更新 Quick Desktop connector 的 Client Secret"
+    echo ""
+    echo "  已更新 ✓"
+    ;;
+  help|*)
+    echo "用法: ./scripts/ops.sh <命令>"
+    echo ""
+    echo "命令:"
+    echo "  list-users     列出所有已授权用户"
+    echo "  revoke         撤销用户 Token"
+    echo "  refresh-all    手动触发 Token 刷新"
+    echo "  logs           查看最近 Lambda 日志"
+    echo "  status         系统概览"
+    echo "  rotate-secret  轮换 OAuth Client Secret"
+    echo "  destroy        删除 AgentCore Runtime"
     ;;
 esac

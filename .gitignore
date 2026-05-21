@@ -27,8 +27,5 @@ Thumbs.db
 *.swp
 *.swo
 
-# AWS
-samconfig.toml
-
-# Build artifacts
-lambda/**/function.zip
+# Deploy output (contains account-specific info)
+deploy-output.md

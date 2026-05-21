@@ -6,9 +6,6 @@ import * as path from "path";
 
 export interface RuntimeStackProps extends cdk.StackProps {
   feishuAppId: string;
-  feishuAppSecret: string;
-  secretPrefix: string;
-  oauthEndpoint: string;
 }
 
 export class RuntimeStack extends cdk.Stack {
@@ -27,7 +24,6 @@ export class RuntimeStack extends cdk.Stack {
 
     // IAM role for AgentCore Runtime
     this.runtimeRole = new iam.Role(this, "RuntimeRole", {
-      roleName: "LarkMcpAgentCoreRole",
       assumedBy: new iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
     });
     this.runtimeRole.addManagedPolicy(
@@ -42,7 +38,7 @@ export class RuntimeStack extends cdk.Stack {
         "Create AgentCore Runtime manually (no CDK L2 construct yet):",
         `  agentcore create --name larkmcp --build Container --protocol MCP --skip-git`,
         `  # Configure: image=${image.imageUri}, role=${this.runtimeRole.roleArn}`,
-        `  # Env: APP_ID=${props.feishuAppId}, APP_SECRET=<from-SM>, UAT_PLACEHOLDER=suppress_auth_handler`,
+        `  # Env: APP_ID=${props.feishuAppId}, APP_SECRET=<from-SM>, LARKSUITE_CLI_BRAND=feishu`,
         `  # requestHeaderAllowlist: [X-User-Access-Token, X-Runtime-User-Id]`,
         `  agentcore deploy`,
       ].join("\n"),

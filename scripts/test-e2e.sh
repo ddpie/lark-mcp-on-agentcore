@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # ==============================================================================
-# End-to-end test script for lark-mcp-on-agentcore
+# 端到端测试脚本
 #
-# Tests all deployed components. Run after ./scripts/deploy.sh completes.
+# 在 ./scripts/deploy.sh 完成后运行，验证所有已部署组件。
 #
-# Usage:
+# 用法:
 #   ./scripts/test-e2e.sh [--runtime-arn <arn>] [--oauth-endpoint <url>]
 #
-# Or set env vars:
+# 或设置环境变量:
 #   RUNTIME_ARN=arn:aws:bedrock-agentcore:...
 #   OAUTH_ENDPOINT=https://xxx.cloudfront.net
 #   TEST_USER_ID=test-user
@@ -30,7 +30,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Auto-detect from CloudFormation if not provided
 if [ -z "$OAUTH_ENDPOINT" ]; then
   OAUTH_ENDPOINT=$(aws cloudformation describe-stacks --stack-name LarkMcpOAuth --region $REGION \
     --query 'Stacks[0].Outputs[?OutputKey==`OAuthEndpoint`].OutputValue' --output text 2>/dev/null || echo "")
@@ -45,34 +44,31 @@ fail() { echo -e "  \033[31m✗ $1\033[0m"; FAIL=$((FAIL+1)); }
 skip() { echo -e "  \033[33m⊘ $1\033[0m"; SKIP=$((SKIP+1)); }
 
 echo ""
-echo "=== Lark MCP on AgentCore - E2E Tests ==="
-echo "  Region: ${REGION}"
-echo "  OAuth:  ${OAUTH_ENDPOINT:-<not set>}"
-echo "  Runtime: ${RUNTIME_ARN:-<not set>}"
+echo "=== Lark MCP on AgentCore - 端到端测试 ==="
+echo "  区域:    ${REGION}"
+echo "  OAuth:   ${OAUTH_ENDPOINT:-<未设置>}"
+echo "  Runtime: ${RUNTIME_ARN:-<未设置>}"
 echo ""
 
-# Test 1: OAuth /authorize endpoint
-echo "── OAuth Flow ──"
+# 测试 1: OAuth 流程
+echo "── OAuth 流程 ──"
 if [ -n "$OAUTH_ENDPOINT" ]; then
   HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/authorize?user_id=${TEST_USER_ID}")
-  if [ "$HTTP" = "302" ]; then pass "/authorize → 302 redirect"; else fail "/authorize → HTTP ${HTTP} (expected 302)"; fi
+  if [ "$HTTP" = "302" ]; then pass "/authorize → 302 重定向"; else fail "/authorize → HTTP ${HTTP} (期望 302)"; fi
 
-  # Test HMAC state in redirect
   REDIRECT=$(curl -s -o /dev/null -w "%{redirect_url}" "${OAUTH_ENDPOINT}/authorize?user_id=${TEST_USER_ID}")
-  if echo "$REDIRECT" | grep -q "state="; then pass "/authorize includes HMAC state"; else fail "/authorize missing state"; fi
+  if echo "$REDIRECT" | grep -q "state="; then pass "/authorize 包含 HMAC state"; else fail "/authorize 缺少 state"; fi
 
-  # Test tampered state rejection
   TAMPER=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/callback?code=fake&state=dGFtcGVyZWQ6MTIzOmZha2U")
-  if [ "$TAMPER" = "403" ]; then pass "/callback rejects tampered state"; else fail "/callback → HTTP ${TAMPER} (expected 403)"; fi
+  if [ "$TAMPER" = "403" ]; then pass "/callback 拒绝篡改的 state"; else fail "/callback → HTTP ${TAMPER} (期望 403)"; fi
 
-  # Test /token (IAM protected)
   TOKEN_HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/token?user_id=test")
-  if [ "$TOKEN_HTTP" = "403" ] || [ "$TOKEN_HTTP" = "401" ]; then pass "/token blocked from public"; else fail "/token → HTTP ${TOKEN_HTTP} (expected 403)"; fi
+  if [ "$TOKEN_HTTP" = "405" ]; then pass "/token GET 返回 405 Method Not Allowed"; else fail "/token → HTTP ${TOKEN_HTTP} (期望 405)"; fi
 else
-  skip "OAuth endpoint not configured"
+  skip "OAuth 端点未配置"
 fi
 
-# Test 2: AgentCore Runtime
+# 测试 2: AgentCore Runtime
 echo ""
 echo "── AgentCore Runtime ──"
 if [ -n "$RUNTIME_ARN" ]; then
@@ -95,9 +91,8 @@ except Exception as e:
     print(f'ERROR:{str(e)[:80]}')
 " 2>&1)
 
-  if [ "$INIT_RESULT" = "OK" ]; then pass "MCP initialize via AgentCore"; else fail "MCP initialize: ${INIT_RESULT}"; fi
+  if [ "$INIT_RESULT" = "OK" ]; then pass "MCP initialize 调用成功"; else fail "MCP initialize: ${INIT_RESULT}"; fi
 
-  # Test tools/list
   TOOLS_RESULT=$(python3 -c "
 import boto3, json, re, urllib.parse, urllib.request
 from botocore.auth import SigV4Auth
@@ -117,9 +112,8 @@ try:
 except: print('0')
 " 2>&1)
 
-  if [ "${TOOLS_RESULT:-0}" -gt "0" ]; then pass "tools/list returns ${TOOLS_RESULT} tools"; else fail "tools/list returned 0 tools"; fi
+  if [ "${TOOLS_RESULT:-0}" -gt "0" ]; then pass "tools/list 返回 ${TOOLS_RESULT} 个工具"; else fail "tools/list 返回 0 个工具"; fi
 
-  # Test with user token from SM (if exists)
   TOKEN_TEST=$(python3 -c "
 import boto3, json, urllib.parse, urllib.request
 from botocore.auth import SigV4Auth
@@ -134,7 +128,7 @@ except:
 session = boto3.Session()
 creds = session.get_credentials().get_frozen_credentials()
 url = f'https://bedrock-agentcore.${REGION}.amazonaws.com/runtimes/{urllib.parse.quote(\"${RUNTIME_ARN}\", safe=\"\")}/invocations'
-body = json.dumps({'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'im_v1_chat_list','arguments':{}}})
+body = json.dumps({'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'lark_im_chat_list','arguments':{}}})
 request = AWSRequest(method='POST', url=url, data=body, headers={'Content-Type':'application/json','Accept':'application/json, text/event-stream','X-User-Access-Token':uat})
 SigV4Auth(creds, 'bedrock-agentcore', '${REGION}').add_auth(request)
 req = urllib.request.Request(request.url, data=body.encode(), headers=dict(request.headers), method='POST')
@@ -147,30 +141,32 @@ except: print('USER_ERROR')
 " 2>&1)
 
   case "$TOKEN_TEST" in
-    USER_OK) pass "tools/call with user token (from SM)" ;;
-    NO_TOKEN) skip "No token in SM for ${TEST_USER_ID} (authorize first)" ;;
-    *) fail "User token call: ${TOKEN_TEST}" ;;
+    USER_OK) pass "使用用户 Token 调用工具成功" ;;
+    NO_TOKEN) skip "${TEST_USER_ID} 的 Token 不存在 (需先授权)" ;;
+    *) fail "用户 Token 调用: ${TOKEN_TEST}" ;;
   esac
 else
-  skip "Runtime ARN not configured"
+  skip "Runtime ARN 未配置"
 fi
 
-# Test 3: Secrets Manager token storage
+# 测试 3: Token 存储
 echo ""
-echo "── Token Storage ──"
+echo "── Token 存储 ──"
 SM_TEST=$(aws secretsmanager list-secrets --region $REGION --filters "Key=name,Values=lark-mcp/users" --query 'SecretList | length(@)' --output text 2>/dev/null || echo "0")
-if [ "${SM_TEST:-0}" -gt "0" ]; then pass "Secrets Manager has ${SM_TEST} user token(s)"; else skip "No user tokens stored yet"; fi
+if [ "${SM_TEST:-0}" -gt "0" ]; then pass "Secrets Manager 存储了 ${SM_TEST} 个用户 Token"; else skip "暂无用户 Token"; fi
 
-# Test 4: EventBridge rule
+# 测试 4: EventBridge 刷新规则
 echo ""
-echo "── Token Refresh ──"
-EB_STATE=$(aws events describe-rule --name lark-mcp-token-refresh --region $REGION --query 'State' --output text 2>/dev/null || echo "NOT_FOUND")
-if [ "$EB_STATE" = "ENABLED" ]; then pass "EventBridge refresh rule: ENABLED"; else skip "EventBridge rule: ${EB_STATE}"; fi
+echo "── Token 刷新 ──"
+EB_RULE=$(aws events list-rules --name-prefix LarkMcpOAuth --region $REGION --query 'Rules[0].Name' --output text 2>/dev/null || echo "")
+if [ -z "$EB_RULE" ] || [ "$EB_RULE" = "None" ]; then EB_STATE="未找到"; else
+EB_STATE=$(aws events describe-rule --name "$EB_RULE" --region $REGION --query 'State' --output text 2>/dev/null || echo "未找到"); fi
+if [ "$EB_STATE" = "ENABLED" ]; then pass "EventBridge 刷新规则: 已启用"; else skip "EventBridge 规则: ${EB_STATE}"; fi
 
-# Summary
+# 汇总
 echo ""
 echo "═══════════════════════════════════"
-echo "  Pass: ${PASS}  Fail: ${FAIL}  Skip: ${SKIP}"
+echo "  通过: ${PASS}  失败: ${FAIL}  跳过: ${SKIP}"
 echo "═══════════════════════════════════"
 echo ""
 
