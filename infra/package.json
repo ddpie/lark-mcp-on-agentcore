@@ -1,0 +1,23 @@
+{
+  "name": "lark-mcp-on-agentcore-infra",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "cdk": "cdk",
+    "deploy": "cdk deploy --all",
+    "synth": "cdk synth",
+    "diff": "cdk diff"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.170.0",
+    "constructs": "^10.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.7.0",
+    "aws-cdk": "^2.170.0",
+    "esbuild": "^0.24.0"
+  }
+}
