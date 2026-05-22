@@ -9,6 +9,7 @@ const APP_SECRET_ID = process.env.APP_SECRET_ID || "lark-mcp/feishu-app";
 const STATE_SECRET = process.env.STATE_SECRET!;
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || "lark-mcp";
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
+const FEISHU_SCOPES = process.env.FEISHU_SCOPES || '';
 const STATE_TTL_SECONDS = 300;
 const MCP_TOKEN_TTL = 86400 * 30; // 30 days
 
@@ -37,6 +38,7 @@ async function loadAppCredentials() {
   appId = data.appId;
   appSecret = data.appSecret;
 }
+
 
 interface LambdaEvent {
   body?: string;
@@ -134,6 +136,20 @@ async function getToken(userId: string): Promise<{ access_token: string; refresh
   catch { return null; }
 }
 
+async function storeOpenIdMapping(openId: string, userId: string) {
+  const secretId = `lark-mcp/openid-map/${openId}`;
+  const value = JSON.stringify({ userId });
+  try { await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value })); }
+  catch (e: any) { if (e.name === "ResourceNotFoundException") await sm.send(new CreateSecretCommand({ Name: secretId, SecretString: value })); else {} }
+}
+
+async function getOpenIdMapping(openId: string): Promise<string | null> {
+  try {
+    const resp = await sm.send(new GetSecretValueCommand({ SecretId: `lark-mcp/openid-map/${openId}` }));
+    return JSON.parse(resp.SecretString!).userId;
+  } catch { return null; }
+}
+
 async function listAllUserSecrets(): Promise<string[]> {
   const names: string[] = [];
   let nextToken: string | undefined;
@@ -203,7 +219,30 @@ export async function handler(event: LambdaEvent) {
     const clientState = params.state || '';
     const codeChallenge = params.code_challenge || '';
     const codeChallengeMethod = params.code_challenge_method || '';
-    const userId = params.user_id || '';
+    let userId = params.user_id || '';
+    const extraScopeRaw = params.extra_scope || '';
+    const incrToken = params.t || '';
+
+    // Verify signed incremental-auth token (carries the original userId)
+    if (incrToken && !userId) {
+      try {
+        const decoded = Buffer.from(incrToken, 'base64url').toString();
+        const lastColon = decoded.lastIndexOf(':');
+        const secondLastColon = decoded.lastIndexOf(':', lastColon - 1);
+        const sig = decoded.slice(lastColon + 1);
+        const expiresAt = parseInt(decoded.slice(secondLastColon + 1, lastColon));
+        const tokenUserId = decoded.slice(0, secondLastColon);
+        if (Date.now() / 1000 <= expiresAt) {
+          const expected = createHmac('sha256', STATE_SECRET).update(`${tokenUserId}:${expiresAt}`).digest('hex');
+          const sigBuf = Buffer.from(sig, 'hex');
+          const expBuf = Buffer.from(expected, 'hex');
+          if (sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf)) {
+            userId = tokenUserId;
+          }
+        }
+      } catch {}
+    }
+    const extraScope = /^[a-z0-9_:.\- ]+$/i.test(extraScopeRaw) ? extraScopeRaw : '';
 
     // Validate code_challenge_method if provided
     if (codeChallenge && codeChallengeMethod && codeChallengeMethod !== 'S256') {
@@ -233,16 +272,20 @@ export async function handler(event: LambdaEvent) {
       // Encode redirect_uri and client_state into our internal state
       const statePayload = JSON.stringify({ r: redirectUri, s: clientState, c: codeChallenge });
       const state = signState(statePayload);
+      const allScopes = [FEISHU_SCOPES, extraScope].filter(Boolean).join(' ');
+      const scopeParam = allScopes ? `&scope=${encodeURIComponent(allScopes)}` : '';
       return {
         statusCode: 302,
-        headers: { Location: `https://open.feishu.cn/open-apis/authen/v1/authorize?app_id=${appId}&redirect_uri=${encodeURIComponent(CALLBACK_URL)}&state=${state}` },
+        headers: { Location: `https://accounts.feishu.cn/open-apis/authen/v1/authorize?client_id=${appId}&response_type=code&redirect_uri=${encodeURIComponent(CALLBACK_URL)}&state=${state}${scopeParam}` },
       };
     }
 
-    // Legacy flow (user_id based, for manual authorization)
-    if (!userId) return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: '{"error":"missing redirect_uri or user_id"}' };
-    const state = signState(JSON.stringify({ u: userId }));
-    return { statusCode: 302, headers: { Location: `https://open.feishu.cn/open-apis/authen/v1/authorize?app_id=${appId}&redirect_uri=${encodeURIComponent(CALLBACK_URL)}&state=${state}` } };
+    // Legacy flow (user_id or extra_scope required)
+    if (!userId && !extraScope) return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: '{"error":"missing redirect_uri or user_id"}' };
+    const state = signState(JSON.stringify({ u: userId || `incr_${randomBytes(8).toString('hex')}` }));
+    const legacyScopes = extraScope ? extraScope : FEISHU_SCOPES;
+    const scopeParamLegacy = legacyScopes ? `&scope=${encodeURIComponent(legacyScopes)}` : '';
+    return { statusCode: 302, headers: { Location: `https://accounts.feishu.cn/open-apis/authen/v1/authorize?client_id=${appId}&response_type=code&redirect_uri=${encodeURIComponent(CALLBACK_URL)}&state=${state}${scopeParamLegacy}` } };
   }
 
   // /callback — Feishu redirects here after user consent
@@ -259,8 +302,20 @@ export async function handler(event: LambdaEvent) {
     const result = await exchangeCode(code, appToken);
     if (result.code !== 0 || !result.data) return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "feishu_exchange_failed", detail: result.msg || result.code }) };
 
-    const stableUserId = result.data.open_id || stateData.u || randomBytes(16).toString('hex');
+    let stableUserId = '';
+    if (stateData.u && !stateData.u.startsWith('incr_')) {
+      stableUserId = stateData.u;
+    } else if (result.data.open_id) {
+      // Try to find existing user by open_id mapping
+      const mapped = await getOpenIdMapping(result.data.open_id);
+      stableUserId = mapped || result.data.open_id;
+    } else {
+      stableUserId = randomBytes(16).toString('hex');
+    }
     await storeToken(stableUserId, result.data);
+    if (result.data.open_id && stableUserId !== result.data.open_id) {
+      await storeOpenIdMapping(result.data.open_id, stableUserId);
+    }
 
     // Standard OAuth flow: generate auth code and redirect back to client
     if (stateData.r) {

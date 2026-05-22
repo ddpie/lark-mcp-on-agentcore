@@ -15,6 +15,7 @@ RUN npx @larksuite/cli@${LARK_CLI_VERSION} install 2>/dev/null || npm install -g
 RUN npx skills add larksuite/cli -y -g 2>/dev/null || true
 
 COPY generate-tools.js /app/generate-tools.js
+COPY shortcut-scopes.json /app/shortcut-scopes.json
 COPY server.js /app/server.js
 COPY tier1.json /app/tier1.json
 

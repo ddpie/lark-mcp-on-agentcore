@@ -14,6 +14,7 @@ const PORT = 8000;
 const APP_ID = process.env.APP_ID || '';
 const APP_SECRET = process.env.APP_SECRET || '';
 const BRAND = process.env.LARKSUITE_CLI_BRAND || 'feishu';
+const AUTHORIZE_BASE = process.env.AUTHORIZE_BASE || '';
 
 // Load tool catalog and tier1
 const catalogRaw = JSON.parse(fs.readFileSync('/app/generated-tools.json', 'utf8'));
@@ -21,6 +22,15 @@ const allToolDefs = catalogRaw.tools || [];
 const tier1Names = new Set(JSON.parse(fs.readFileSync('/app/tier1.json', 'utf8')));
 
 console.log(`Tool catalog: ${allToolDefs.length} tools, Tier 1: ${tier1Names.size}`);
+
+// Scope mapping: toolName -> required scopes (generated at build time)
+const toolScopeMap = new Map();
+for (const def of allToolDefs) {
+  if (def.scopes && def.scopes.length > 0) {
+    toolScopeMap.set(toToolName(def), def.scopes);
+  }
+}
+console.log(`Scope map: ${toolScopeMap.size} tools (lark-cli ${catalogRaw._larkCliVersion}, scope-map ${catalogRaw._scopeMapVersion})`);
 
 function toToolName(def) {
   const cmd = def.command.replace(/^\+/, '');
@@ -113,7 +123,43 @@ function findByName(name) {
   return catalogIndex.find(e => e.name === name);
 }
 
-async function executeTool(def, args, userToken) {
+function patchPermissionError(output, toolName, incrAuthToken) {
+  try {
+    const data = JSON.parse(output);
+    if (data.error && Number(data.error.code) === 99991679) {
+      let missingScope = '';
+      // Layer 2: check local scope mapping table first
+      if (!missingScope && toolName && toolScopeMap.has(toolName)) {
+        missingScope = toolScopeMap.get(toolName).join(' ');
+      }
+      // Layer 3: extract from lark-cli error response
+      if (!missingScope && data.error.console_url) {
+        try {
+          const u = new URL(data.error.console_url);
+          missingScope = u.searchParams.get('scopes') || '';
+        } catch {}
+      }
+      if (!missingScope) {
+        const m = (data.error.message || '').match(/required scope (\S+)/);
+        if (m) missingScope = m[1].replace(/[,;.!)\]]+$/, '');
+      }
+
+      if (missingScope && AUTHORIZE_BASE) {
+        const tokenParam = incrAuthToken ? `&t=${encodeURIComponent(incrAuthToken)}` : '';
+        const authUrl = `${AUTHORIZE_BASE}/authorize?extra_scope=${encodeURIComponent(missingScope)}${tokenParam}`;
+        data.error.hint = `Missing permission: ${missingScope}. Click to authorize: ${authUrl}`;
+        data.error.authorize_url = authUrl;
+      } else {
+        data.error.hint = 'This tool requires a permission that could not be determined automatically. Please contact ddpie.flea@gmail.com for support.';
+      }
+      delete data.error.console_url;
+      return JSON.stringify(data, null, 2);
+    }
+  } catch {}
+  return output;
+}
+
+async function executeTool(def, args, userToken, toolName, incrAuthToken) {
   const cliArgs = [def.service, def.command];
   for (const flag of def.flags) {
     const key = toSchemaKey(flag.name);
@@ -137,10 +183,10 @@ async function executeTool(def, args, userToken) {
   try {
     const { stdout } = await execFileAsync('lark-cli', cliArgs, { timeout: 60000, maxBuffer: 10 * 1024 * 1024, env });
     const output = stdout.trim() || '{"ok":true,"data":null}';
-    return { content: [{ type: 'text', text: output }] };
+    return { content: [{ type: 'text', text: patchPermissionError(output, toolName, incrAuthToken) }] };
   } catch (err) {
     const message = err.stdout?.trim() || err.stderr?.trim() || err.message;
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text', text: patchPermissionError(message, toolName, incrAuthToken) }], isError: true };
   }
 }
 
@@ -150,10 +196,10 @@ function sseResponse(res, data) {
 }
 
 const server = http.createServer((req, res) => {
-  // Health check
+  // Health check (AgentCore sends GET /ping)
   if (req.method === 'GET') {
-    res.writeHead(405);
-    res.end('');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'Healthy', time_of_last_update: Math.floor(Date.now() / 1000) }));
     return;
   }
 
@@ -165,11 +211,12 @@ const server = http.createServer((req, res) => {
 
   const MAX_BODY = 1024 * 1024; // 1MB
   let body = '';
+  let destroyed = false;
   req.on('data', chunk => {
     body += chunk;
-    if (body.length > MAX_BODY) { req.destroy(); res.writeHead(413); res.end(); return; }
+    if (body.length > MAX_BODY) { destroyed = true; req.destroy(); res.writeHead(413); res.end(); return; }
   });
-  req.on('end', () => handleRequest(req, res, body));
+  req.on('end', () => { if (!destroyed) handleRequest(req, res, body); });
 });
 
 async function handleRequest(req, res, body) {
@@ -180,8 +227,9 @@ async function handleRequest(req, res, body) {
     return;
   }
 
-  // Extract user token from header
+  // Extract user token and incremental-auth token from headers
   const userToken = req.headers['x-user-access-token'] || '';
+  const incrAuthToken = req.headers['x-incr-auth-token'] || '';
 
   // initialize
   if (mcpReq.method === 'initialize') {
@@ -238,7 +286,7 @@ async function handleRequest(req, res, body) {
         sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"no user token"}' }], isError: true } });
         return;
       }
-      const result = await executeTool(entry.def, realArgs, userToken);
+      const result = await executeTool(entry.def, realArgs, userToken, realName, incrAuthToken);
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result });
       return;
     }
@@ -250,7 +298,7 @@ async function handleRequest(req, res, body) {
         sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"no user token"}' }], isError: true } });
         return;
       }
-      const result = await executeTool(tool._def, toolArgs, userToken);
+      const result = await executeTool(tool._def, toolArgs, userToken, toolName, incrAuthToken);
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result });
       return;
     }

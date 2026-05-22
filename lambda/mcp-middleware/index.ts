@@ -51,18 +51,11 @@ async function verifyMcpToken(token: string): Promise<{ valid: boolean; userId: 
   } catch { return { valid: false, userId: '' }; }
 }
 
-const tokenCache = new Map<string, { token: string; expiresAt: number }>();
-
 async function getUserToken(userId: string): Promise<string | null> {
-  const cached = tokenCache.get(userId);
-  if (cached && cached.expiresAt - Date.now() / 1000 > TOKEN_BUFFER_SECONDS) {
-    return cached.token;
-  }
   try {
     const resp = await sm.send(new GetSecretValueCommand({ SecretId: `${SECRET_PREFIX}/${userId}` }));
     const data = JSON.parse(resp.SecretString!);
     if (data.expires_at - Date.now() / 1000 > TOKEN_BUFFER_SECONDS) {
-      tokenCache.set(userId, { token: data.access_token, expiresAt: data.expires_at });
       return data.access_token;
     }
     return null;
@@ -94,28 +87,49 @@ export async function handler(event: LambdaEvent) {
 
   const mcpPayload = event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString() : event.body || '';
 
+  const bodyBytes = Buffer.from(mcpPayload, 'utf8');
+  const encodedArn = encodeURIComponent(RUNTIME_ARN);
+  // Forward client's MCP session ID (echoed from initialize response). MCP transport spec: server assigns the ID.
+  const clientSessionId = event.headers?.['mcp-session-id'] || event.headers?.['Mcp-Session-Id'] || '';
+
+  // Sign user_id for incremental auth links — prevents tampering when user clicks link in browser
+  const stateSecret = await getStateSecret();
+  const incrTokenExp = Math.floor(Date.now() / 1000) + 3600;
+  const incrPayload = `${userId}:${incrTokenExp}`;
+  const incrSig = createHmac('sha256', stateSecret).update(incrPayload).digest('hex');
+  const incrToken = Buffer.from(`${incrPayload}:${incrSig}`).toString('base64url');
+
+  const requestHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+    'X-User-Access-Token': feishuToken,
+    'X-Incr-Auth-Token': incrToken,
+    'host': `bedrock-agentcore.${REGION}.amazonaws.com`,
+  };
+  if (clientSessionId) requestHeaders['Mcp-Session-Id'] = clientSessionId;
+
   const request = new HttpRequest({
     method: 'POST',
     hostname: `bedrock-agentcore.${REGION}.amazonaws.com`,
-    path: `/runtimes/${encodeURIComponent(RUNTIME_ARN)}/invocations`,
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json, text/event-stream',
-      'X-User-Access-Token': feishuToken,
-      'host': `bedrock-agentcore.${REGION}.amazonaws.com`,
-    },
-    body: mcpPayload,
+    path: `/runtimes/${encodedArn}/invocations`,
+    headers: requestHeaders,
+    body: bodyBytes,
   });
 
   const signer = new SignatureV4({ credentials: defaultProvider(), region: REGION, service: 'bedrock-agentcore', sha256: Sha256 });
   const signed = await signer.sign(request);
 
-  const resp = await fetch(`https://${signed.hostname}${signed.path}`, {
+  const url = `https://${signed.hostname}${signed.path}`;
+  const resp = await fetch(url, {
     method: 'POST',
     headers: signed.headers as Record<string, string>,
-    body: mcpPayload,
+    body: bodyBytes,
   });
 
   const responseBody = await resp.text();
-  return { statusCode: resp.status, headers: { 'Content-Type': resp.headers.get('content-type') || 'text/event-stream' }, body: responseBody };
+  // Forward MCP session ID back to client so it can echo on subsequent requests
+  const responseHeaders: Record<string, string> = { 'Content-Type': resp.headers.get('content-type') || 'text/event-stream' };
+  const respSessionId = resp.headers.get('mcp-session-id');
+  if (respSessionId) responseHeaders['Mcp-Session-Id'] = respSessionId;
+  return { statusCode: resp.status, headers: responseHeaders, body: responseBody };
 }

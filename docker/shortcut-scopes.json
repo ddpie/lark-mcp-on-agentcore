@@ -1,0 +1,1926 @@
+{
+  "_meta": {
+    "lark_cli_version": "1.0.39",
+    "extracted_at": "2026-05-22",
+    "source": "https://github.com/larksuite/cli"
+  },
+  "shortcuts": [
+    {
+      "service": "apps",
+      "command": "+access-scope-get",
+      "scopes": [
+        "spark:app.access_scope:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+access-scope-set",
+      "scopes": [
+        "spark:app.access_scope:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+create",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+html-publish",
+      "scopes": [
+        "spark:app:publish"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+update",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+advperm-disable",
+      "scopes": [
+        "base:app:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+advperm-enable",
+      "scopes": [
+        "base:app:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+base-copy",
+      "scopes": [
+        "base:app:copy"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+base-create",
+      "scopes": [
+        "base:app:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+base-get",
+      "scopes": [
+        "base:app:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-arrange",
+      "scopes": [
+        "base:dashboard:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-block-create",
+      "scopes": [
+        "base:dashboard:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-block-delete",
+      "scopes": [
+        "base:dashboard:delete"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-block-get",
+      "scopes": [
+        "base:dashboard:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-block-list",
+      "scopes": [
+        "base:dashboard:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-block-update",
+      "scopes": [
+        "base:dashboard:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-create",
+      "scopes": [
+        "base:dashboard:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-delete",
+      "scopes": [
+        "base:dashboard:delete"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-get",
+      "scopes": [
+        "base:dashboard:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-list",
+      "scopes": [
+        "base:dashboard:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-update",
+      "scopes": [
+        "base:dashboard:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+data-query",
+      "scopes": [
+        "base:table:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+field-create",
+      "scopes": [
+        "base:field:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+field-delete",
+      "scopes": [
+        "base:field:delete"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+field-get",
+      "scopes": [
+        "base:field:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+field-list",
+      "scopes": [
+        "base:field:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+field-search-options",
+      "scopes": [
+        "base:field:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+field-update",
+      "scopes": [
+        "base:field:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-create",
+      "scopes": [
+        "base:form:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-delete",
+      "scopes": [
+        "base:form:delete"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-detail",
+      "scopes": [
+        "base:form:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-get",
+      "scopes": [
+        "base:form:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-list",
+      "scopes": [
+        "base:form:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-questions-create",
+      "scopes": [
+        "base:form:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-questions-delete",
+      "scopes": [
+        "base:form:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-questions-list",
+      "scopes": [
+        "base:form:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-questions-update",
+      "scopes": [
+        "base:form:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-submit",
+      "scopes": [
+        "base:form:update",
+        "docs:document.media:upload"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+form-update",
+      "scopes": [
+        "base:form:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-batch-create",
+      "scopes": [
+        "base:record:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-batch-update",
+      "scopes": [
+        "base:record:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-delete",
+      "scopes": [
+        "base:record:delete"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-download-attachment",
+      "scopes": [
+        "base:record:read",
+        "docs:document.media:download"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-get",
+      "scopes": [
+        "base:record:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-history-list",
+      "scopes": [
+        "base:history:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-list",
+      "scopes": [
+        "base:record:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-remove-attachment",
+      "scopes": [
+        "base:record:update",
+        "base:field:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-search",
+      "scopes": [
+        "base:record:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-share-link-create",
+      "scopes": [
+        "base:record:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-upload-attachment",
+      "scopes": [
+        "base:record:update",
+        "base:field:read",
+        "docs:document.media:upload"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+record-upsert",
+      "scopes": [
+        "base:record:create",
+        "base:record:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+role-create",
+      "scopes": [
+        "base:role:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+role-delete",
+      "scopes": [
+        "base:role:delete"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+role-get",
+      "scopes": [
+        "base:role:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+role-list",
+      "scopes": [
+        "base:role:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+role-update",
+      "scopes": [
+        "base:role:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+table-create",
+      "scopes": [
+        "base:table:create",
+        "base:field:read",
+        "base:field:create",
+        "base:field:update",
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+table-delete",
+      "scopes": [
+        "base:table:delete"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+table-get",
+      "scopes": [
+        "base:table:read",
+        "base:field:read",
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+table-list",
+      "scopes": [
+        "base:table:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+table-update",
+      "scopes": [
+        "base:table:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-create",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-delete",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-get",
+      "scopes": [
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-get-card",
+      "scopes": [
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-get-filter",
+      "scopes": [
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-get-group",
+      "scopes": [
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-get-sort",
+      "scopes": [
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-get-timebar",
+      "scopes": [
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-get-visible-fields",
+      "scopes": [
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-list",
+      "scopes": [
+        "base:view:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-rename",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-set-card",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-set-filter",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-set-group",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-set-sort",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-set-timebar",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+view-set-visible-fields",
+      "scopes": [
+        "base:view:write_only"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+workflow-create",
+      "scopes": [
+        "base:workflow:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+workflow-disable",
+      "scopes": [
+        "base:workflow:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+workflow-enable",
+      "scopes": [
+        "base:workflow:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+workflow-get",
+      "scopes": [
+        "base:workflow:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+workflow-list",
+      "scopes": [
+        "base:workflow:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+workflow-update",
+      "scopes": [
+        "base:workflow:update"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+agenda",
+      "scopes": [
+        "calendar:calendar.event:read"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+create",
+      "scopes": [
+        "calendar:calendar.event:create",
+        "calendar:calendar.event:update"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+freebusy",
+      "scopes": [
+        "calendar:calendar.free_busy:read"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+room-find",
+      "scopes": [
+        "calendar:calendar.free_busy:read"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+rsvp",
+      "scopes": [
+        "calendar:calendar.event:reply"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+suggestion",
+      "scopes": [
+        "calendar:calendar.free_busy:read"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+update",
+      "scopes": [
+        "calendar:calendar.event:update"
+      ]
+    },
+    {
+      "service": "contact",
+      "command": "+get-user",
+      "scopes": [
+        "contact:user.basic_profile:readonly"
+      ]
+    },
+    {
+      "service": "contact",
+      "command": "+search-user",
+      "scopes": [
+        "contact:user:search"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+create",
+      "scopes": [
+        "docx:document:create"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+fetch",
+      "scopes": [
+        "docx:document:readonly"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+media-download",
+      "scopes": [
+        "docs:document.media:download"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+media-insert",
+      "scopes": [
+        "docs:document.media:upload",
+        "docx:document:write_only",
+        "docx:document:readonly"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+media-preview",
+      "scopes": [
+        "docs:document.media:download"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+media-upload",
+      "scopes": [
+        "docs:document.media:upload"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+search",
+      "scopes": [
+        "search:docs:read"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+update",
+      "scopes": [
+        "docx:document:write_only",
+        "docx:document:readonly"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+whiteboard-update",
+      "scopes": [
+        "board:whiteboard:node:create"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+add-comment",
+      "scopes": [
+        "drive:drive.metadata:readonly",
+        "docx:document:readonly",
+        "docs:document.comment:create",
+        "docs:document.comment:write_only"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+apply-permission",
+      "scopes": [
+        "docs:permission.member:apply"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+create-folder",
+      "scopes": [
+        "space:folder:create"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+create-shortcut",
+      "scopes": [
+        "space:document:shortcut"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+delete",
+      "scopes": [
+        "space:document:delete"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+download",
+      "scopes": [
+        "drive:file:download"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+export",
+      "scopes": [
+        "docs:document.content:read",
+        "docs:document:export",
+        "docx:document:readonly",
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+export-download",
+      "scopes": [
+        "docs:document:export"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+import",
+      "scopes": [
+        "docs:document.media:upload",
+        "docs:document:import"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+inspect",
+      "scopes": [
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+move",
+      "scopes": [
+        "space:document:move"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+pull",
+      "scopes": [
+        "drive:drive.metadata:readonly",
+        "drive:file:download"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+push",
+      "scopes": [
+        "drive:drive.metadata:readonly",
+        "drive:file:upload",
+        "space:folder:create"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+search",
+      "scopes": [
+        "search:docs:read"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+status",
+      "scopes": [
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+sync",
+      "scopes": [
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+task_result",
+      "scopes": []
+    },
+    {
+      "service": "drive",
+      "command": "+upload",
+      "scopes": [
+        "drive:file:upload",
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+version-delete",
+      "scopes": [
+        "drive:file:upload"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+version-get",
+      "scopes": [
+        "drive:file:download"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+version-history",
+      "scopes": [
+        "drive:file:download"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+version-revert",
+      "scopes": [
+        "drive:file:upload"
+      ]
+    },
+    {
+      "service": "event",
+      "command": "+subscribe",
+      "scopes": []
+    },
+    {
+      "service": "im",
+      "command": "+chat-create",
+      "scopes": [
+        "im:chat:create_by_user"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+chat-list",
+      "scopes": [
+        "im:chat:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+chat-messages-list",
+      "scopes": [
+        "im:message:readonly"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+chat-search",
+      "scopes": [
+        "im:chat:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+chat-update",
+      "scopes": [
+        "im:chat:update"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+flag-cancel",
+      "scopes": [
+        "im:feed.flag:write",
+        "im:message.group_msg:get_as_user",
+        "im:message.p2p_msg:get_as_user",
+        "im:chat:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+flag-create",
+      "scopes": [
+        "im:feed.flag:write",
+        "im:message.group_msg:get_as_user",
+        "im:message.p2p_msg:get_as_user",
+        "im:chat:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+flag-list",
+      "scopes": [
+        "im:feed.flag:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+messages-mget",
+      "scopes": [
+        "im:message:readonly"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+messages-reply",
+      "scopes": [
+        "im:message:send_as_bot"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+messages-resources-download",
+      "scopes": [
+        "im:message:readonly"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+messages-search",
+      "scopes": [
+        "search:message",
+        "contact:user.basic_profile:readonly"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+messages-send",
+      "scopes": [
+        "im:message:send_as_bot"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+threads-messages-list",
+      "scopes": [
+        "im:message:readonly"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+decline-receipt",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox:readonly",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+draft-create",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox:readonly"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+draft-edit",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox:readonly"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+forward",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+message",
+      "scopes": [
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+messages",
+      "scopes": [
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+reply",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+reply-all",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+send",
+      "scopes": [
+        "mail:user_mailbox.message:send",
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox:readonly"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+send-receipt",
+      "scopes": [
+        "mail:user_mailbox.message:send",
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+share-to-chat",
+      "scopes": [
+        "mail:user_mailbox.message:readonly",
+        "im:message",
+        "im:message.send_as_user"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+signature",
+      "scopes": [
+        "mail:user_mailbox:readonly"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+template-create",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox:readonly"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+template-update",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox:readonly"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+thread",
+      "scopes": [
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+triage",
+      "scopes": [
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+watch",
+      "scopes": [
+        "mail:event",
+        "mail:user_mailbox.event.mail_address:read",
+        "mail:user_mailbox:readonly",
+        "mail:user_mailbox.message:readonly",
+        "mail:user_mailbox.message.address:read",
+        "mail:user_mailbox.message.subject:read",
+        "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "markdown",
+      "command": "+create",
+      "scopes": [
+        "drive:file:upload",
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "markdown",
+      "command": "+diff",
+      "scopes": [
+        "drive:file:download"
+      ]
+    },
+    {
+      "service": "markdown",
+      "command": "+fetch",
+      "scopes": [
+        "drive:file:download"
+      ]
+    },
+    {
+      "service": "markdown",
+      "command": "+overwrite",
+      "scopes": [
+        "drive:file:upload",
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "markdown",
+      "command": "+patch",
+      "scopes": [
+        "drive:file:download",
+        "drive:file:upload",
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "minutes",
+      "command": "+download",
+      "scopes": [
+        "minutes:minutes.media:export"
+      ]
+    },
+    {
+      "service": "minutes",
+      "command": "+search",
+      "scopes": [
+        "minutes:minutes.search:read"
+      ]
+    },
+    {
+      "service": "minutes",
+      "command": "+upload",
+      "scopes": [
+        "minutes:minutes.upload:write"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+cycle-detail",
+      "scopes": [
+        "okr:okr.content:readonly"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+cycle-list",
+      "scopes": [
+        "okr:okr.period:readonly"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+progress-create",
+      "scopes": [
+        "okr:okr.progress:writeonly"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+progress-delete",
+      "scopes": [
+        "okr:okr.progress:delete"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+progress-get",
+      "scopes": [
+        "okr:okr.progress:readonly"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+progress-list",
+      "scopes": [
+        "okr:okr.progress:readonly"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+progress-update",
+      "scopes": [
+        "okr:okr.progress:writeonly"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+upload-image",
+      "scopes": [
+        "okr:okr.progress.file:upload"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+add-dimension",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+append",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+batch-set-style",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+copy-sheet",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+create",
+      "scopes": [
+        "sheets:spreadsheet:create",
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+create-filter-view",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+create-filter-view-condition",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+create-float-image",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+create-sheet",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+delete-dimension",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+delete-dropdown",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+delete-filter-view",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+delete-filter-view-condition",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+delete-float-image",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+delete-sheet",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+export",
+      "scopes": [
+        "docs:document:export",
+        "drive:file:download"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+find",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+get-dropdown",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+get-filter-view",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+get-filter-view-condition",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+get-float-image",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+info",
+      "scopes": [
+        "sheets:spreadsheet.meta:read",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+insert-dimension",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+list-filter-view-conditions",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+list-filter-views",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+list-float-images",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+media-upload",
+      "scopes": [
+        "docs:document.media:upload"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+merge-cells",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+move-dimension",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+read",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+replace",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+set-dropdown",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+set-style",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+unmerge-cells",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+update-dimension",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+update-dropdown",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+update-filter-view",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+update-filter-view-condition",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+update-float-image",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+update-sheet",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+write",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+write-image",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "slides",
+      "command": "+create",
+      "scopes": [
+        "slides:presentation:create",
+        "slides:presentation:write_only",
+        "docs:document.media:upload"
+      ]
+    },
+    {
+      "service": "slides",
+      "command": "+media-upload",
+      "scopes": [
+        "docs:document.media:upload",
+        "wiki:node:read"
+      ]
+    },
+    {
+      "service": "slides",
+      "command": "+replace-slide",
+      "scopes": [
+        "slides:presentation:update",
+        "slides:presentation:write_only",
+        "wiki:node:read"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+assign",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+comment",
+      "scopes": [
+        "task:comment:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+complete",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+create",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+followers",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+get-my-tasks",
+      "scopes": [
+        "task:task:read"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+get-related-tasks",
+      "scopes": [
+        "task:task:read"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+reminder",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+reopen",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+search",
+      "scopes": [
+        "task:task:read"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+set-ancestor",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+subscribe-event",
+      "scopes": [
+        "task:task:read"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+tasklist-create",
+      "scopes": [
+        "task:tasklist:write",
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+tasklist-members",
+      "scopes": [
+        "task:tasklist:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+tasklist-search",
+      "scopes": [
+        "task:tasklist:read"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+tasklist-task-add",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+update",
+      "scopes": [
+        "task:task:write"
+      ]
+    },
+    {
+      "service": "task",
+      "command": "+upload-attachment",
+      "scopes": [
+        "task:attachment:write"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+meeting-events",
+      "scopes": [
+        "vc:meeting.meetingevent:read"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+meeting-join",
+      "scopes": [
+        "vc:meeting.bot.join:write"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+meeting-leave",
+      "scopes": [
+        "vc:meeting.bot.join:write"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+notes",
+      "scopes": [
+        "vc:note:read"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+recording",
+      "scopes": [
+        "vc:record:readonly"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+search",
+      "scopes": [
+        "vc:meeting.search:read"
+      ]
+    },
+    {
+      "service": "whiteboard",
+      "command": "+query",
+      "scopes": [
+        "board:whiteboard:node:read"
+      ]
+    },
+    {
+      "service": "whiteboard",
+      "command": "+update",
+      "scopes": [
+        "board:whiteboard:node:create"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+delete-space",
+      "scopes": [
+        "wiki:space:write_only",
+        "wiki:space:read"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+member-add",
+      "scopes": [
+        "wiki:member:create"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+member-list",
+      "scopes": [
+        "wiki:member:retrieve"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+member-remove",
+      "scopes": [
+        "wiki:member:update"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+move",
+      "scopes": [
+        "wiki:node:move",
+        "wiki:node:read",
+        "wiki:space:read"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+node-copy",
+      "scopes": [
+        "wiki:node:copy"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+node-create",
+      "scopes": [
+        "wiki:node:create",
+        "wiki:node:read",
+        "wiki:space:read"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+node-delete",
+      "scopes": [
+        "wiki:node:create"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+node-get",
+      "scopes": [
+        "wiki:node:retrieve"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+node-list",
+      "scopes": [
+        "wiki:node:retrieve"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+space-create",
+      "scopes": [
+        "wiki:space:write_only"
+      ]
+    },
+    {
+      "service": "wiki",
+      "command": "+space-list",
+      "scopes": [
+        "wiki:space:retrieve"
+      ]
+    }
+  ]
+}
