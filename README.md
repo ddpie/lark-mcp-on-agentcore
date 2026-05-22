@@ -4,11 +4,13 @@
 [![lark-cli](https://img.shields.io/badge/lark--cli-v1.0-blue)](https://github.com/larksuite/cli)
 [![AgentCore](https://img.shields.io/badge/AWS-Bedrock%20AgentCore-orange)](https://aws.amazon.com/bedrock/agentcore/)
 
+[中文](#lark-mcp-on-agentcore) | [English](#english)
+
 企业参考方案：将飞书/Lark 的 200+ API 部署为远程 MCP Server，基于 AWS Bedrock AgentCore，支持多用户 OAuth 认证和 per-user 身份隔离。
 
 用户在 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 中一键连接，即可用自然语言操作飞书——发消息、管日程、读写多维表格、操作文档，全部以自己的飞书身份执行。
 
-### 示例对话
+## 示例对话
 
 <p align="center">
   <img src="docs/quick-desktop-demo.png" alt="Demo">
@@ -19,6 +21,14 @@
 > 发一条消息给产品研发群：明天下午3点对齐需求
 > 查一下最近 3 天的群聊记录，有哪些事情需要我跟进
 ```
+
+## 运行时特点
+
+| 特点 | 说明 |
+|------|------|
+| **无状态** | 每个请求独立处理，用户身份通过 header token 传递，无 session 无亲和性 |
+| **自动弹性** | 并发请求增加时，AgentCore 自动拉起更多容器实例分摊负载；空闲时缩至零 |
+| **升级无感** | 工具层完全复用 lark-cli，升级只需运维执行 `./scripts/deploy.sh`，终端用户无需任何操作 |
 
 ## 为什么用这个？
 
@@ -296,5 +306,267 @@ A: 支持。部署时脚本会提示输入自定义域名，或设置环境变�
 A: 支持。部署时设置环境变量 `LARKSUITE_CLI_BRAND=lark`。
 
 ## License
+
+MIT
+
+---
+
+# English
+
+## lark-mcp-on-agentcore
+
+Enterprise reference architecture: Deploy 200+ Feishu/Lark APIs as a remote MCP Server on AWS Bedrock AgentCore with multi-user OAuth and per-user identity isolation.
+
+Users connect with one click in [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) and interact with Feishu using natural language — send messages, manage calendars, read/write Bitable, edit docs — all executed under their own Feishu identity.
+
+### Demo
+
+<p align="center">
+  <img src="docs/quick-desktop-demo-en.png" alt="Demo">
+</p>
+
+```
+> Check my Feishu calendar for today
+> Send a message to the product dev group: sync requirements tomorrow at 3pm
+> Review the last 3 days of group chat — what needs my follow-up?
+```
+
+### Runtime Characteristics
+
+| Feature | Description |
+|---------|-------------|
+| **Stateless** | Each request is processed independently; user identity is passed via header token, no session affinity |
+| **Auto-scaling** | AgentCore automatically spins up more container instances under load; scales to zero when idle |
+| **Seamless upgrades** | Tool layer fully reuses lark-cli; upgrading only requires ops to run `./scripts/deploy.sh`, transparent to end users |
+
+### Why This Project?
+
+| | This project | [lark-cli](https://github.com/larksuite/cli) | [lark-cli-mcp-wrapper](https://github.com/ddpie/lark-cli-mcp-wrapper) | [lark-openapi-mcp](https://github.com/larksuite/lark-openapi-mcp) |
+|---|---|---|---|---|
+| Type | Remote MCP Server | CLI tool | Local MCP Server | Local MCP Server |
+| Deployment | One command, self-hosted | npm install | npx local | npx local |
+| Tool count | 200+ | 200+ (CLI) | 200+ (MCP wrapped) | 19-31 (preset limited) |
+| User identity | Per-user isolation (OAuth) | Single user | Single user | Single user |
+| Token mgmt | Auto acquire, refresh, encrypted storage | Local keychain | Reuses lark-cli session | User managed |
+| Multi-user | 1000+ users share one deployment | N/A | N/A | N/A |
+| Client conn | Remote MCP + OAuth one-click | N/A (not MCP) | Local stdio | Local stdio |
+| Tiered arch | Tier1 + discover/invoke | N/A | Tier1 + discover/invoke | Flat list |
+| Use case | Team / enterprise self-hosted | CLI / scripts | Individual / small team | Individual / dev |
+
+### Quick Start
+
+#### Prerequisites
+
+1. **AWS account** with valid credentials (`aws configure`)
+2. **Feishu custom app** — create at [Feishu Open Platform](https://open.feishu.cn):
+   - [Developer Console](https://open.feishu.cn/app) → Create custom app
+   - App capabilities → Enable **Bot**
+   - Permissions → Grant required API scopes
+   - Note the **App ID** and **App Secret**
+   - Version management → Create and publish a version
+
+#### Install
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
+```
+
+The script checks/installs dependencies (Node.js, Docker, AWS CLI, CDK), prompts for Feishu credentials, and deploys.
+
+#### Manual Install
+
+```bash
+git clone https://github.com/ddpie/lark-mcp-on-agentcore.git
+cd lark-mcp-on-agentcore
+./scripts/deploy.sh
+```
+
+#### Post-deployment
+
+Add the output **Redirect URL** to your Feishu app's Security Settings → Redirect URLs.
+
+### Architecture
+
+<p align="center">
+  <img src="docs/architecture-en.svg" alt="Architecture" width="720">
+</p>
+
+- All endpoints share a single CloudFront domain
+- Users complete Feishu OAuth once on first use; fully automatic thereafter
+- EventBridge refreshes Feishu tokens hourly, transparent to users
+
+### Quick Desktop Setup
+
+After deployment, add the Feishu MCP connection in Quick Desktop:
+
+**Step 1: Create Connector**
+
+Settings → Capabilities → Browse connections → Create for your team → Model Context Protocol:
+
+<p align="center">
+  <img src="docs/quick-connectors-create.png" alt="Create for your team" width="600">
+</p>
+
+If prompted about an existing MCP connector, click **No, create new**:
+
+<p align="center">
+  <img src="docs/quick-connectors-new.png" alt="No, create new" width="600">
+</p>
+
+**Step 2: Connection Info**
+
+Fill in Name, MCP server endpoint (from deploy output), Connection type: **Public network**, click **Next**:
+
+<p align="center">
+  <img src="docs/quick-mcp-connect.png" alt="Connect" width="600">
+</p>
+
+**Step 3: OAuth Config**
+
+Fill in Client ID, Client Secret, Token URL, Authorization URL from deploy output, click **Create and continue**:
+
+<p align="center">
+  <img src="docs/quick-mcp-authenticate.png" alt="Authenticate" width="600">
+</p>
+
+**Step 4: Feishu Authorization**
+
+Approve in the popup Feishu authorization page:
+
+<p align="center">
+  <img src="docs/feishu-authorize.png" alt="Feishu Authorization" width="400">
+</p>
+
+After authorization, automatically returns to Quick:
+
+<p align="center">
+  <img src="docs/quick-returning.png" alt="Returning to Quick" width="500">
+</p>
+
+**Step 5: Publish**
+
+Choose visibility (default: only you; or "Everyone in your organization"), click **Publish**:
+
+<p align="center">
+  <img src="docs/quick-mcp-publish.png" alt="Publish" width="600">
+</p>
+
+After publishing, the Connector detail page shows all available tools:
+
+<p align="center">
+  <img src="docs/quick-mcp-ready.png" alt="Connector Ready" width="800">
+</p>
+
+**Step 6: Use in Quick Desktop**
+
+Back in Quick Desktop, **Settings → Capabilities → Connections**, search "feishu", click **Sign in**:
+
+<p align="center">
+  <img src="docs/quick-desktop-signin.png" alt="Sign in" width="600">
+</p>
+
+Once connected, Feishu tools are available in conversations.
+
+### Tiered Tool Architecture
+
+Only 30 tools in LLM context, but 200+ Feishu APIs accessible:
+
+| Tier | Count | Description |
+|------|-------|-------------|
+| Tier 1 | 28 | High-frequency tools, directly exposed to LLM |
+| `lark_discover` | 1 | Search all 200+ tools by keyword/category |
+| `lark_invoke` | 1 | Call any tool found via discover |
+
+### Security
+
+| Layer | Measure |
+|-------|---------|
+| Token storage | Secrets Manager (KMS encrypted, CloudTrail audited) |
+| Token transport | AWS internal TLS + SigV4, never traverses public internet |
+| OAuth CSRF | HMAC-SHA256 signed state (timing-safe, 5-min expiry) |
+| MCP auth | OAuth 2.0 (PKCE + client_secret), HMAC signed token (30-day validity) |
+| Container | Stateless per-request, non-root |
+| App Secret | Stored in Secrets Manager, injected via env var at runtime (never in logs or CLI args) |
+| Network | CloudFront + API Gateway, HTTPS-only |
+
+### Cost
+
+Pay-as-you-go, no fixed monthly fee:
+
+| Component | Billing |
+|-----------|---------|
+| AgentCore Runtime | Per vCPU/memory per second; zero cost when idle |
+| Secrets Manager | $0.40/secret/month |
+| Lambda / API Gateway / CloudFront | Per request, with free tier |
+
+### Operations
+
+```bash
+./scripts/ops.sh status            # System overview
+./scripts/ops.sh list-users        # Authorized users
+./scripts/ops.sh revoke <id>       # Revoke authorization
+./scripts/ops.sh rotate-secret     # Rotate OAuth Client Secret
+./scripts/ops.sh refresh-all       # Manually trigger token refresh
+./scripts/ops.sh logs              # View Lambda logs
+```
+
+### Teardown
+
+```bash
+cd infra && npx cdk destroy --all
+./scripts/ops.sh destroy           # Delete AgentCore Runtime
+```
+
+### FAQ
+
+**Q: Authentication fails when connecting from Quick Desktop?**
+A: Verify the Redirect URL from deploy output is added to your Feishu app's Security Settings.
+
+**Q: User token expired after 30 days of inactivity?**
+A: Next connection automatically triggers Feishu re-authorization.
+
+**Q: Deployment failed?**
+A: The script is idempotent — just re-run. For a clean start: `cd infra && npx cdk destroy --all`.
+
+**Q: How to restrict which users can access?**
+A: Use the Feishu app's "Availability" settings. Only users in scope can complete OAuth.
+
+**Q: How to upgrade lark-cli?**
+A: Re-run `./scripts/deploy.sh`. CDK rebuilds the Docker image with the latest lark-cli. Existing users are unaffected.
+
+**Q: Does rotating Client Secret require users to re-authorize?**
+A: Yes. `./scripts/ops.sh rotate-secret` invalidates all issued MCP tokens. Users must re-sign-in via Quick Desktop. Upgrading lark-cli does not affect existing users.
+
+**Q: Which AWS regions are supported?**
+A: Depends on AWS Bedrock AgentCore availability. The deploy script offers common region choices.
+
+**Q: Custom domain support?**
+A: Yes. Set `CUSTOM_DOMAIN=mcp.company.com` or follow the deploy script prompt.
+
+**Q: Lark (international) support?**
+A: Yes. Set `LARKSUITE_CLI_BRAND=lark` during deployment.
+
+### Project Structure
+
+```
+docker/
+  Dockerfile          lark-cli ARM64 container
+  generate-tools.js   Build-time tool catalog generation (200+ tools)
+  server.js           MCP server (tiered: tier1 + discover/invoke)
+  tier1.json          28 high-frequency tools
+infra/
+  lib/oauth-stack.ts  OAuth + MCP endpoint (CloudFront)
+  lib/runtime-stack.ts  Docker image + IAM
+lambda/
+  token-refresh-shim/ OAuth flow + automatic token refresh
+  mcp-middleware/     Token verification + SigV4 proxy
+scripts/
+  deploy.sh           Interactive deployment
+  install.sh          One-click install
+  ops.sh              Operations toolkit
+  test-e2e.sh         End-to-end tests
+```
+
+### License
 
 MIT
