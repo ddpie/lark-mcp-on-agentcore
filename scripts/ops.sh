@@ -58,7 +58,7 @@ while True:
     kwargs = {'nextToken': next_token} if next_token else {}
     resp = c.list_agent_runtimes(**kwargs)
     for r in resp.get('agentRuntimes', []):
-        if r.get('agentRuntimeName') == 'lark-mcp-on-agentcore':
+        if r.get('agentRuntimeName') == 'lark_mcp_on_agentcore':
             print(r['agentRuntimeId']); exit(0)
     next_token = resp.get('nextToken')
     if not next_token: break

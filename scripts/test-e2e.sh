@@ -57,13 +57,21 @@ echo ""
 # 测试 1: OAuth 流程
 echo "── OAuth 流程 ──"
 if [ -n "$OAUTH_ENDPOINT" ]; then
-  ENC_USER=$(urlencode "$TEST_USER_ID")
+  # /authorize requires either redirect_uri+code_challenge (standard OAuth) or
+  # a signed t= token. We use the standard PKCE form, since that's the path
+  # Quick Desktop will exercise.
+  REDIR=$(urlencode "https://quicksight.aws.amazon.com/cb")
+  AUTH_QUERY="redirect_uri=${REDIR}&code_challenge=fakechallenge&code_challenge_method=S256"
 
-  HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/authorize?user_id=${ENC_USER}")
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/authorize?${AUTH_QUERY}")
   if [ "$HTTP" = "302" ]; then pass "/authorize → 302 重定向"; else fail "/authorize → HTTP ${HTTP} (期望 302)"; fi
 
-  REDIRECT=$(curl -s -o /dev/null -w "%{redirect_url}" "${OAUTH_ENDPOINT}/authorize?user_id=${ENC_USER}")
+  REDIRECT=$(curl -s -o /dev/null -w "%{redirect_url}" "${OAUTH_ENDPOINT}/authorize?${AUTH_QUERY}")
   if echo "$REDIRECT" | grep -q "state="; then pass "/authorize 包含 HMAC state"; else fail "/authorize 缺少 state"; fi
+
+  # Reject the legacy ?user_id= form (closed in PR25 / dac9d3c).
+  LEGACY=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/authorize?user_id=test")
+  if [ "$LEGACY" = "400" ]; then pass "/authorize 拒绝旧版 user_id 参数"; else fail "/authorize?user_id=… → HTTP ${LEGACY} (期望 400)"; fi
 
   TAMPER=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/callback?code=fake&state=dGFtcGVyZWQ6MTIzOmZha2U")
   if [ "$TAMPER" = "403" ]; then pass "/callback 拒绝篡改的 state"; else fail "/callback → HTTP ${TAMPER} (期望 403)"; fi

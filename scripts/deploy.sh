@@ -593,6 +593,7 @@ vars = {
   "OAUTH_CLIENT_ID": "lark-mcp-on-agentcore",
   "OAUTH_CLIENT_SECRET": os.environ["OAUTH_SECRET_VAL"],
   "FEISHU_SCOPES": os.environ.get("FEISHU_SCOPES", ""),
+  "CODE_TABLE": "lark-mcp-on-agentcore-oauth-codes",
 }
 if os.environ.get("CUSTOM_DOMAIN"):
   vars["ALLOWED_DOMAINS"] = os.environ["CUSTOM_DOMAIN"]
@@ -630,7 +631,7 @@ runtime_config = {
 }
 try:
     resp = c.create_agent_runtime(
-        agentRuntimeName='lark-mcp-on-agentcore',
+        agentRuntimeName='lark_mcp_on_agentcore',
         description='Lark MCP Server (lark-cli)',
         tags={'project': 'lark-mcp-on-agentcore'},
         **runtime_config,
@@ -643,7 +644,7 @@ except Exception as e:
             kwargs = {'nextToken': next_token} if next_token else {}
             runtimes = c.list_agent_runtimes(**kwargs)
             for r in runtimes.get('agentRuntimes', []):
-                if r.get('agentRuntimeName') == 'lark-mcp-on-agentcore':
+                if r.get('agentRuntimeName') == 'lark_mcp_on_agentcore':
                     rid = r['agentRuntimeId']
                     # update_agent_runtime does not accept tags; tags persist from create
                     c.update_agent_runtime(agentRuntimeId=rid, **runtime_config)
@@ -722,8 +723,10 @@ MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCor
 # 验证
 step verify
 info "${L[testing_oauth]}"
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/authorize?user_id=deploy-verify" 2>/dev/null || echo "000")
-[ "$HTTP" = "302" ] && info "OAuth /authorize: ✓" || warn "OAuth /authorize: HTTP ${HTTP}"
+# Use the OAuth metadata endpoint as the healthcheck — /authorize requires either
+# a full PKCE redirect_uri or a signed t= token, so a bare GET would (correctly) 400.
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/.well-known/oauth-authorization-server" 2>/dev/null || echo "000")
+[ "$HTTP" = "200" ] && info "OAuth metadata: ✓" || warn "OAuth metadata: HTTP ${HTTP}"
 
 info "${L[testing_runtime]}"
 python3 -c "
