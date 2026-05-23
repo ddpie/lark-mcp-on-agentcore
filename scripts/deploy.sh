@@ -62,6 +62,9 @@ if [ "$LARK_LANG" = "zh" ]; then
   L[ask_app_secret]="飞书 App Secret: "
   L[app_id_empty]="App ID 不能为空。"
   L[app_secret_empty]="App Secret 不能为空。"
+  L[verifying_creds]="验证飞书凭证..."
+  L[creds_valid]="凭证有效 ✓"
+  L[creds_invalid]="凭证无效 (飞书返回错误: %s)。请检查 App ID 和 App Secret。"
   L[confirm_creds]="确认? (Y=确认/n=取消/r=重新输入)"
   L[cancelled]="已取消。"
   L[re_enter]="重新输入..."
@@ -125,6 +128,9 @@ else
   L[ask_app_secret]="Feishu App Secret: "
   L[app_id_empty]="App ID cannot be empty."
   L[app_secret_empty]="App Secret cannot be empty."
+  L[verifying_creds]="Verifying Feishu credentials..."
+  L[creds_valid]="Credentials valid ✓"
+  L[creds_invalid]="Credentials invalid (Feishu error: %s). Please check App ID and App Secret."
   L[confirm_creds]="Confirm? (Y=yes/n=cancel/r=re-enter)"
   L[cancelled]="Cancelled."
   L[re_enter]="Re-entering..."
@@ -314,7 +320,24 @@ while true; do
   case "${CRED_CONFIRM:-y}" in
     [nN]) echo "  ${L[cancelled]}"; exit 0 ;;
     [rR]) echo "  ${L[re_enter]}"; unset FEISHU_APP_ID FEISHU_APP_SECRET; continue ;;
-    *) break ;;
+    *)
+      info "${L[verifying_creds]}"
+      VERIFY_RESP=$(curl -s --max-time 10 -X POST \
+        "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal" \
+        -H "Content-Type: application/json" \
+        -d "{\"app_id\":\"${APP_ID}\",\"app_secret\":\"${APP_SECRET}\"}" 2>/dev/null || echo '{}')
+      VERIFY_CODE=$(echo "$VERIFY_RESP" | grep -o '"code":[0-9]*' | head -1 | cut -d: -f2)
+      if [ "${VERIFY_CODE:-}" = "0" ]; then
+        info "${L[creds_valid]}"
+        break
+      else
+        VERIFY_MSG=$(echo "$VERIFY_RESP" | grep -o '"msg":"[^"]*"' | head -1 | cut -d'"' -f4)
+        # shellcheck disable=SC2059
+        printf "  ${L[creds_invalid]}\n" "${VERIFY_MSG:-unknown}"
+        unset FEISHU_APP_ID FEISHU_APP_SECRET
+        continue
+      fi
+      ;;
   esac
 done
 
