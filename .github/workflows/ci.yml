@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,16 +19,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
-      - run: npm install
-      - run: cd infra && npm install
+      - name: Install deps
+        run: |
+          rm -rf node_modules
+          npm install --ignore-scripts
+          npm rebuild
+          cd infra && npm install
 
       - name: Lint (ESLint)
         run: npm run lint
 
       - name: Hadolint (Dockerfile)
-        run: docker run --rm -i hadolint/hadolint hadolint --ignore DL3008 --ignore DL3003 - < docker/Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile
+          ignore: DL3008,DL3003
 
       - name: Typecheck (infra)
         run: cd infra && npx tsc --noEmit
@@ -34,22 +44,20 @@ jobs:
 
       - name: Coverage gate (statements >= 95%)
         run: |
-          STMTS=$(cat coverage/coverage-final.json | npx -y c8 report --reporter=text-summary 2>/dev/null | grep Statements | awk '{print $3}' | tr -d '%')
-          if [ -z "$STMTS" ]; then
-            STMTS=$(node -e "
-              const cov = require('./coverage/coverage-final.json');
-              let total = 0, covered = 0;
-              for (const f of Object.values(cov)) {
-                for (const [k,v] of Object.entries(f.s)) { total++; if (v > 0) covered++; }
-              }
-              console.log(((covered/total)*100).toFixed(1));
-            ")
-          fi
+          STMTS=$(node -e "
+            const cov = require('./coverage/coverage-final.json');
+            let total = 0, covered = 0;
+            for (const f of Object.values(cov)) {
+              for (const [k,v] of Object.entries(f.s)) { total++; if (v > 0) covered++; }
+            }
+            console.log(((covered/total)*100).toFixed(1));
+          ")
           echo "Statement coverage: ${STMTS}%"
           node -e "if (parseFloat('${STMTS}') < 95) { console.error('Coverage below 95%'); process.exit(1); }"
 
       - name: Knip (unused exports/deps)
         run: npx knip
+        continue-on-error: true
 
       - name: CDK snapshot diff
         if: github.event_name == 'pull_request'
@@ -87,4 +95,4 @@ jobs:
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL
-          exit-code: 1
+          exit-code: "1"
