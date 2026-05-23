@@ -111,7 +111,6 @@ export const SCOPE_ALLOWLIST: ReadonlySet<string> = new Set([
   "spark:app.access_scope:read",
   "spark:app.access_scope:write",
   "spark:app:publish",
-  "spark:app:read",
   "spark:app:write",
   "task:attachment:write",
   "task:comment:write",
