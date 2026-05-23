@@ -18,6 +18,14 @@ import { RuntimeStack } from "../lib/runtime-stack";
 
 const TEST_ENV = { account: "123456789012", region: "us-west-2" };
 
+// Docker asset hashes vary across machines (different OS, Docker version, etc).
+// Normalize them before snapshot comparison to avoid CI/local divergence.
+function normalizeTemplate(tpl: Record<string, any>): Record<string, any> {
+  const json = JSON.stringify(tpl);
+  const normalized = json.replace(/cdk-hnb659fds-container-assets-[^:]+:[a-f0-9]{64}/g, 'cdk-hnb659fds-container-assets-ACCOUNT-REGION:ASSET_HASH');
+  return JSON.parse(normalized);
+}
+
 describe("CDK Snapshot Tests", () => {
   it("OAuthStack matches snapshot", () => {
     const app = new cdk.App();
@@ -49,6 +57,6 @@ describe("CDK Snapshot Tests", () => {
     });
 
     const template = Template.fromStack(stack);
-    expect(template.toJSON()).toMatchSnapshot();
+    expect(normalizeTemplate(template.toJSON())).toMatchSnapshot();
   });
 });

@@ -1778,7 +1778,7 @@ exports[`CDK Snapshot Tests > RuntimeStack matches snapshot 1`] = `
   "Outputs": {
     "ImageUri": {
       "Value": {
-        "Fn::Sub": "123456789012.dkr.ecr.us-west-2.\${AWS::URLSuffix}/cdk-hnb659fds-container-assets-123456789012-us-west-2:ec7e8b0351d873363ae26d8cec7c8502625ca4dd599217c586c7405488df2cb1",
+        "Fn::Sub": "123456789012.dkr.ecr.us-west-2.\${AWS::URLSuffix}/cdk-hnb659fds-container-assets-ACCOUNT-REGION:ASSET_HASH",
       },
     },
     "RuntimeRoleArn": {
