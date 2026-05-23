@@ -113,6 +113,19 @@ async function refreshToken(rt: string, appToken: string) {
   return resp.json() as Promise<{ code: number; msg: string; data?: { access_token: string; refresh_token: string; expires_in: number } }>;
 }
 
+async function getUserInfo(userAccessToken: string): Promise<string> {
+  // /authen/v1/user_info — name is returned by default (no extra scope needed).
+  // Failures are non-fatal: success page falls back to userId.
+  try {
+    const resp = await fetch("https://open.feishu.cn/open-apis/authen/v1/user_info", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${userAccessToken}` },
+    });
+    const data = await resp.json() as { code: number; data?: { name?: string } };
+    return data.code === 0 ? (data.data?.name || '') : '';
+  } catch { return ''; }
+}
+
 const PROJECT_TAGS = [{ Key: "project", Value: "lark-mcp-on-agentcore" }];
 
 async function storeToken(userId: string, data: { access_token: string; refresh_token: string; expires_in: number }) {
@@ -429,8 +442,11 @@ export async function handler(event: LambdaEvent) {
       return { statusCode: 302, headers: { Location: redirectBack } };
     }
 
-    // Legacy flow: show success page + auto-redirect back to Quick Desktop via custom URL scheme
-    const successHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>授权成功 / Authorized</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:480px;margin:80px auto;padding:24px;text-align:center;color:#222}h2{color:#0a7d2c;margin-bottom:8px}.btn{display:inline-block;padding:10px 20px;margin-top:20px;background:#0a66c2;color:#fff;text-decoration:none;border-radius:6px;font-size:14px}p{color:#666;font-size:14px;line-height:1.5}.hint{color:#999;font-size:12px;margin-top:24px}</style></head><body><h2>✓ 授权成功 / Authorized</h2><p>用户 ${escapeHtml(stableUserId)} 已完成飞书授权。</p><a class="btn" href="awsquick://connector-refresh">返回 Amazon Quick Desktop</a><p class="hint">点击按钮回到 Quick Desktop 继续会话，或直接关闭此页面。<br>Click the button to return to Quick Desktop, or close this tab.</p></body></html>`;
+    // Legacy flow: show success page + auto-redirect back to Quick Desktop via custom URL scheme.
+    // Match lark-cli convention: "授权成功! 用户: {name}". Fall back to short userId.
+    const userName = await getUserInfo(result.data.access_token);
+    const displayName = userName || `${stableUserId.slice(0, 8)}…`;
+    const successHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>授权成功 / Authorized</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:480px;margin:80px auto;padding:24px;text-align:center;color:#222}h2{color:#0a7d2c;margin-bottom:8px}.btn{display:inline-block;padding:10px 20px;margin-top:20px;background:#0a66c2;color:#fff;text-decoration:none;border-radius:6px;font-size:14px}p{color:#666;font-size:14px;line-height:1.5}.hint{color:#999;font-size:12px;margin-top:24px}</style></head><body><h2>✓ 授权成功 / Authorized</h2><p>${escapeHtml(displayName)} 已完成飞书授权。</p><a class="btn" href="awsquick://connector-refresh">返回 Amazon Quick Desktop</a><p class="hint">点击按钮回到 Quick Desktop 继续会话，或直接关闭此页面。<br>Click the button to return to Quick Desktop, or close this tab.</p></body></html>`;
     return { statusCode: 200, headers: { "Content-Type": "text/html; charset=utf-8" }, body: successHtml };
   }
 
