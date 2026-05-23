@@ -22,10 +22,8 @@ jobs:
 
       - name: Install deps
         run: |
-          rm -rf node_modules
-          npm install --ignore-scripts
-          npm rebuild
-          cd infra && npm install
+          npm ci
+          cd infra && npm ci
 
       - name: Lint (ESLint)
         run: npm run lint
