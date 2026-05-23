@@ -3,32 +3,39 @@ import { createHmac, createHash, randomBytes } from 'crypto';
 import { mockClient } from './mock-client';
 
 // Required env vars must be set BEFORE the handler module is imported.
-process.env.STATE_SECRET = 'test-state-secret';
 process.env.OAUTH_CLIENT_SECRET = 'test-client-secret';
 process.env.CODE_TABLE = 'test-table';
 process.env.CALLBACK_URL = 'https://test.cloudfront.net/callback';
 process.env.SECRET_PREFIX = 'lark-mcp-on-agentcore/users';
 process.env.OPENID_PREFIX = 'lark-mcp-on-agentcore/openid-map';
 process.env.APP_SECRET_ID = 'lark-mcp-on-agentcore/feishu-app';
+process.env.STATE_SECRET_PARAM = '/lark-mcp-on-agentcore/state-secret';
 process.env.OAUTH_CLIENT_ID = 'lark-mcp-on-agentcore';
 process.env.FEISHU_SCOPES = 'im:message contact:user.base:readonly';
 
 vi.mock('@aws-sdk/client-secrets-manager', () => mockClient.secretsManager);
+vi.mock('@aws-sdk/client-ssm', () => mockClient.ssm);
 vi.mock('@aws-sdk/lib-dynamodb', () => mockClient.dynamodb);
 vi.mock('@aws-sdk/client-dynamodb', () => ({ DynamoDBClient: vi.fn(() => ({})) }));
 
-const STATE_SECRET = process.env.STATE_SECRET!;
 const CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
+
+// Derive domain-separated keys the same way the Lambda does
+const RAW_SECRET = 'test-state-secret-value'; // matches mock-client default
+const TOKEN_KEY = createHmac('sha256', RAW_SECRET).update('mcp-token-v1').digest();
+const STATE_KEY = createHmac('sha256', RAW_SECRET).update('oauth-state-v1').digest();
+const INCR_KEY = createHmac('sha256', RAW_SECRET).update('mcp-incr-auth-v1').digest();
 
 // Helpers ---------------------------------------------------------------------
 
-function signMcpToken(userId: string, expiresAt: number, secret = STATE_SECRET): string {
-  const sig = createHmac('sha256', secret).update(`${userId}:${expiresAt}`).digest('hex');
+function signMcpToken(userId: string, expiresAt: number, key: Buffer = TOKEN_KEY): string {
+  const sig = createHmac('sha256', key).update(`${userId}:${expiresAt}`).digest('hex');
   return Buffer.from(`${userId}:${expiresAt}:${sig}`).toString('base64url');
 }
 
-function signIncrToken(userId: string, expiresAt: number, secret = STATE_SECRET): string {
-  return signMcpToken(userId, expiresAt, secret);
+function signIncrToken(userId: string, expiresAt: number, key: Buffer = INCR_KEY): string {
+  const sig = createHmac('sha256', key).update(`${userId}:${expiresAt}`).digest('hex');
+  return Buffer.from(`${userId}:${expiresAt}:${sig}`).toString('base64url');
 }
 
 function pkce() {
@@ -72,6 +79,8 @@ describe('/authorize — extra_scope validation', () => {
       },
     });
     expect(result.statusCode).toBe(302);
+    expect(result.headers?.Location).toContain('scope=');
+    expect(result.headers?.Location).toContain('im%3Achat%3Aread');
   });
 
   it('rejects space-separated extra_scope (would have been accepted in old regex)', async () => {
@@ -168,13 +177,14 @@ describe('/authorize — t= incremental-auth token', () => {
 
   it('rejects a t= token signed with a different secret (tamper)', async () => {
     const exp = Math.floor(Date.now() / 1000) + 300;
-    const t = signIncrToken('ou_attacker', exp, 'wrong-secret');
+    const t = signIncrToken('ou_attacker', exp, Buffer.from('wrong-secret'));
     const result = await call({
       path: '/authorize',
       httpMethod: 'GET',
       queryStringParameters: { t },
     });
     expect(result.statusCode).toBe(400);
+    expect(result.body).toContain('missing redirect_uri or signed t= token');
   });
 
   it('rejects expired t= token', async () => {
@@ -186,6 +196,7 @@ describe('/authorize — t= incremental-auth token', () => {
       queryStringParameters: { t },
     });
     expect(result.statusCode).toBe(400);
+    expect(result.body).toContain('missing redirect_uri or signed t= token');
   });
 
   it('rejects legacy ?user_id= path (PR25 regression guard)', async () => {
@@ -302,7 +313,7 @@ describe('/callback — state verification', () => {
     const old = Math.floor(Date.now() / 1000) - 99999;
     const payload = Buffer.from(JSON.stringify({ r: 'https://x.example' })).toString('base64url');
     const full = `${payload}.${old}`;
-    const sig = createHmac('sha256', STATE_SECRET).update(full).digest('hex');
+    const sig = createHmac('sha256', STATE_KEY).update(full).digest('hex');
     const result = await call({
       path: '/callback',
       httpMethod: 'GET',
@@ -335,7 +346,7 @@ describe('MCP token shape', () => {
     const userId = decoded.slice(0, secondLastColon);
     const expiresAt = parseInt(decoded.slice(secondLastColon + 1, lastColon));
     const sig = decoded.slice(lastColon + 1);
-    const expected = createHmac('sha256', STATE_SECRET).update(`${userId}:${expiresAt}`).digest('hex');
+    const expected = createHmac('sha256', TOKEN_KEY).update(`${userId}:${expiresAt}`).digest('hex');
     expect(sig).toBe(expected);
     expect(userId).toBe('ou_z');
     expect(expiresAt).toBeGreaterThan(Date.now() / 1000);
@@ -351,7 +362,7 @@ function buildState(payloadObj: any): string {
   const payloadB64 = Buffer.from(JSON.stringify(payloadObj)).toString('base64url');
   const ts = Math.floor(Date.now() / 1000);
   const full = `${payloadB64}.${ts}`;
-  const sig = createHmac('sha256', STATE_SECRET).update(full).digest('hex');
+  const sig = createHmac('sha256', STATE_KEY).update(full).digest('hex');
   return `${full}.${sig}`;
 }
 
@@ -398,6 +409,13 @@ describe('/callback — full Feishu exchange path', () => {
     expect(r.statusCode).toBe(302);
     const loc = r.headers!.Location;
     expect(loc).toMatch(/^https:\/\/quicksight\.aws\.amazon\.com\/cb\?code=[a-f0-9]{64}&state=client-state-xyz$/);
+    // Verify token was actually persisted
+    const stored = mockClient.secretsManager.__get('lark-mcp-on-agentcore/users/ou_real_user');
+    expect(stored).toBeDefined();
+    const parsed = JSON.parse(stored);
+    expect(parsed.access_token).toBe('feishu-tok');
+    expect(parsed.refresh_token).toBe('rt');
+    expect(parsed.expires_at).toBeGreaterThan(Date.now() / 1000);
   });
 
   it('returns 400 when Feishu exchange fails (code != 0)', async () => {
@@ -439,5 +457,481 @@ describe('/callback — full Feishu exchange path', () => {
     // Should show short prefix, not full userId
     expect(r.body).toContain('ou_abcde');
     expect(r.body).not.toContain('ou_abcdefghijklmnop 已完成');
+  });
+
+  it('reuses existing userId via openid mapping on second OAuth (dedup)', async () => {
+    // First login: stores an openid mapping ou_real_user -> ou_real_user
+    mockFeishu();
+    const state1 = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'c1' });
+    await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'c1', state: state1 } });
+
+    // Simulate: the mapping was stored — seed it explicitly
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/openid-map/ou_real_user', JSON.stringify({ userId: 'stable-id-from-first-login' }));
+
+    // Second login with same open_id: should reuse stable-id-from-first-login
+    mockFeishu();
+    const state2 = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's2', c: 'c2' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'c2', state: state2 } });
+    expect(r.statusCode).toBe(302);
+    // The auth code stored must reference stable-id-from-first-login
+    // We can verify by checking the token stored under that userId
+    const stored = mockClient.secretsManager.__get('lark-mcp-on-agentcore/users/stable-id-from-first-login');
+    expect(stored).toBeDefined();
+  });
+
+  it('throws when getOpenIdMapping hits SM throttle (not 404) — prevents identity fork', async () => {
+    mockFeishu();
+    mockClient.secretsManager.__failGetMatching('openid-map', { name: 'ThrottlingException', message: 'rate exceeded' });
+    const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'c' });
+    await expect(call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } }))
+      .rejects.toThrow('rate exceeded');
+  });
+});
+
+// =============================================================================
+// /.well-known/oauth-authorization-server
+// =============================================================================
+
+describe('/.well-known/oauth-authorization-server', () => {
+  it('returns metadata JSON with correct endpoints', async () => {
+    const r = await call({ path: '/.well-known/oauth-authorization-server', httpMethod: 'GET' });
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body!);
+    expect(body.authorization_endpoint).toContain('/authorize');
+    expect(body.token_endpoint).toContain('/token');
+    expect(body.code_challenge_methods_supported).toEqual(['S256']);
+    expect(body.token_endpoint_auth_methods_supported).toEqual(['client_secret_post']);
+  });
+});
+
+// =============================================================================
+// Routing: GET /token, unknown paths
+// =============================================================================
+
+describe('routing', () => {
+  it('GET /token returns 405 Method Not Allowed', async () => {
+    const r = await call({ path: '/token', httpMethod: 'GET' });
+    expect(r.statusCode).toBe(405);
+    expect(r.body).toContain('method_not_allowed');
+    expect(r.headers?.['Content-Type']).toBe('application/json');
+  });
+
+  it('unknown path returns 404', async () => {
+    const r = await call({ path: '/nonexistent', httpMethod: 'GET' });
+    expect(r.statusCode).toBe(404);
+    expect(r.body).toContain('not_found');
+  });
+
+  it('unsupported grant_type returns 400', async () => {
+    const r = await call({
+      path: '/token', httpMethod: 'POST',
+      body: new URLSearchParams({ grant_type: 'client_credentials', client_secret: CLIENT_SECRET }).toString(),
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('unsupported_grant_type');
+  });
+});
+
+// =============================================================================
+// /authorize — redirect_uri validation branches
+// =============================================================================
+
+describe('/authorize — redirect_uri validation', () => {
+  const baseQ = { code_challenge: 'fakechallenge', code_challenge_method: 'S256' };
+
+  it('allows localhost with http (native client dev flow)', async () => {
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      queryStringParameters: { ...baseQ, redirect_uri: 'http://localhost:8080/cb' },
+    });
+    expect(r.statusCode).toBe(302);
+  });
+
+  it('allows 127.0.0.1 with http', async () => {
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      queryStringParameters: { ...baseQ, redirect_uri: 'http://127.0.0.1:9999/cb' },
+    });
+    expect(r.statusCode).toBe(302);
+  });
+
+  it('rejects non-localhost with http (must be https)', async () => {
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      queryStringParameters: { ...baseQ, redirect_uri: 'http://quicksight.aws.amazon.com/cb' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('redirect_uri must use https');
+  });
+
+  it('rejects unknown hostname not in ALLOWED_DOMAINS', async () => {
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      queryStringParameters: { ...baseQ, redirect_uri: 'https://attacker.com/cb' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('redirect_uri not allowed');
+  });
+
+  it('rejects invalid URL as redirect_uri', async () => {
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      queryStringParameters: { ...baseQ, redirect_uri: 'not-a-url' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('redirect_uri not a valid URL');
+  });
+
+  it('rejects missing code_challenge when redirect_uri present', async () => {
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      queryStringParameters: { redirect_uri: 'https://quicksight.aws.amazon.com/cb' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('code_challenge required');
+  });
+
+  it('rejects code_challenge_method other than S256', async () => {
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      queryStringParameters: { redirect_uri: 'https://quicksight.aws.amazon.com/cb', code_challenge: 'x', code_challenge_method: 'plain' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('only S256');
+  });
+});
+
+// =============================================================================
+// /token — redirect_uri mismatch + expired code
+// =============================================================================
+
+describe('/token — additional grant validation', () => {
+  it('rejects when redirect_uri does not match stored value', async () => {
+    const { verifier, challenge } = pkce();
+    mockClient.dynamodb.__seedCode({
+      code: 'redir-code', userId: 'u', codeChallenge: challenge, redirectUri: 'https://original.example', expiresAt: Date.now() / 1000 + 60,
+    });
+    const r = await call({
+      path: '/token', httpMethod: 'POST',
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: 'redir-code', code_verifier: verifier, redirect_uri: 'https://different.example', client_secret: CLIENT_SECRET }).toString(),
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('redirect_uri mismatch');
+  });
+
+  it('rejects expired authorization code', async () => {
+    const { verifier, challenge } = pkce();
+    mockClient.dynamodb.__seedCode({
+      code: 'expired-code', userId: 'u', codeChallenge: challenge, redirectUri: 'https://x.example', expiresAt: Date.now() / 1000 - 10,
+    });
+    const r = await call({
+      path: '/token', httpMethod: 'POST',
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: 'expired-code', code_verifier: verifier, redirect_uri: 'https://x.example', client_secret: CLIENT_SECRET }).toString(),
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('code expired');
+  });
+
+  it('rejects missing code_verifier', async () => {
+    mockClient.dynamodb.__seedCode({
+      code: 'no-pkce', userId: 'u', codeChallenge: 'cc', redirectUri: 'https://x.example', expiresAt: Date.now() / 1000 + 60,
+    });
+    const r = await call({
+      path: '/token', httpMethod: 'POST',
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: 'no-pkce', redirect_uri: 'https://x.example', client_secret: CLIENT_SECRET }).toString(),
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('code_verifier required');
+  });
+});
+
+// =============================================================================
+// getCallbackUrl dynamic derivation
+// =============================================================================
+
+describe('getCallbackUrl — dynamic host derivation', () => {
+  it('derives callback from cloudfront.net host header when CALLBACK_URL is not set', async () => {
+    const origCb = process.env.CALLBACK_URL;
+    process.env.CALLBACK_URL = '';
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      headers: { host: 'd111.cloudfront.net' },
+      queryStringParameters: { redirect_uri: 'https://quicksight.aws.amazon.com/cb', code_challenge: 'c', code_challenge_method: 'S256' },
+    });
+    expect(r.statusCode).toBe(302);
+    process.env.CALLBACK_URL = origCb;
+  });
+
+  it('derives callback from requestContext.domainName when no host header', async () => {
+    const origCb = process.env.CALLBACK_URL;
+    process.env.CALLBACK_URL = '';
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      headers: {},
+      requestContext: { domainName: 'abc.execute-api.us-west-2.amazonaws.com' },
+      queryStringParameters: { redirect_uri: 'https://quicksight.aws.amazon.com/cb', code_challenge: 'c', code_challenge_method: 'S256' },
+    });
+    expect(r.statusCode).toBe(302);
+    process.env.CALLBACK_URL = origCb;
+  });
+
+  it('derives callback from ALLOWED_DOMAINS custom domain', async () => {
+    const origCb = process.env.CALLBACK_URL;
+    const origDomains = process.env.ALLOWED_DOMAINS;
+    process.env.CALLBACK_URL = '';
+    process.env.ALLOWED_DOMAINS = 'mydomain.example.com';
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      headers: { host: 'mydomain.example.com' },
+      queryStringParameters: { redirect_uri: 'https://quicksight.aws.amazon.com/cb', code_challenge: 'c', code_challenge_method: 'S256' },
+    });
+    expect(r.statusCode).toBe(302);
+    process.env.CALLBACK_URL = origCb;
+    process.env.ALLOWED_DOMAINS = origDomains;
+  });
+
+  it('returns 500 when host is not recognized and callback URL cannot be derived', async () => {
+    const origCb = process.env.CALLBACK_URL;
+    process.env.CALLBACK_URL = '';
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      headers: { host: 'unknown-host.evil.com' },
+      queryStringParameters: { redirect_uri: 'https://quicksight.aws.amazon.com/cb', code_challenge: 'c', code_challenge_method: 'S256' },
+    });
+    expect(r.statusCode).toBe(500);
+    expect(r.body).toContain('callback URL cannot be derived');
+    process.env.CALLBACK_URL = origCb;
+  });
+});
+
+// =============================================================================
+// isBase64Encoded body decoding
+// =============================================================================
+
+describe('isBase64Encoded body decoding', () => {
+  it('/token decodes base64 body from API Gateway', async () => {
+    const raw = new URLSearchParams({ grant_type: 'authorization_code', code: 'fake', code_verifier: 'v', redirect_uri: 'https://x.example', client_secret: CLIENT_SECRET }).toString();
+    const encoded = Buffer.from(raw).toString('base64');
+    mockClient.dynamodb.__seedCode({
+      code: 'fake', userId: 'u', codeChallenge: createHash('sha256').update('v').digest('base64url'), redirectUri: 'https://x.example', expiresAt: Date.now() / 1000 + 60,
+    });
+    const r = await call({
+      path: '/token', httpMethod: 'POST',
+      body: encoded, isBase64Encoded: true,
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(JSON.parse(r.body!).access_token).toBeTruthy();
+  });
+});
+
+// =============================================================================
+// /callback — edge cases
+// =============================================================================
+
+describe('/callback — edge cases', () => {
+  it('returns 400 when code is missing', async () => {
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { state: 'something' } });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('Missing code or state');
+  });
+
+  it('returns 400 when state is missing', async () => {
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'something' } });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('Missing code or state');
+  });
+
+  it('returns 400 when state payload is not valid JSON (after HMAC passes)', async () => {
+    // Build a state that signs non-JSON payload
+    const payloadB64 = Buffer.from('not-json{{{').toString('base64url');
+    const ts = Math.floor(Date.now() / 1000);
+    const full = `${payloadB64}.${ts}`;
+    const sig = createHmac('sha256', STATE_KEY).update(full).digest('hex');
+    const r = await call({
+      path: '/callback', httpMethod: 'GET',
+      queryStringParameters: { code: 'x', state: `${full}.${sig}` },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('invalid state payload');
+  });
+
+  it('generates random userId when Feishu returns no open_id', async () => {
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app' }));
+      if (url.includes('oidc/access_token')) return new Response(JSON.stringify({ code: 0, msg: 'ok', data: { access_token: 'tok', refresh_token: 'rt', expires_in: 7200 } }));
+      if (url.includes('user_info')) return new Response(JSON.stringify({ code: 0, data: { name: 'Test' } }));
+      return new Response('{}');
+    });
+    const state = buildState({ u: undefined, r: undefined });
+    // Legacy flow with no open_id in Feishu response → random hex userId
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('授权成功');
+  });
+
+  it('uses & separator when redirect_uri already contains ?', async () => {
+    mockFeishu();
+    const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb?foo=bar', s: '', c: 'cc' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+    expect(r.statusCode).toBe(302);
+    expect(r.headers!.Location).toMatch(/cb\?foo=bar&code=/);
+  });
+
+  it('omits &state= when client_state is empty', async () => {
+    mockFeishu();
+    const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: '', c: 'cc' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+    expect(r.statusCode).toBe(302);
+    expect(r.headers!.Location).not.toContain('&state=');
+  });
+
+  it('getUserInfo non-zero code falls back to short userId', async () => {
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app' }));
+      if (url.includes('oidc/access_token')) return new Response(JSON.stringify({ code: 0, msg: 'ok', data: { access_token: 'tok', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_xyz' } }));
+      if (url.includes('user_info')) return new Response(JSON.stringify({ code: 40003, data: {} }));
+      return new Response('{}');
+    });
+    const state = buildState({ u: 'ou_xyz' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('ou_xyz');
+  });
+});
+
+// =============================================================================
+// /authorize — incremental auth with extra_scope
+// =============================================================================
+
+describe('/authorize — incremental auth flow', () => {
+  it('includes extra_scope in redirect when using valid t= token', async () => {
+    const exp = Math.floor(Date.now() / 1000) + 300;
+    const t = signIncrToken('ou_test', exp);
+    const r = await call({
+      path: '/authorize', httpMethod: 'GET',
+      queryStringParameters: { t, extra_scope: 'im:message' },
+    });
+    expect(r.statusCode).toBe(302);
+    expect(r.headers!.Location).toContain('scope=');
+    expect(r.headers!.Location).toContain('im%3Amessage');
+  });
+});
+
+// =============================================================================
+// verifyState — exception handling
+// =============================================================================
+
+describe('verifyState — catch branch', () => {
+  it('returns invalid for completely garbage state (triggers catch)', async () => {
+    // A state value that will cause Buffer.from to throw or parse to fail
+    const r = await call({
+      path: '/callback', httpMethod: 'GET',
+      queryStringParameters: { code: 'x', state: '%00%00%00' },
+    });
+    expect(r.statusCode).toBe(403);
+  });
+});
+
+// =============================================================================
+// storeOpenIdMapping — CreateSecret branch
+// =============================================================================
+
+describe('storeOpenIdMapping — error branches', () => {
+  it('getOpenIdMapping returns null → stableUserId = open_id (mapping not stored since equal)', async () => {
+    mockClient.secretsManager.__failGetMatching('openid-map', { name: 'ResourceNotFoundException', message: 'not found' });
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app' }));
+      if (url.includes('oidc/access_token')) return new Response(JSON.stringify({ code: 0, msg: 'ok', data: { access_token: 'tok', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_new' } }));
+      if (url.includes('user_info')) return new Response(JSON.stringify({ code: 0, data: { name: 'Bob' } }));
+      return new Response('{}');
+    });
+    const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'cc' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+    expect(r.statusCode).toBe(302);
+  });
+
+  it('storeOpenIdMapping logs error when Put fails with non-ResourceNotFound', async () => {
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/openid-map/ou_mapped', JSON.stringify({ userId: 'stable-mapped-id' }));
+    mockClient.secretsManager.__failPutMatching('openid-map', { name: 'AccessDeniedException', message: 'access denied' });
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app' }));
+      if (url.includes('oidc/access_token')) return new Response(JSON.stringify({ code: 0, msg: 'ok', data: { access_token: 'tok', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_mapped' } }));
+      if (url.includes('user_info')) return new Response(JSON.stringify({ code: 0, data: { name: 'Alice' } }));
+      return new Response('{}');
+    });
+    const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'cc' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+    expect(r.statusCode).toBe(302);
+  });
+
+  it('storeOpenIdMapping logs error when Put throws ResourceNotFound and CreateSecret also fails', async () => {
+    // Put → ResourceNotFound, then Create → also fails
+    mockClient.secretsManager.__failPutMatching('openid-map', { name: 'ResourceNotFoundException', message: 'not found' });
+    mockClient.secretsManager.__failCreateMatching('openid-map', { name: 'LimitExceededException', message: 'too many secrets' });
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app' }));
+      if (url.includes('oidc/access_token')) return new Response(JSON.stringify({ code: 0, msg: 'ok', data: { access_token: 'tok', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_create_fail' } }));
+      if (url.includes('user_info')) return new Response(JSON.stringify({ code: 0, data: { name: 'Eve' } }));
+      return new Response('{}');
+    });
+    // getOpenIdMapping returns null → stableUserId = open_id. storeOpenIdMapping called but open_id === stableUserId so skipped (line 503).
+    // Need stableUserId !== open_id to trigger storeOpenIdMapping. Use the incremental-auth path.
+    const state = buildState({ u: 'different-user-id' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+    // storeOpenIdMapping fails but is non-fatal
+    expect(r.statusCode).toBe(200);
+  });
+});
+
+// =============================================================================
+// /token — invalid code (consumed or never existed)
+// =============================================================================
+
+describe('/token — invalid code', () => {
+  it('returns 400 for a code that does not exist in DDB', async () => {
+    const r = await call({
+      path: '/token', httpMethod: 'POST',
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: 'nonexistent', code_verifier: 'v', redirect_uri: 'https://x.example', client_secret: CLIENT_SECRET }).toString(),
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('invalid or expired code');
+  });
+});
+
+// =============================================================================
+// EventBridge — getToken throttle → skip
+// =============================================================================
+
+describe('EventBridge — getToken transient error handling', () => {
+  it('skips user when getToken throws ThrottlingException', async () => {
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
+    const userSecretId = 'lark-mcp-on-agentcore/users/throttled-user';
+    mockClient.secretsManager.__set(userSecretId, JSON.stringify({
+      access_token: 'tok', refresh_token: 'rt',
+      expires_at: Math.floor(Date.now() / 1000) + 60,
+      issued_at: Math.floor(Date.now() / 1000) - 7140,
+    }));
+    mockClient.secretsManager.__listNames([userSecretId]);
+    mockClient.secretsManager.__failGetMatching('users/throttled-user', { name: 'ThrottlingException', message: 'slow down' });
+
+    vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ app_access_token: 'app' })));
+
+    const { handler } = await import('../index');
+    const result = await handler({ source: 'aws.events' } as any);
+    const body = JSON.parse(result.body!);
+
+    expect(body.skipped).toBe(1);
+    expect(body.failed).toBe(0);
   });
 });

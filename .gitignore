@@ -9,6 +9,8 @@
 node_modules/
 dist/
 cdk.out/
+coverage/
+.stryker-tmp/
 
 # Secrets & credentials
 .env

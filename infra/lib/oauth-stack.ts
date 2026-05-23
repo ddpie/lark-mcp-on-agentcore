@@ -50,14 +50,14 @@ export class OAuthStack extends cdk.Stack {
       projectRoot: path.join(__dirname, "../.."),
       depsLockFilePath: path.join(__dirname, "../package-lock.json"),
       handler: "handler",
-      timeout: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.seconds(120),
       memorySize: 256,
       environment: {
         CALLBACK_URL: "SET_AFTER_DEPLOY",
         SECRET_PREFIX: this.secretPrefix,
         OPENID_PREFIX: "lark-mcp-on-agentcore/openid-map",
         APP_SECRET_ID: this.appSecretId,
-        STATE_SECRET: "SET_AFTER_DEPLOY",
+        STATE_SECRET_PARAM: stateSecretParam,
         OAUTH_CLIENT_ID: oauthClientId,
         OAUTH_CLIENT_SECRET: "SET_AFTER_DEPLOY",
         ALLOWED_DOMAINS: props.customDomain || "",
@@ -67,6 +67,10 @@ export class OAuthStack extends cdk.Stack {
     });
 
     appSecret.grantRead(oauthFn);
+    oauthFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ["ssm:GetParameter"],
+      resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${stateSecretParam}`],
+    }));
     oauthFn.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         "secretsmanager:GetSecretValue",

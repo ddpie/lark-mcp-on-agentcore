@@ -17,7 +17,10 @@ const TOKEN_BUFFER_SECONDS = 120;
 const sm = new SecretsManagerClient({});
 const ssm = new SSMClient({});
 
-let stateSecret: string | null = null;
+let tokenKey: Buffer | null = null;
+let incrKey: Buffer | null = null;
+let keyExpiry = 0;
+const KEY_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
 interface LambdaEvent {
   body?: string;
@@ -28,19 +31,18 @@ interface LambdaEvent {
   requestContext?: { http?: { method?: string } };
 }
 
-async function getStateSecret(): Promise<string> {
-  if (stateSecret) return stateSecret;
+async function loadKeys(): Promise<void> {
+  if (tokenKey && Date.now() < keyExpiry) return;
   const resp = await ssm.send(new GetParameterCommand({ Name: STATE_SECRET_PARAM, WithDecryption: true }));
-  stateSecret = resp.Parameter!.Value!;
-  return stateSecret;
+  const raw = resp.Parameter!.Value!;
+  tokenKey = createHmac('sha256', raw).update('mcp-token-v1').digest();
+  incrKey = createHmac('sha256', raw).update('mcp-incr-auth-v1').digest();
+  keyExpiry = Date.now() + KEY_CACHE_TTL;
 }
 
 async function verifyMcpToken(token: string): Promise<{ valid: boolean; userId: string; transientError?: boolean }> {
-  // SSM read is the only path that can throw transiently; isolate it so we can
-  // distinguish "bad token" (401) from "backend unavailable" (503).
-  let secret: string;
   try {
-    secret = await getStateSecret();
+    await loadKeys();
   } catch (e: any) {
     log('ERROR', 'state_secret_load_failed', { error: e.message, name: e.name });
     return { valid: false, userId: '', transientError: true };
@@ -51,9 +53,10 @@ async function verifyMcpToken(token: string): Promise<{ valid: boolean; userId: 
     const secondLastColon = decoded.lastIndexOf(':', lastColon - 1);
     const sig = decoded.slice(lastColon + 1);
     const expiresAt = parseInt(decoded.slice(secondLastColon + 1, lastColon));
+    if (isNaN(expiresAt)) return { valid: false, userId: '' };
     const userId = decoded.slice(0, secondLastColon);
     if (Date.now() / 1000 > expiresAt) return { valid: false, userId: '' };
-    const expected = createHmac('sha256', secret).update(`${userId}:${expiresAt}`).digest('hex');
+    const expected = createHmac('sha256', tokenKey!).update(`${userId}:${expiresAt}`).digest('hex');
     const sigBuf = Buffer.from(sig, 'hex');
     const expBuf = Buffer.from(expected, 'hex');
     if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return { valid: false, userId: '' };
@@ -116,12 +119,10 @@ async function handle(event: LambdaEvent) {
     };
   }
 
-  // Sign user_id for incremental auth links — prevents tampering when user clicks link in browser.
-  // 5-min TTL: short enough to limit phishing window if a link is forwarded in chat.
-  const stateSecret = await getStateSecret();
+  await loadKeys();
   const incrTokenExp = Math.floor(Date.now() / 1000) + 300;
   const incrPayload = `${userId}:${incrTokenExp}`;
-  const incrSig = createHmac('sha256', stateSecret).update(incrPayload).digest('hex');
+  const incrSig = createHmac('sha256', incrKey!).update(incrPayload).digest('hex');
   const incrToken = Buffer.from(`${incrPayload}:${incrSig}`).toString('base64url');
 
   const { token: feishuToken, transientError } = await getUserToken(userId);

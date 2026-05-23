@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual, createHash } from 'crypto';
 import { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand, CreateSecretCommand, ListSecretsCommand } from '@aws-sdk/client-secrets-manager';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { storeCode, retrieveAndDeleteCode } from './dynamodb-codes';
 import { log, hashUserId } from '../shared/log';
 import { SCOPE_ALLOWLIST } from './scope-allowlist';
@@ -10,7 +11,7 @@ const CALLBACK_URL_ENV = process.env.CALLBACK_URL || '';
 const SECRET_PREFIX = process.env.SECRET_PREFIX || "lark-mcp-on-agentcore/users";
 const OPENID_PREFIX = process.env.OPENID_PREFIX || "lark-mcp-on-agentcore/openid-map";
 const APP_SECRET_ID = process.env.APP_SECRET_ID || "lark-mcp-on-agentcore/feishu-app";
-const STATE_SECRET = process.env.STATE_SECRET!;
+const STATE_SECRET_PARAM = process.env.STATE_SECRET_PARAM || '/lark-mcp-on-agentcore/state-secret';
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || "lark-mcp-on-agentcore";
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
 const FEISHU_SCOPES = process.env.FEISHU_SCOPES || '';
@@ -18,6 +19,26 @@ const STATE_TTL_SECONDS = 300;
 const MCP_TOKEN_TTL = 86400 * 30; // 30 days
 
 const sm = new SecretsManagerClient({});
+const ssm = new SSMClient({});
+
+// Domain-separated HMAC keys derived from the root STATE_SECRET.
+// Prevents an oracle on one signing scheme from compromising the other.
+let stateKey: Buffer | null = null;
+let tokenKey: Buffer | null = null;
+let incrKey: Buffer | null = null;
+
+function deriveKey(secret: string, domain: string): Buffer {
+  return createHmac('sha256', secret).update(domain).digest();
+}
+
+async function loadSigningKeys() {
+  if (stateKey) return;
+  const resp = await ssm.send(new GetParameterCommand({ Name: STATE_SECRET_PARAM, WithDecryption: true }));
+  const raw = resp.Parameter!.Value!;
+  stateKey = deriveKey(raw, 'oauth-state-v1');
+  tokenKey = deriveKey(raw, 'mcp-token-v1');
+  incrKey = deriveKey(raw, 'mcp-incr-auth-v1');
+}
 let appId = '';
 let appSecret = '';
 
@@ -57,7 +78,7 @@ function signState(payload: string): string {
   const ts = Math.floor(Date.now() / 1000);
   const payloadB64 = Buffer.from(payload).toString('base64url');
   const full = `${payloadB64}.${ts}`;
-  const sig = createHmac('sha256', STATE_SECRET).update(full).digest('hex');
+  const sig = createHmac('sha256', stateKey!).update(full).digest('hex');
   return `${full}.${sig}`;
 }
 
@@ -67,9 +88,9 @@ function verifyState(state: string): { valid: boolean; payload: string } {
     if (parts.length !== 3) return { valid: false, payload: '' };
     const [payloadB64, tsStr, sig] = parts;
     const ts = parseInt(tsStr);
-    if (Date.now() / 1000 - ts > STATE_TTL_SECONDS) return { valid: false, payload: '' };
+    if (isNaN(ts) || Date.now() / 1000 - ts > STATE_TTL_SECONDS) return { valid: false, payload: '' };
     const full = `${payloadB64}.${tsStr}`;
-    const expected = createHmac('sha256', STATE_SECRET).update(full).digest('hex');
+    const expected = createHmac('sha256', stateKey!).update(full).digest('hex');
     const sigBuf = Buffer.from(sig, 'hex');
     const expBuf = Buffer.from(expected, 'hex');
     if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return { valid: false, payload: '' };
@@ -81,7 +102,7 @@ function verifyState(state: string): { valid: boolean; payload: string } {
 function generateMcpToken(userId: string): string {
   const expiresAt = Math.floor(Date.now() / 1000) + MCP_TOKEN_TTL;
   const payload = `${userId}:${expiresAt}`;
-  const sig = createHmac('sha256', STATE_SECRET).update(payload).digest('hex');
+  const sig = createHmac('sha256', tokenKey!).update(payload).digest('hex');
   return Buffer.from(`${payload}:${sig}`).toString('base64url');
 }
 
@@ -245,6 +266,7 @@ export async function handler(event: LambdaEvent) {
 
 async function handle(event: LambdaEvent) {
   await loadAppCredentials();
+  await loadSigningKeys();
 
   // EventBridge scheduled refresh
   if (event.source === "aws.events") {
@@ -253,29 +275,27 @@ async function handle(event: LambdaEvent) {
     const errors: Array<{ userIdHash: string; phase: string; error: string }> = [];
     let refreshed = 0, failed = 0, skipped = 0;
 
-    for (const name of secrets) {
+    const CONCURRENCY = 5;
+    async function refreshUser(name: string) {
       const userId = name.replace(`${SECRET_PREFIX}/`, "");
       let stored: StoredToken | null;
       try {
         stored = await getToken(userId);
       } catch (e: any) {
-        // Transient SM error (throttle, AccessDenied) — skip, retry next cycle.
         skipped++;
         errors.push({ userIdHash: hashUserId(userId), phase: 'get_token', error: e.message });
-        continue;
+        return;
       }
-      if (!stored) continue;
+      if (!stored) return;
 
-      // Adaptive window: refresh when remaining lifetime falls below 1/3 of total
       const totalTtl = stored.expires_at - stored.issued_at;
       const remaining = stored.expires_at - Date.now() / 1000;
-      if (remaining > totalTtl / 3) continue;
+      if (remaining > totalTtl / 3) return;
 
-      // Preflight: confirm SM is writable before consuming the refresh_token
       if (!(await preflightWritable(`${SECRET_PREFIX}/${userId}`, userId))) {
         skipped++;
         errors.push({ userIdHash: hashUserId(userId), phase: 'preflight', error: 'sm_not_writable' });
-        continue;
+        return;
       }
 
       let result;
@@ -284,23 +304,21 @@ async function handle(event: LambdaEvent) {
       } catch (e: any) {
         failed++;
         errors.push({ userIdHash: hashUserId(userId), phase: 'feishu_call', error: e.message });
-        continue;
+        return;
       }
       if (result.code !== 0 || !result.data) {
         failed++;
         errors.push({ userIdHash: hashUserId(userId), phase: 'feishu_resp', error: `${result.code} ${result.msg}` });
-        continue;
+        return;
       }
 
-      // Retry storeToken — preflight passed, but transient errors are still possible
       let storeOk = false;
-      for (let i = 0; i < 3 && !storeOk; i++) {
+      for (let i = 0; i < 5 && !storeOk; i++) {
         try {
           await storeToken(userId, result.data);
           storeOk = true;
         } catch (e: any) {
-          if (i === 2) {
-            // CRITICAL: refresh_token was consumed but new tokens were not persisted
+          if (i === 4) {
             log('CRITICAL', 'store_token_lost', {
               userIdHash: hashUserId(userId),
               error: e.message,
@@ -309,16 +327,18 @@ async function handle(event: LambdaEvent) {
             errors.push({ userIdHash: hashUserId(userId), phase: 'store', error: e.message });
             failed++;
           } else {
-            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+            await new Promise(r => setTimeout(r, Math.min(1000 * Math.pow(2, i), 16000) + Math.random() * 500));
           }
         }
       }
       if (storeOk) refreshed++;
     }
 
-    // Emit a structured cycle summary so the RefreshFailed metric filter
-    // ($.failed) actually has a log line to match. Lambda HTTP responses
-    // are not surfaced to CloudWatch Logs.
+    // Process users in parallel batches of CONCURRENCY
+    for (let i = 0; i < secrets.length; i += CONCURRENCY) {
+      await Promise.all(secrets.slice(i, i + CONCURRENCY).map(refreshUser));
+    }
+
     log('INFO', 'refresh_cycle', { refreshed, failed, skipped, total: secrets.length });
 
     return { statusCode: 200, body: JSON.stringify({ refreshed, failed, skipped, total: secrets.length, errors }) };
@@ -349,6 +369,7 @@ async function handle(event: LambdaEvent) {
 
   // /authorize — OAuth 2.0 authorization endpoint
   if (path.includes("/authorize")) {
+    if (!CALLBACK_URL) return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: '{"error":"server_misconfigured","error_description":"callback URL cannot be derived"}' };
     const redirectUri = params.redirect_uri || '';
     const clientState = params.state || '';
     const codeChallenge = params.code_challenge || '';
@@ -371,9 +392,10 @@ async function handle(event: LambdaEvent) {
         const secondLastColon = decoded.lastIndexOf(':', lastColon - 1);
         const sig = decoded.slice(lastColon + 1);
         const expiresAt = parseInt(decoded.slice(secondLastColon + 1, lastColon));
+        if (isNaN(expiresAt)) throw new Error('nan');
         const tokenUserId = decoded.slice(0, secondLastColon);
         if (Date.now() / 1000 <= expiresAt) {
-          const expected = createHmac('sha256', STATE_SECRET).update(`${tokenUserId}:${expiresAt}`).digest('hex');
+          const expected = createHmac('sha256', incrKey!).update(`${tokenUserId}:${expiresAt}`).digest('hex');
           const sigBuf = Buffer.from(sig, 'hex');
           const expBuf = Buffer.from(expected, 'hex');
           if (sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf)) {

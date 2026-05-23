@@ -1,0 +1,550 @@
+/**
+ * MCP Protocol Contract/Compliance Tests
+ *
+ * Verifies that docker/server.js responses conform to the MCP spec (2024-11-05)
+ * over Streamable HTTP (SSE transport).
+ *
+ * Strategy: start the real HTTP server on port 8000, mock fs.readFileSync
+ * for catalog files and mock SecretsManagerClient to avoid AWS dependencies.
+ * Also mock child_process.execFile to avoid calling lark-cli.
+ */
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import Module from 'node:module';
+
+// --- Fixtures ---
+
+const FAKE_TOOL_DEF_WRITE = {
+  service: 'im',
+  command: '+messages-send',
+  description: 'Send a message to a chat',
+  risk: 'write',
+  flags: [
+    { name: 'chat-id', type: 'string', description: 'Target chat ID', required: true },
+    { name: 'text', type: 'string', description: 'Message text', required: true },
+  ],
+};
+
+const FAKE_TOOL_DEF_DESTRUCTIVE = {
+  service: 'base',
+  command: '+delete-table',
+  description: 'Delete a table from a base',
+  risk: 'high-risk-write',
+  supportsYes: true,
+  flags: [
+    { name: 'app-token', type: 'string', description: 'App token', required: true },
+    { name: 'table-id', type: 'string', description: 'Table ID', required: true },
+  ],
+};
+
+const FAKE_TOOL_DEF_READ = {
+  service: 'calendar',
+  command: '+agenda',
+  description: 'Show upcoming calendar events',
+  risk: 'read',
+  flags: [
+    { name: 'days', type: 'number', description: 'Number of days to show', required: false },
+  ],
+};
+
+// Extra tool NOT in tier1 so it can be discovered
+const FAKE_TOOL_DEF_DISCOVERABLE = {
+  service: 'wiki',
+  command: '+create-space',
+  description: 'Create a new wiki space',
+  risk: 'write',
+  flags: [
+    { name: 'name', type: 'string', description: 'Space name', required: true },
+  ],
+};
+
+const FAKE_CATALOG = {
+  _larkCliVersion: '1.0.0-test',
+  _scopeMapVersion: '1.0.0-test',
+  tools: [FAKE_TOOL_DEF_WRITE, FAKE_TOOL_DEF_DESTRUCTIVE, FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DISCOVERABLE],
+};
+
+// Only first 3 tools in tier1; the wiki tool is discoverable
+const FAKE_TIER1 = ['lark_im_messages_send', 'lark_base_delete_table', 'lark_calendar_agenda'];
+
+// --- Mocking Strategy ---
+// server.js is CJS and uses require(). We intercept at multiple levels:
+// 1. fs.readFileSync - intercepted via vi.spyOn before import
+// 2. @aws-sdk/client-secrets-manager - intercepted via monkey-patching require
+// 3. child_process - intercepted via monkey-patching require
+
+const originalReadFileSync = fs.readFileSync.bind(fs);
+vi.spyOn(fs, 'readFileSync').mockImplementation((filePath, encoding) => {
+  if (filePath === '/app/generated-tools.json') return JSON.stringify(FAKE_CATALOG);
+  if (filePath === '/app/tier1.json') return JSON.stringify(FAKE_TIER1);
+  return originalReadFileSync(filePath, encoding);
+});
+
+// Monkey-patch Module._load to intercept CJS require() for specific modules
+const originalLoad = Module._load;
+Module._load = function (request, parent, isMain) {
+  if (request === '@aws-sdk/client-secrets-manager') {
+    return {
+      SecretsManagerClient: class MockSecretsManagerClient {
+        send() {
+          return Promise.resolve({
+            SecretString: JSON.stringify({ appSecret: 'fake-secret-for-tests' }),
+          });
+        }
+      },
+      GetSecretValueCommand: class MockGetSecretValueCommand {
+        constructor(params) { this.params = params; }
+      },
+    };
+  }
+  if (request === 'child_process') {
+    return {
+      execFile: (cmd, args, opts, cb) => {
+        const child = {
+          kill: () => {},
+          pid: 99999,
+        };
+        setImmediate(() => cb(null, '{"ok":true,"data":{"message_id":"test123"}}', ''));
+        return child;
+      },
+    };
+  }
+  return originalLoad.apply(this, arguments);
+};
+
+// --- Test Helpers ---
+
+const serverPort = 8000; // Hardcoded in server.js
+
+function sendMcpRequest(method, params = {}, id = 1, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify({ jsonrpc: '2.0', id, method, params });
+    const opts = {
+      hostname: '127.0.0.1',
+      port: serverPort,
+      path: '/',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...headers,
+      },
+    };
+
+    const req = http.request(opts, (res) => {
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => {
+        resolve({ statusCode: res.statusCode, headers: res.headers, body });
+      });
+    });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function parseSSE(body) {
+  // Parse SSE format: "event: message\ndata: {...}\n\n"
+  const lines = body.split('\n');
+  let eventType = null;
+  let data = null;
+  for (const line of lines) {
+    if (line.startsWith('event: ')) eventType = line.slice(7);
+    if (line.startsWith('data: ')) data = line.slice(6);
+  }
+  return { eventType, data: data ? JSON.parse(data) : null };
+}
+
+// --- Server Lifecycle ---
+
+beforeAll(async () => {
+  // Dynamically import server.js (this starts it listening on port 8000)
+  await import('../server.js');
+
+  // Wait for the server to be ready and app secret to load
+  await new Promise(resolve => setTimeout(resolve, 300));
+});
+
+afterAll(() => {
+  // Restore Module._load
+  Module._load = originalLoad;
+});
+
+// --- Tests ---
+
+describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
+  describe('initialize response', () => {
+    it('returns valid JSON-RPC 2.0 response with matching id', async () => {
+      const { body } = await sendMcpRequest('initialize', {}, 42);
+      const { eventType, data } = parseSSE(body);
+
+      expect(eventType).toBe('message');
+      expect(data.jsonrpc).toBe('2.0');
+      expect(data.id).toBe(42);
+    });
+
+    it('contains result.protocolVersion as a string', async () => {
+      const { body } = await sendMcpRequest('initialize', {}, 1);
+      const { data } = parseSSE(body);
+
+      expect(data.result).toBeDefined();
+      expect(typeof data.result.protocolVersion).toBe('string');
+      expect(data.result.protocolVersion).toBe('2024-11-05');
+    });
+
+    it('contains result.capabilities as an object', async () => {
+      const { body } = await sendMcpRequest('initialize', {}, 2);
+      const { data } = parseSSE(body);
+
+      expect(data.result.capabilities).toBeDefined();
+      expect(typeof data.result.capabilities).toBe('object');
+      expect(data.result.capabilities).not.toBeNull();
+    });
+
+    it('contains result.serverInfo.name as a string', async () => {
+      const { body } = await sendMcpRequest('initialize', {}, 3);
+      const { data } = parseSSE(body);
+
+      expect(data.result.serverInfo).toBeDefined();
+      expect(typeof data.result.serverInfo.name).toBe('string');
+      expect(data.result.serverInfo.name.length).toBeGreaterThan(0);
+    });
+
+    it('contains result.serverInfo.version as a string', async () => {
+      const { body } = await sendMcpRequest('initialize', {}, 4);
+      const { data } = parseSSE(body);
+
+      expect(typeof data.result.serverInfo.version).toBe('string');
+      expect(data.result.serverInfo.version).toMatch(/^\d+\.\d+\.\d+/);
+    });
+
+    it('preserves request id of various types (number)', async () => {
+      const { body } = await sendMcpRequest('initialize', {}, 99999);
+      const { data } = parseSSE(body);
+      expect(data.id).toBe(99999);
+    });
+
+    it('preserves request id of various types (string)', async () => {
+      const payload = JSON.stringify({ jsonrpc: '2.0', id: 'req-abc-123', method: 'initialize', params: {} });
+      const res = await new Promise((resolve, reject) => {
+        const opts = {
+          hostname: '127.0.0.1',
+          port: serverPort,
+          path: '/',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+        };
+        const req = http.request(opts, (r) => {
+          let body = '';
+          r.on('data', c => { body += c; });
+          r.on('end', () => resolve({ body }));
+        });
+        req.on('error', reject);
+        req.write(payload);
+        req.end();
+      });
+      const { data } = parseSSE(res.body);
+      expect(data.id).toBe('req-abc-123');
+    });
+  });
+
+  describe('tools/list response', () => {
+    it('returns result.tools as an array', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 10);
+      const { data } = parseSSE(body);
+
+      expect(data.jsonrpc).toBe('2.0');
+      expect(data.id).toBe(10);
+      expect(data.result).toBeDefined();
+      expect(Array.isArray(data.result.tools)).toBe(true);
+      expect(data.result.tools.length).toBeGreaterThan(0);
+    });
+
+    it('each tool has name (string), description (string), inputSchema (object)', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 11);
+      const { data } = parseSSE(body);
+
+      for (const tool of data.result.tools) {
+        expect(typeof tool.name).toBe('string');
+        expect(tool.name.length).toBeGreaterThan(0);
+        expect(typeof tool.description).toBe('string');
+        expect(tool.description.length).toBeGreaterThan(0);
+        expect(typeof tool.inputSchema).toBe('object');
+        expect(tool.inputSchema).not.toBeNull();
+      }
+    });
+
+    it('each tool inputSchema has type:"object" (valid JSON Schema)', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 12);
+      const { data } = parseSSE(body);
+
+      for (const tool of data.result.tools) {
+        expect(tool.inputSchema.type).toBe('object');
+      }
+    });
+
+    it('tools with annotations have valid annotation structure (boolean hints)', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 13);
+      const { data } = parseSSE(body);
+
+      const toolsWithAnnotations = data.result.tools.filter(t => t.annotations);
+      expect(toolsWithAnnotations.length).toBeGreaterThan(0);
+
+      for (const tool of toolsWithAnnotations) {
+        const ann = tool.annotations;
+        expect(typeof ann).toBe('object');
+        expect(ann).not.toBeNull();
+
+        // MCP spec annotation fields are all boolean hints
+        if ('readOnlyHint' in ann) expect(typeof ann.readOnlyHint).toBe('boolean');
+        if ('destructiveHint' in ann) expect(typeof ann.destructiveHint).toBe('boolean');
+        if ('idempotentHint' in ann) expect(typeof ann.idempotentHint).toBe('boolean');
+        if ('openWorldHint' in ann) expect(typeof ann.openWorldHint).toBe('boolean');
+      }
+    });
+
+    it('destructive tool has destructiveHint:true and readOnlyHint:false', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 14);
+      const { data } = parseSSE(body);
+
+      const destructiveTool = data.result.tools.find(t => t.name === 'lark_base_delete_table');
+      expect(destructiveTool).toBeDefined();
+      expect(destructiveTool.annotations.destructiveHint).toBe(true);
+      expect(destructiveTool.annotations.readOnlyHint).toBe(false);
+    });
+
+    it('read-only tool has readOnlyHint:true and destructiveHint:false', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 15);
+      const { data } = parseSSE(body);
+
+      const readTool = data.result.tools.find(t => t.name === 'lark_calendar_agenda');
+      expect(readTool).toBeDefined();
+      expect(readTool.annotations.readOnlyHint).toBe(true);
+      expect(readTool.annotations.destructiveHint).toBe(false);
+    });
+
+    it('includes lark_discover and lark_invoke meta-tools', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 16);
+      const { data } = parseSSE(body);
+
+      const names = data.result.tools.map(t => t.name);
+      expect(names).toContain('lark_discover');
+      expect(names).toContain('lark_invoke');
+    });
+  });
+
+  describe('tools/call error format', () => {
+    it('returns result.content as array of content blocks on success', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_im_messages_send',
+        arguments: { chat_id: 'oc_123', text: 'hello' },
+      }, 20, { 'x-user-access-token': 'fake-token' });
+      const { data } = parseSSE(body);
+
+      expect(data.jsonrpc).toBe('2.0');
+      expect(data.id).toBe(20);
+      expect(data.result).toBeDefined();
+      expect(Array.isArray(data.result.content)).toBe(true);
+      expect(data.result.content.length).toBeGreaterThan(0);
+    });
+
+    it('content blocks have type:"text" and text (string)', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_im_messages_send',
+        arguments: { chat_id: 'oc_123', text: 'hello' },
+      }, 21, { 'x-user-access-token': 'fake-token' });
+      const { data } = parseSSE(body);
+
+      for (const block of data.result.content) {
+        expect(block.type).toBe('text');
+        expect(typeof block.text).toBe('string');
+      }
+    });
+
+    it('returns result.isError:true for error conditions (destructive without confirm)', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_base_delete_table',
+        arguments: { app_token: 'base123', table_id: 'tbl456' },
+      }, 22, { 'x-user-access-token': 'fake-token' });
+      const { data } = parseSSE(body);
+
+      expect(data.result.isError).toBe(true);
+      expect(Array.isArray(data.result.content)).toBe(true);
+      expect(data.result.content[0].type).toBe('text');
+      expect(typeof data.result.content[0].text).toBe('string');
+    });
+
+    it('returns isError:true with content blocks when no user token', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_im_messages_send',
+        arguments: { chat_id: 'oc_123', text: 'hello' },
+      }, 23);
+      const { data } = parseSSE(body);
+
+      expect(data.result.isError).toBe(true);
+      expect(Array.isArray(data.result.content)).toBe(true);
+      expect(data.result.content[0].type).toBe('text');
+      expect(typeof data.result.content[0].text).toBe('string');
+    });
+
+    it('unknown tool in tools/call returns JSON-RPC error with code -32601', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'nonexistent_tool_xyz',
+        arguments: {},
+      }, 24, { 'x-user-access-token': 'fake-token' });
+      const { data } = parseSSE(body);
+
+      expect(data.jsonrpc).toBe('2.0');
+      expect(data.id).toBe(24);
+      expect(data.error).toBeDefined();
+      expect(data.error.code).toBe(-32601);
+      expect(typeof data.error.message).toBe('string');
+    });
+  });
+
+  describe('JSON-RPC compliance', () => {
+    it('unknown method returns error code -32601 (Method not found)', async () => {
+      const { body } = await sendMcpRequest('nonexistent/method', {}, 30);
+      const { data } = parseSSE(body);
+
+      expect(data.jsonrpc).toBe('2.0');
+      expect(data.id).toBe(30);
+      expect(data.error).toBeDefined();
+      expect(data.error.code).toBe(-32601);
+      expect(data.error.message).toContain('not found');
+    });
+
+    it('another unknown method also returns -32601', async () => {
+      const { body } = await sendMcpRequest('resources/list', {}, 31);
+      const { data } = parseSSE(body);
+
+      expect(data.error.code).toBe(-32601);
+    });
+
+    it('response is always wrapped in SSE format', async () => {
+      const { body, headers } = await sendMcpRequest('initialize', {}, 40);
+
+      expect(headers['content-type']).toBe('text/event-stream');
+      expect(body).toMatch(/^event: message\ndata: \{.*\}\n\n$/s);
+    });
+
+    it('SSE response for tools/list is properly formatted', async () => {
+      const { body, headers } = await sendMcpRequest('tools/list', {}, 41);
+
+      expect(headers['content-type']).toBe('text/event-stream');
+      expect(body.startsWith('event: message\ndata: ')).toBe(true);
+      expect(body.endsWith('\n\n')).toBe(true);
+    });
+
+    it('SSE response for error is properly formatted', async () => {
+      const { body, headers } = await sendMcpRequest('unknown/xyz', {}, 42);
+
+      expect(headers['content-type']).toBe('text/event-stream');
+      expect(body.startsWith('event: message\ndata: ')).toBe(true);
+      expect(body.endsWith('\n\n')).toBe(true);
+
+      // Verify parseable JSON in data field
+      const dataLine = body.split('\n').find(l => l.startsWith('data: '));
+      const json = JSON.parse(dataLine.slice(6));
+      expect(json.jsonrpc).toBe('2.0');
+    });
+
+    it('invalid JSON body returns HTTP 400', async () => {
+      const res = await new Promise((resolve, reject) => {
+        const payload = 'this is not json{{{';
+        const opts = {
+          hostname: '127.0.0.1',
+          port: serverPort,
+          path: '/',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+        };
+        const req = http.request(opts, (r) => {
+          let body = '';
+          r.on('data', c => { body += c; });
+          r.on('end', () => resolve({ statusCode: r.statusCode, body }));
+        });
+        req.on('error', reject);
+        req.write(payload);
+        req.end();
+      });
+
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('non-POST method returns HTTP 405', async () => {
+      const res = await new Promise((resolve, reject) => {
+        const opts = {
+          hostname: '127.0.0.1',
+          port: serverPort,
+          path: '/',
+          method: 'PUT',
+        };
+        const req = http.request(opts, (r) => {
+          let body = '';
+          r.on('data', c => { body += c; });
+          r.on('end', () => resolve({ statusCode: r.statusCode }));
+        });
+        req.on('error', reject);
+        req.end();
+      });
+
+      expect(res.statusCode).toBe(405);
+    });
+
+    it('GET request returns health check response', async () => {
+      const res = await new Promise((resolve, reject) => {
+        const opts = {
+          hostname: '127.0.0.1',
+          port: serverPort,
+          path: '/ping',
+          method: 'GET',
+        };
+        const req = http.request(opts, (r) => {
+          let body = '';
+          r.on('data', c => { body += c; });
+          r.on('end', () => resolve({ statusCode: r.statusCode, body }));
+        });
+        req.on('error', reject);
+        req.end();
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = JSON.parse(res.body);
+      expect(data.status).toBe('Healthy');
+    });
+  });
+
+  describe('tools/call with lark_discover', () => {
+    it('returns content blocks with discoverable tools', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_discover',
+        arguments: { query: 'wiki space' },
+      }, 50, { 'x-user-access-token': 'fake-token' });
+      const { data } = parseSSE(body);
+
+      expect(data.result).toBeDefined();
+      expect(Array.isArray(data.result.content)).toBe(true);
+      expect(data.result.content[0].type).toBe('text');
+      // The text should be parseable JSON with a tools array
+      const inner = JSON.parse(data.result.content[0].text);
+      expect(Array.isArray(inner.tools)).toBe(true);
+      expect(inner.tools.length).toBeGreaterThan(0);
+    });
+
+    it('lark_discover by category returns tools from that service', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_discover',
+        arguments: { category: 'wiki' },
+      }, 51, { 'x-user-access-token': 'fake-token' });
+      const { data } = parseSSE(body);
+
+      const inner = JSON.parse(data.result.content[0].text);
+      expect(inner.tools.length).toBeGreaterThan(0);
+      expect(inner.tools[0].category).toBe('wiki');
+    });
+  });
+});
