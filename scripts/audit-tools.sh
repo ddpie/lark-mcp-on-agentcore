@@ -288,6 +288,44 @@ elif empty:
 else:
     bad(f"only {len(by_service)} services in catalog (expected ≥10)")
 
+# ── M. Snapshot of key fields ──────────────────────────────────────────────
+# A coarse contract test: hash the security-critical fields per tool, compare
+# to a stored baseline. Drift = something a human should review before deploy.
+# Run with AUDIT_UPDATE_SNAPSHOT=1 to refresh the baseline.
+print("\n── M. Snapshot of risk / supportsYes / scopes ──")
+import hashlib
+SNAPSHOT_PATH = '/workspace/projects/lark-mcp-on-agentcore/scripts/.audit-snapshot.txt'
+def fingerprint(t):
+    parts = [t['service'], t['command'], t.get('risk', ''),
+             '1' if t.get('supportsYes') else '0',
+             ','.join(sorted(t.get('scopes', []) or []))]
+    return '|'.join(parts)
+fingerprints = sorted(fingerprint(t) for t in tools)
+combined = '\n'.join(fingerprints)
+current = hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+if os.environ.get('AUDIT_UPDATE_SNAPSHOT') == '1':
+    with open(SNAPSHOT_PATH, 'w') as f:
+        f.write(combined + '\n')
+    ok(f"snapshot updated → {SNAPSHOT_PATH} (sha256 {current})")
+elif os.path.exists(SNAPSHOT_PATH):
+    with open(SNAPSHOT_PATH) as f:
+        baseline = f.read().rstrip('\n')
+    baseline_hash = hashlib.sha256(baseline.encode()).hexdigest()[:16]
+    if baseline == combined:
+        ok(f"snapshot matches baseline (sha256 {current}, {len(fingerprints)} tools)")
+    else:
+        # Show the smallest informative diff: which fingerprints changed
+        baseline_set = set(baseline.split('\n'))
+        current_set = set(fingerprints)
+        added = sorted(current_set - baseline_set)[:3]
+        removed = sorted(baseline_set - current_set)[:3]
+        bad(f"snapshot drift (baseline {baseline_hash} → current {current}); "
+            f"sample +{added} -{removed}; refresh with AUDIT_UPDATE_SNAPSHOT=1")
+else:
+    print(f"  \033[33m·\033[0m no baseline at {SNAPSHOT_PATH}; "
+          f"run with AUDIT_UPDATE_SNAPSHOT=1 to create one")
+
 # ── Summary ────────────────────────────────────────────────────────────────
 print(f"\n──────────────────────────────────")
 print(f"  PASS: \033[32m{PASS}\033[0m")

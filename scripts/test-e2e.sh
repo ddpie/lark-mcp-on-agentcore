@@ -91,6 +91,34 @@ if [ -n "$OAUTH_ENDPOINT" ]; then
     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
     "${OAUTH_ENDPOINT}/mcp")
   if [ "$MCP_BAD" = "401" ]; then pass "/mcp 无效 token → 401"; else fail "/mcp invalid token → HTTP ${MCP_BAD} (期望 401)"; fi
+
+  # /token without client_secret must be rejected (401), even if other fields look real.
+  TOK_NO_SEC=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d 'grant_type=authorization_code&code=fake&code_verifier=v&redirect_uri=https://x.example' \
+    "${OAUTH_ENDPOINT}/token")
+  if [ "$TOK_NO_SEC" = "401" ]; then pass "/token 缺 client_secret → 401"; else fail "/token no secret → HTTP ${TOK_NO_SEC} (期望 401)"; fi
+
+  # /authorize with space-separated extra_scope must be 400 (post-PR enforcement).
+  EXTRA_SPC=$(curl -s -o /dev/null -w "%{http_code}" -G "${OAUTH_ENDPOINT}/authorize" \
+    --data-urlencode "redirect_uri=https://quicksight.aws.amazon.com/cb" \
+    --data-urlencode "code_challenge=fakechallenge" \
+    --data-urlencode "code_challenge_method=S256" \
+    --data-urlencode "extra_scope=im:chat:read im:message")
+  if [ "$EXTRA_SPC" = "400" ]; then pass "/authorize 空格分隔 extra_scope → 400"; else fail "/authorize space scope → HTTP ${EXTRA_SPC} (期望 400)"; fi
+
+  # /authorize with unknown scope (not in allowlist) must be 400.
+  EXTRA_UNK=$(curl -s -o /dev/null -w "%{http_code}" -G "${OAUTH_ENDPOINT}/authorize" \
+    --data-urlencode "redirect_uri=https://quicksight.aws.amazon.com/cb" \
+    --data-urlencode "code_challenge=fakechallenge" \
+    --data-urlencode "code_challenge_method=S256" \
+    --data-urlencode "extra_scope=fake:nonexistent:scope")
+  if [ "$EXTRA_UNK" = "400" ]; then pass "/authorize 未知 scope → 400"; else fail "/authorize unknown scope → HTTP ${EXTRA_UNK} (期望 400)"; fi
+
+  # OAuth metadata response must carry Cache-Control: no-store (no stale config in caches).
+  CACHE=$(curl -sI "${OAUTH_ENDPOINT}/.well-known/oauth-authorization-server" \
+    | tr -d '\r' | grep -i '^cache-control:' | tr '[:upper:]' '[:lower:]')
+  if echo "$CACHE" | grep -q 'no-store'; then pass "OAuth metadata 含 Cache-Control: no-store"; else fail "/.well-known cache header: ${CACHE:-<none>}"; fi
 else
   skip "OAuth 端点未配置"
 fi
