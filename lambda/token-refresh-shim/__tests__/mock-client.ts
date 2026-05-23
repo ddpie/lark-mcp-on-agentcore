@@ -10,6 +10,12 @@ let failOpName: string | null = null;
 let failOpError: { name: string; message: string } | null = null;
 let putCount = 0;
 let failOnPutFrom = -1;
+// Failure trigger that depends on the SecretId (e.g. fail GET on a specific secret only)
+let failGetMatch: { idMatch: string; err: { name: string; message: string } } | null = null;
+
+// DDB code store (for /token grant exchange)
+interface CodeRow { code: string; userId: string; codeChallenge: string; redirectUri: string; expiresAt: number }
+let codeStore: Map<string, CodeRow> = new Map();
 
 const reset = () => {
   store = {};
@@ -18,6 +24,8 @@ const reset = () => {
   failOpError = null;
   putCount = 0;
   failOnPutFrom = -1;
+  failGetMatch = null;
+  codeStore = new Map();
 };
 
 class GetSecretValueCommand { constructor(public input: any) {} }
@@ -52,6 +60,11 @@ class SecretsManagerClient {
     }
 
     if (cmd instanceof GetSecretValueCommand) {
+      if (failGetMatch && cmd.input.SecretId.includes(failGetMatch.idMatch)) {
+        const err: any = new Error(failGetMatch.err.message);
+        err.name = failGetMatch.err.name;
+        return Promise.reject(err);
+      }
       const v = store[cmd.input.SecretId];
       if (!v) {
         const err: any = new Error('not found');
@@ -82,10 +95,30 @@ export const mockClient = {
     __listNames: (names: string[]) => { listNames = names; },
     __failOn: (op: string, err: { name: string; message: string }) => { failOpName = op; failOpError = err; },
     __failOnPutFrom: (n: number, err: { name: string; message: string }) => { failOnPutFrom = n; failOpError = err; },
+    __failGetMatching: (idMatch: string, err: { name: string; message: string }) => { failGetMatch = { idMatch, err }; },
   },
   dynamodb: {
-    DynamoDBDocumentClient: { from: () => ({ send: () => Promise.resolve({}) }) },
+    DynamoDBDocumentClient: {
+      from: () => ({
+        send: (cmd: any) => {
+          const cmdName = cmd.constructor.name;
+          if (cmdName === 'PutCommand') {
+            const it = cmd.input.Item;
+            codeStore.set(it.code, { code: it.code, userId: it.userId, codeChallenge: it.codeChallenge, redirectUri: it.redirectUri, expiresAt: it.expiresAt });
+            return Promise.resolve({});
+          }
+          if (cmdName === 'DeleteCommand') {
+            const row = codeStore.get(cmd.input.Key.code);
+            codeStore.delete(cmd.input.Key.code);
+            return Promise.resolve(row ? { Attributes: row } : {});
+          }
+          return Promise.resolve({});
+        },
+      }),
+    },
     PutCommand: class { constructor(public input: any) {} },
     DeleteCommand: class { constructor(public input: any) {} },
+    __seedCode: (row: CodeRow) => { codeStore.set(row.code, row); },
+    __hasCode: (code: string) => codeStore.has(code),
   },
 };
