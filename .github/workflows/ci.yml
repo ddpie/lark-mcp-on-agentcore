@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: cd infra && npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Typecheck (infra)
+        run: cd infra && npx tsc --noEmit
+
+      - name: Unit tests + coverage
+        run: npx vitest run --coverage
+
+      - name: Coverage gate (statements >= 95%)
+        run: |
+          STMTS=$(cat coverage/coverage-final.json | npx -y c8 report --reporter=text-summary 2>/dev/null | grep Statements | awk '{print $3}' | tr -d '%')
+          if [ -z "$STMTS" ]; then
+            STMTS=$(node -e "
+              const cov = require('./coverage/coverage-final.json');
+              let total = 0, covered = 0;
+              for (const f of Object.values(cov)) {
+                for (const [k,v] of Object.entries(f.s)) { total++; if (v > 0) covered++; }
+              }
+              console.log(((covered/total)*100).toFixed(1));
+            ")
+          fi
+          echo "Statement coverage: ${STMTS}%"
+          node -e "if (parseFloat('${STMTS}') < 95) { console.error('Coverage below 95%'); process.exit(1); }"
+
+      - name: CDK snapshot diff
+        if: github.event_name == 'pull_request'
+        run: |
+          npx vitest run infra/test/snapshot.test.ts 2>&1 || true
+          if git diff --name-only | grep -q snapshot; then
+            echo "::warning::CDK snapshot changed — review infrastructure diff"
+          fi

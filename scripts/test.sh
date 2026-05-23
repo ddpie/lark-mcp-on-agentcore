@@ -5,12 +5,13 @@
 #   --unit      vitest (lambda + docker + CDK snapshot + MCP contract)
 #   --coverage  vitest with v8 coverage report
 #   --mutation  stryker mutation testing (~7 min, finds weak assertions)
+#   --smoke     docker container build + local HTTP smoke test (needs Docker)
 #   --typecheck tsc --noEmit on infra
-#   --lint      bash -n on shell scripts
+#   --lint      bash -n + eslint on source
 #   --audit     scripts/audit-tools.sh (needs AWS or --catalog)
 #   --e2e       scripts/test-e2e.sh (needs deployed stack)
 #   --all       all offline tiers (unit + typecheck + lint)
-#   --full      all tiers including audit + e2e (needs AWS)
+#   --full      all tiers including smoke + audit + e2e
 #
 # Default (no args): --all (offline only, safe to run anywhere)
 #
@@ -28,7 +29,7 @@ hdr() { echo -e "\n${CYAN}══════════════════
 ok()  { echo -e "${GREEN}✓ $1 PASSED${NC}"; }
 bad() { echo -e "${RED}✗ $1 FAILED (exit $2)${NC}"; }
 
-DO_UNIT=0; DO_AUDIT=0; DO_E2E=0; DO_TYPECHECK=0; DO_LINT=0; DO_COV=0; DO_MUTATION=0
+DO_UNIT=0; DO_AUDIT=0; DO_E2E=0; DO_TYPECHECK=0; DO_LINT=0; DO_COV=0; DO_MUTATION=0; DO_SMOKE=0
 AUDIT_ARGS=()
 E2E_ARGS=()
 
@@ -41,12 +42,13 @@ while [[ $# -gt 0 ]]; do
     --unit)      DO_UNIT=1; shift ;;
     --coverage)  DO_UNIT=1; DO_COV=1; shift ;;
     --mutation)  DO_MUTATION=1; shift ;;
+    --smoke)     DO_SMOKE=1; shift ;;
     --audit)     DO_AUDIT=1; shift ;;
     --e2e)       DO_E2E=1; shift ;;
     --typecheck) DO_TYPECHECK=1; shift ;;
     --lint)      DO_LINT=1; shift ;;
     --all)       DO_UNIT=1; DO_TYPECHECK=1; DO_LINT=1; shift ;;
-    --full)      DO_UNIT=1; DO_TYPECHECK=1; DO_LINT=1; DO_AUDIT=1; DO_E2E=1; shift ;;
+    --full)      DO_UNIT=1; DO_TYPECHECK=1; DO_LINT=1; DO_SMOKE=1; DO_AUDIT=1; DO_E2E=1; shift ;;
     --catalog|--image|--region) AUDIT_ARGS+=("$1" "$2"); shift 2 ;;
     --runtime-arn|--oauth-endpoint|--user-id) E2E_ARGS+=("$1" "$2"); shift 2 ;;
     -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -94,6 +96,7 @@ if [ "$DO_UNIT" = 1 ]; then
   fi
 fi
 [ "$DO_MUTATION" = 1 ] && run_tier "mutation (stryker)" bash -c "cd '$ROOT' && npx stryker run"
+[ "$DO_SMOKE" = 1 ] && run_tier "smoke (docker container)" "$ROOT/scripts/test-smoke-docker.sh"
 [ "$DO_AUDIT" = 1 ] && run_tier "audit (catalog structure)" "$ROOT/scripts/audit-tools.sh" "${AUDIT_ARGS[@]}"
 [ "$DO_E2E" = 1 ] && run_tier "e2e (live OAuth + Runtime)" "$ROOT/scripts/test-e2e.sh" "${E2E_ARGS[@]}"
 
