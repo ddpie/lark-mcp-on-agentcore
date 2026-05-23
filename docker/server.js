@@ -74,14 +74,18 @@ const AUTHORIZE_BASE = process.env.AUTHORIZE_BASE || '';
 
 let APP_SECRET = '';
 let appSecretLoaded = false;
+let appSecretExpiry = 0;
+const SECRET_CACHE_TTL = 30 * 60 * 1000; // 30 min
 const sm = new SecretsManagerClient({ region: REGION });
 
 async function loadAppSecret(maxRetries = 5) {
+  if (appSecretLoaded && Date.now() < appSecretExpiry) return;
   for (let i = 0; i < maxRetries; i++) {
     try {
       const resp = await sm.send(new GetSecretValueCommand({ SecretId: APP_SECRET_ID }));
       APP_SECRET = JSON.parse(resp.SecretString).appSecret;
       appSecretLoaded = true;
+      appSecretExpiry = Date.now() + SECRET_CACHE_TTL;
       console.log(JSON.stringify({ level: 'INFO', event: 'app_secret_loaded' }));
       return;
     } catch (e) {
@@ -259,7 +263,7 @@ function patchPermissionError(output, toolName, incrAuthToken) {
         const matches = [...(data.error.message || '').matchAll(/scopes?[:\s]+([a-z0-9_:.\- ,]+)/gi)];
         for (const m of matches) {
           for (const s of m[1].split(/[,\s]+/)) {
-            if (/^[a-z0-9_:.\-]+$/i.test(s) && s.length > 2) missing.add(s);
+            if (/^[a-z0-9_:.-]+$/i.test(s) && s.length > 2) missing.add(s);
           }
         }
       }
@@ -312,7 +316,10 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
   if (def.risk === 'high-risk-write' && def.supportsYes) cliArgs.push('--yes');
 
   const env = {
-    ...process.env,
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    NODE_PATH: process.env.NODE_PATH || '',
+    LANG: process.env.LANG || 'en_US.UTF-8',
     NO_COLOR: '1',
     LARKSUITE_CLI_USER_ACCESS_TOKEN: userToken,
     LARKSUITE_CLI_APP_ID: APP_ID,
@@ -345,6 +352,11 @@ function sseResponse(res, data) {
 const server = http.createServer((req, res) => {
   // Health check (AgentCore sends GET /ping)
   if (req.method === 'GET') {
+    if (!appSecretLoaded) {
+      res.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end('{"status":"Unhealthy","reason":"app_secret_not_loaded"}');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ status: 'Healthy', time_of_last_update: Math.floor(Date.now() / 1000) }));
     return;
@@ -372,6 +384,9 @@ const server = http.createServer((req, res) => {
 });
 
 async function handleRequest(req, res, body) {
+  // Refresh cached app secret if TTL expired (non-blocking on cache hit)
+  loadAppSecret(1).catch(() => {});
+
   let mcpReq;
   try { mcpReq = JSON.parse(body); } catch {
     res.writeHead(400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -481,9 +496,9 @@ async function handleRequest(req, res, body) {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`lark-mcp-on-agentcore listening on :${PORT} (${tier1Tools.length} tier1 + ${allToolDefs.length} discoverable)`);
-  // Async secret load AFTER listen, so /ping returns 200 immediately.
   loadAppSecret().catch(e => {
     console.error(JSON.stringify({ level: 'CRITICAL', event: 'app_secret_load_giveup', error: e.message }));
+    process.exit(1);
   });
 });
 

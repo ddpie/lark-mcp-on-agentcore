@@ -594,7 +594,6 @@ if [ -n "$OAUTH_FN" ] && [ -n "$OAUTH_ENDPOINT" ]; then
   ENV_FILE=$(mktemp); chmod 600 "$ENV_FILE"
   trap 'rm -f "$ENV_FILE"' RETURN  2>/dev/null || true
   CALLBACK_URL="${OAUTH_ENDPOINT}/callback" \
-    STATE_SECRET="$STATE_SECRET_VAL" \
     OAUTH_SECRET_VAL="$OAUTH_SECRET_VAL" \
     FEISHU_SCOPES="$FEISHU_SCOPES" \
     CUSTOM_DOMAIN="${CUSTOM_DOMAIN:-}" \
@@ -605,7 +604,7 @@ vars = {
   "SECRET_PREFIX": "lark-mcp-on-agentcore/users",
   "OPENID_PREFIX": "lark-mcp-on-agentcore/openid-map",
   "APP_SECRET_ID": "lark-mcp-on-agentcore/feishu-app",
-  "STATE_SECRET": os.environ["STATE_SECRET"],
+  "STATE_SECRET_PARAM": "/lark-mcp-on-agentcore/state-secret",
   "OAUTH_CLIENT_ID": "lark-mcp-on-agentcore",
   "OAUTH_CLIENT_SECRET": os.environ["OAUTH_SECRET_VAL"],
   "FEISHU_SCOPES": os.environ.get("FEISHU_SCOPES", ""),

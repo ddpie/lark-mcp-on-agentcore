@@ -12,10 +12,16 @@ let putCount = 0;
 let failOnPutFrom = -1;
 // Failure trigger that depends on the SecretId (e.g. fail GET on a specific secret only)
 let failGetMatch: { idMatch: string; err: { name: string; message: string } } | null = null;
+let failCreateMatch: { nameMatch: string; err: { name: string; message: string } } | null = null;
+// Failure trigger for PUT that matches SecretId
+let failPutMatch: { idMatch: string; err: { name: string; message: string } } | null = null;
 
 // DDB code store (for /token grant exchange)
 interface CodeRow { code: string; userId: string; codeChallenge: string; redirectUri: string; expiresAt: number }
 let codeStore: Map<string, CodeRow> = new Map();
+
+// SSM store
+let ssmStore: { [name: string]: string } = { '/lark-mcp-on-agentcore/state-secret': 'test-state-secret-value' };
 
 const reset = () => {
   store = {};
@@ -25,7 +31,10 @@ const reset = () => {
   putCount = 0;
   failOnPutFrom = -1;
   failGetMatch = null;
+  failCreateMatch = null;
+  failPutMatch = null;
   codeStore = new Map();
+  ssmStore = { '/lark-mcp-on-agentcore/state-secret': 'test-state-secret-value' };
 };
 
 class GetSecretValueCommand { constructor(public input: any) {} }
@@ -45,6 +54,11 @@ class SecretsManagerClient {
 
     if (cmd instanceof PutSecretValueCommand) {
       putCount++;
+      if (failPutMatch && cmd.input.SecretId.includes(failPutMatch.idMatch)) {
+        const err: any = new Error(failPutMatch.err.message);
+        err.name = failPutMatch.err.name;
+        return Promise.reject(err);
+      }
       if (failOnPutFrom > 0 && putCount >= failOnPutFrom && failOpError) {
         const err: any = new Error(failOpError.message);
         err.name = failOpError.name;
@@ -55,6 +69,11 @@ class SecretsManagerClient {
     }
 
     if (cmd instanceof CreateSecretCommand) {
+      if (failCreateMatch && cmd.input.Name.includes(failCreateMatch.nameMatch)) {
+        const err: any = new Error(failCreateMatch.err.message);
+        err.name = failCreateMatch.err.name;
+        return Promise.reject(err);
+      }
       store[cmd.input.Name] = cmd.input.SecretString;
       return Promise.resolve({ ARN: 'arn' });
     }
@@ -82,9 +101,27 @@ class SecretsManagerClient {
   }
 }
 
+class GetParameterCommand { constructor(public input: any) {} }
+
+class SSMClient {
+  send(cmd: any): Promise<any> {
+    if (cmd instanceof GetParameterCommand) {
+      const v = ssmStore[cmd.input.Name];
+      if (!v) return Promise.reject(Object.assign(new Error('not found'), { name: 'ParameterNotFound' }));
+      return Promise.resolve({ Parameter: { Value: v } });
+    }
+    return Promise.reject(new Error(`Unmocked SSM command`));
+  }
+}
+
 // Test helpers attached to the module export so tests can drive the mock.
 export const mockClient = {
   reset,
+  ssm: {
+    SSMClient,
+    GetParameterCommand,
+    __set: (name: string, value: string) => { ssmStore[name] = value; },
+  },
   secretsManager: {
     SecretsManagerClient,
     GetSecretValueCommand,
@@ -92,10 +129,13 @@ export const mockClient = {
     CreateSecretCommand,
     ListSecretsCommand,
     __set: (id: string, value: string) => { store[id] = value; },
+    __get: (id: string) => store[id],
     __listNames: (names: string[]) => { listNames = names; },
     __failOn: (op: string, err: { name: string; message: string }) => { failOpName = op; failOpError = err; },
     __failOnPutFrom: (n: number, err: { name: string; message: string }) => { failOnPutFrom = n; failOpError = err; },
     __failGetMatching: (idMatch: string, err: { name: string; message: string }) => { failGetMatch = { idMatch, err }; },
+    __failCreateMatching: (nameMatch: string, err: { name: string; message: string }) => { failCreateMatch = { nameMatch, err }; },
+    __failPutMatching: (idMatch: string, err: { name: string; message: string }) => { failPutMatch = { idMatch, err }; },
   },
   dynamodb: {
     DynamoDBDocumentClient: {

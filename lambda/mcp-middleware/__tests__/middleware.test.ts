@@ -76,8 +76,12 @@ global.fetch = vi.fn(async (url: any, init: any) => {
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
 
-function signMcpToken(userId: string, expiresAt: number, secret = STATE_SECRET): string {
-  const sig = createHmac('sha256', secret).update(`${userId}:${expiresAt}`).digest('hex');
+// Derive the same domain-separated keys the middleware uses internally
+const TOKEN_KEY = createHmac('sha256', STATE_SECRET).update('mcp-token-v1').digest();
+const INCR_KEY = createHmac('sha256', STATE_SECRET).update('mcp-incr-auth-v1').digest();
+
+function signMcpToken(userId: string, expiresAt: number, key: string | Buffer = TOKEN_KEY): string {
+  const sig = createHmac('sha256', key).update(`${userId}:${expiresAt}`).digest('hex');
   return Buffer.from(`${userId}:${expiresAt}:${sig}`).toString('base64url');
 }
 
@@ -103,11 +107,15 @@ describe('mcp-middleware — auth', () => {
     const r = await call({ headers: {}, body: '{}' });
     expect(r.statusCode).toBe(401);
     expect(r.headers?.['Cache-Control']).toBe('no-store');
+    expect(r.headers?.['WWW-Authenticate']).toBe('Bearer');
+    expect(JSON.parse(r.body!).error).toBe('unauthorized');
   });
 
   it('rejects malformed bearer token (401)', async () => {
     const r = await call({ headers: { authorization: 'Bearer not.a.real.token' }, body: '{}' });
     expect(r.statusCode).toBe(401);
+    expect(r.headers?.['WWW-Authenticate']).toBe('Bearer');
+    expect(JSON.parse(r.body!).error).toBe('unauthorized');
   });
 
   it('rejects token signed with the wrong secret (401)', async () => {
@@ -115,6 +123,15 @@ describe('mcp-middleware — auth', () => {
     const tok = signMcpToken('ou_user', exp, 'wrong-secret');
     const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
     expect(r.statusCode).toBe(401);
+    expect(JSON.parse(r.body!).error).toBe('unauthorized');
+  });
+
+  it('rejects token with NaN expiresAt (401)', async () => {
+    const payload = `ou_user:notanumber:${createHmac('sha256', TOKEN_KEY).update('ou_user:notanumber').digest('hex')}`;
+    const tok = Buffer.from(payload).toString('base64url');
+    const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
+    expect(r.statusCode).toBe(401);
+    expect(JSON.parse(r.body!).error).toBe('unauthorized');
   });
 
   it('rejects expired token (401)', async () => {
@@ -122,6 +139,7 @@ describe('mcp-middleware — auth', () => {
     const tok = signMcpToken('ou_user', exp);
     const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
     expect(r.statusCode).toBe(401);
+    expect(JSON.parse(r.body!).error).toBe('unauthorized');
   });
 
   it('returns 503 when SSM (state secret) read fails (not 401)', async () => {
@@ -141,9 +159,9 @@ describe('mcp-middleware — Feishu token retrieval', () => {
     expect(r.statusCode).toBe(403);
     const body = JSON.parse(r.body!);
     expect(body.error).toBe('feishu_not_authorized');
-    // authorize_url must use the signed t= token, NOT raw user_id.
     expect(body.authorize_url).toMatch(/\/authorize\?t=/);
     expect(body.authorize_url).not.toMatch(/user_id=/);
+    expect(r.headers?.['Content-Type']).toBe('application/json');
   });
 
   it('returns 503 when SM (token store) throttles', async () => {
@@ -151,16 +169,31 @@ describe('mcp-middleware — Feishu token retrieval', () => {
     smFailMode = 'throttle';
     const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
     expect(r.statusCode).toBe(503);
+    expect(JSON.parse(r.body!).error).toBe('backend_unavailable');
+    expect(r.headers?.['Content-Type']).toBe('application/json');
   });
 
   it('treats token within 120s of expiry as not authorized (403)', async () => {
     const tok = signMcpToken('ou_user', Math.floor(Date.now() / 1000) + 3600);
     smStore['lark-mcp-on-agentcore/users/ou_user'] = {
       access_token: 'feishu-tok',
-      expires_at: Math.floor(Date.now() / 1000) + 60,  // < 120s buffer
+      expires_at: Math.floor(Date.now() / 1000) + 60,
     };
     const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
     expect(r.statusCode).toBe(403);
+    expect(JSON.parse(r.body!).error).toBe('feishu_not_authorized');
+  });
+
+  it('returns empty authorize_url when AUTHORIZE_BASE is not set', async () => {
+    const origBase = process.env.AUTHORIZE_BASE;
+    process.env.AUTHORIZE_BASE = '';
+    const tok = signMcpToken('ou_user', Math.floor(Date.now() / 1000) + 3600);
+    smFailMode = 'not_found';
+    const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
+    expect(r.statusCode).toBe(403);
+    const body = JSON.parse(r.body!);
+    expect(body.authorize_url).toBe('');
+    process.env.AUTHORIZE_BASE = origBase;
   });
 });
 
@@ -203,7 +236,7 @@ describe('mcp-middleware — proxy to AgentCore', () => {
     const userId = decoded.slice(0, secondLastColon);
     const expiresAt = parseInt(decoded.slice(secondLastColon + 1, lastColon));
     const sig = decoded.slice(lastColon + 1);
-    const expected = createHmac('sha256', STATE_SECRET).update(`${userId}:${expiresAt}`).digest('hex');
+    const expected = createHmac('sha256', INCR_KEY).update(`${userId}:${expiresAt}`).digest('hex');
     expect(sig).toBe(expected);
     expect(userId).toBe('ou_user');
     // 5-min TTL window
@@ -237,5 +270,55 @@ describe('mcp-middleware — Cache-Control', () => {
       const r = await call(c.event);
       expect(r.headers?.['Cache-Control'], c.name).toBe('no-store');
     }
+  });
+
+  it('success proxy response also carries Cache-Control: no-store', async () => {
+    const tok = signMcpToken('ou_user', Math.floor(Date.now() / 1000) + 3600);
+    smStore['lark-mcp-on-agentcore/users/ou_user'] = {
+      access_token: 'feishu-tok',
+      expires_at: Math.floor(Date.now() / 1000) + 7200,
+    };
+    fetchResponse = { status: 200, body: '{"result":"ok"}', headers: { 'content-type': 'application/json' } };
+    const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
+    expect(r.statusCode).toBe(200);
+    expect(r.headers?.['Cache-Control']).toBe('no-store');
+  });
+});
+
+describe('mcp-middleware — isBase64Encoded', () => {
+  function authedEvent(extraHeaders: Record<string, string> = {}, body = '{"jsonrpc":"2.0"}', isBase64 = false) {
+    const tok = signMcpToken('ou_user', Math.floor(Date.now() / 1000) + 3600);
+    smStore['lark-mcp-on-agentcore/users/ou_user'] = {
+      access_token: 'feishu-tok',
+      expires_at: Math.floor(Date.now() / 1000) + 7200,
+    };
+    const b = isBase64 ? Buffer.from(body).toString('base64') : body;
+    return { headers: { authorization: `Bearer ${tok}`, ...extraHeaders }, body: b, isBase64Encoded: isBase64 };
+  }
+
+  it('decodes base64-encoded body before forwarding to AgentCore', async () => {
+    const r = await call(authedEvent({}, '{"jsonrpc":"2.0","method":"test"}', true));
+    expect(r.statusCode).toBe(200);
+    // Verify the upstream received the decoded body
+    const sentBody = fetchCalls[0].init.body;
+    expect(Buffer.from(sentBody).toString()).toBe('{"jsonrpc":"2.0","method":"test"}');
+  });
+});
+
+describe('mcp-middleware — mcp-session-id response handling', () => {
+  function authedEvent() {
+    const tok = signMcpToken('ou_user', Math.floor(Date.now() / 1000) + 3600);
+    smStore['lark-mcp-on-agentcore/users/ou_user'] = {
+      access_token: 'feishu-tok',
+      expires_at: Math.floor(Date.now() / 1000) + 7200,
+    };
+    return { headers: { authorization: `Bearer ${tok}` }, body: '{}' };
+  }
+
+  it('does not include Mcp-Session-Id header when upstream does not return one', async () => {
+    fetchResponse = { status: 200, body: '{}', headers: { 'content-type': 'application/json' } };
+    const r = await call(authedEvent());
+    expect(r.statusCode).toBe(200);
+    expect(r.headers?.['Mcp-Session-Id']).toBeUndefined();
   });
 });

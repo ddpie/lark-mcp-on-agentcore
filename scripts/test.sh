@@ -2,19 +2,24 @@
 # scripts/test.sh — single entry point for all tests in this repo.
 #
 # Tiers (can be selected individually):
-#   --unit      vitest unit tests (no AWS, no docker, fast)
-#   --audit     scripts/audit-tools.sh (catalog structure, needs AWS or --catalog)
-#   --e2e       scripts/test-e2e.sh (live OAuth + Runtime, needs deployed stack)
-#   --typecheck tsc --noEmit on infra
-#   --lint      bash -n on shell scripts
-#   --all       run everything (default)
+#   --unit          vitest (lambda + docker + CDK snapshot + MCP contract)
+#   --coverage      vitest with v8 coverage report
+#   --mutation      stryker mutation testing (~7 min, finds weak assertions)
+#   --smoke         docker container build + local HTTP smoke test (needs Docker)
+#   --mcp-protocol  MCP protocol validation against spec (needs Docker + jq)
+#   --typecheck     tsc --noEmit on infra
+#   --lint          bash -n + eslint on source
+#   --audit         scripts/audit-tools.sh (needs AWS or --catalog)
+#   --e2e           scripts/test-e2e.sh (needs deployed stack)
+#   --all           all offline tiers (unit + typecheck + lint)
+#   --full          all tiers including smoke + mcp-protocol + audit + e2e
 #
-# Each tier exits non-zero on failure; the overall exit code is non-zero if
-# any selected tier failed.
+# Default (no args): --all (offline only, safe to run anywhere)
 #
 # Examples:
-#   ./scripts/test.sh                  # everything
-#   ./scripts/test.sh --unit --lint    # offline checks only
+#   ./scripts/test.sh                  # offline: unit + typecheck + lint
+#   ./scripts/test.sh --coverage       # unit with coverage report
+#   ./scripts/test.sh --full           # everything including AWS-dependent
 #   ./scripts/test.sh --audit --catalog generated-tools.json
 set -uo pipefail
 
@@ -25,25 +30,30 @@ hdr() { echo -e "\n${CYAN}══════════════════
 ok()  { echo -e "${GREEN}✓ $1 PASSED${NC}"; }
 bad() { echo -e "${RED}✗ $1 FAILED (exit $2)${NC}"; }
 
-DO_UNIT=0; DO_AUDIT=0; DO_E2E=0; DO_TYPECHECK=0; DO_LINT=0
+DO_UNIT=0; DO_AUDIT=0; DO_E2E=0; DO_TYPECHECK=0; DO_LINT=0; DO_COV=0; DO_MUTATION=0; DO_SMOKE=0; DO_MCP_PROTO=0
 AUDIT_ARGS=()
 E2E_ARGS=()
 
 if [ $# -eq 0 ]; then
-  DO_UNIT=1; DO_AUDIT=1; DO_E2E=1; DO_TYPECHECK=1; DO_LINT=1
+  DO_UNIT=1; DO_TYPECHECK=1; DO_LINT=1
 fi
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --unit)      DO_UNIT=1; shift ;;
+    --coverage)  DO_UNIT=1; DO_COV=1; shift ;;
+    --mutation)  DO_MUTATION=1; shift ;;
+    --smoke)     DO_SMOKE=1; shift ;;
+    --mcp-protocol) DO_MCP_PROTO=1; shift ;;
     --audit)     DO_AUDIT=1; shift ;;
     --e2e)       DO_E2E=1; shift ;;
     --typecheck) DO_TYPECHECK=1; shift ;;
     --lint)      DO_LINT=1; shift ;;
-    --all)       DO_UNIT=1; DO_AUDIT=1; DO_E2E=1; DO_TYPECHECK=1; DO_LINT=1; shift ;;
+    --all)       DO_UNIT=1; DO_TYPECHECK=1; DO_LINT=1; shift ;;
+    --full)      DO_UNIT=1; DO_TYPECHECK=1; DO_LINT=1; DO_SMOKE=1; DO_MCP_PROTO=1; DO_AUDIT=1; DO_E2E=1; shift ;;
     --catalog|--image|--region) AUDIT_ARGS+=("$1" "$2"); shift 2 ;;
     --runtime-arn|--oauth-endpoint|--user-id) E2E_ARGS+=("$1" "$2"); shift 2 ;;
-    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -65,11 +75,31 @@ run_tier() {
 
 OVERALL=0
 
-[ "$DO_LINT" = 1 ] && run_tier "lint (bash -n on scripts/*.sh)" bash -c '
+# Ensure dependencies are installed
+if [ ! -d "$ROOT/node_modules" ]; then
+  echo -e "${YELLOW}Installing root dependencies...${NC}"
+  ( cd "$ROOT" && npm install --silent )
+fi
+if [ "$DO_TYPECHECK" = 1 ] && [ ! -d "$ROOT/infra/node_modules" ]; then
+  echo -e "${YELLOW}Installing infra dependencies...${NC}"
+  ( cd "$ROOT/infra" && npm install --silent )
+fi
+
+[ "$DO_LINT" = 1 ] && run_tier "lint (bash -n)" bash -c '
   for f in "'"$ROOT"'"/scripts/*.sh; do bash -n "$f" || exit 1; done
 '
+[ "$DO_LINT" = 1 ] && run_tier "lint (eslint)" bash -c "cd '$ROOT' && npm run lint"
 [ "$DO_TYPECHECK" = 1 ] && run_tier "typecheck (tsc --noEmit)" bash -c "cd '$ROOT/infra' && npx tsc --noEmit"
-[ "$DO_UNIT" = 1 ] && run_tier "unit (vitest)" bash -c "cd '$ROOT' && npm test --silent"
+if [ "$DO_UNIT" = 1 ]; then
+  if [ "$DO_COV" = 1 ]; then
+    run_tier "unit (vitest + coverage)" bash -c "cd '$ROOT' && npx vitest run --coverage"
+  else
+    run_tier "unit (vitest)" bash -c "cd '$ROOT' && npm test --silent"
+  fi
+fi
+[ "$DO_MUTATION" = 1 ] && run_tier "mutation (stryker)" bash -c "cd '$ROOT' && npx stryker run"
+[ "$DO_SMOKE" = 1 ] && run_tier "smoke (docker container)" "$ROOT/scripts/test-smoke-docker.sh"
+[ "$DO_MCP_PROTO" = 1 ] && run_tier "mcp-protocol (spec validation)" "$ROOT/scripts/test-mcp-protocol.sh"
 [ "$DO_AUDIT" = 1 ] && run_tier "audit (catalog structure)" "$ROOT/scripts/audit-tools.sh" "${AUDIT_ARGS[@]}"
 [ "$DO_E2E" = 1 ] && run_tier "e2e (live OAuth + Runtime)" "$ROOT/scripts/test-e2e.sh" "${E2E_ARGS[@]}"
 

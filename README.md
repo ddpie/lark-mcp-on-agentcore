@@ -271,13 +271,20 @@ Quick Desktop 中点击 **Settings → Capabilities → Browse connections**（�
 ./scripts/ops.sh refresh-all       # 手动触发 Token 刷新
 ./scripts/ops.sh logs              # 查看 Lambda 日志
 
-./scripts/test.sh                  # 统一测试入口 (unit/audit/e2e/typecheck/lint)
+./scripts/test.sh                  # 统一测试入口 (默认: unit + typecheck + lint)
+./scripts/test.sh --coverage       # 单元测试 + 覆盖率报告
+./scripts/test.sh --mutation       # Stryker 变异测试 (~7min)
+./scripts/test.sh --smoke          # Docker 容器冒烟 (健康检查 + 协议)
+./scripts/test.sh --mcp-protocol   # MCP 协议合规验证 (需 Docker + jq)
+./scripts/test.sh --full           # 全部含 smoke + audit + e2e
 ./scripts/test-e2e.sh              # 端到端测试 (OAuth, Runtime, /mcp, WAF)
 ./scripts/audit-tools.sh           # 工具目录结构性自检 (15 项断言)
 ./scripts/audit-deps.sh            # npm audit (root + docker + infra)
 ./scripts/check-lark-cli-version.sh  # 检测 Dockerfile 与 scope 映射版本是否漂移
 
-npm test                           # 运行 vitest 单元测试 (42 项)
+npm test                           # 运行 vitest 单元测试 (228 项)
+npm run lint                       # ESLint (源码)
+npm run knip                       # 死代码/未使用依赖检测
 ```
 
 部署后建议订阅 SNS 告警 topic（`AlarmTopicArn` 输出）：
@@ -322,7 +329,7 @@ scripts/
   install.sh          一键安装 (中/英双语)
   ops.sh              运维工具 (status/list/revoke/refresh/rotate/logs/destroy)
   teardown.sh         完整销毁 (Runtime + CDK + WAF 如启用 + 可选 user-token 清理)
-  test.sh             统一测试入口 (unit / audit / e2e / typecheck / lint)
+  test.sh             统一测试入口 (unit / coverage / mutation / audit / e2e)
   test-e2e.sh         端到端测试 (OAuth + Runtime + /mcp + WAF 如启用)
   audit-tools.sh      工具目录结构性自检 (15 项断言, 含 catalog snapshot)
   audit-deps.sh       多目录 npm audit
@@ -644,13 +651,20 @@ Pay-as-you-go, no fixed monthly fee:
 ./scripts/ops.sh refresh-all       # Manually trigger token refresh
 ./scripts/ops.sh logs              # View Lambda logs
 
-./scripts/test.sh                  # Unified test entry (unit/audit/e2e/typecheck/lint)
+./scripts/test.sh                  # Unified test entry (default: unit + typecheck + lint)
+./scripts/test.sh --coverage       # Unit tests + coverage report
+./scripts/test.sh --mutation       # Stryker mutation testing (~7min)
+./scripts/test.sh --smoke          # Docker container smoke test (health + protocol)
+./scripts/test.sh --mcp-protocol   # MCP protocol compliance validation (needs Docker + jq)
+./scripts/test.sh --full           # All tiers including smoke + audit + e2e
 ./scripts/test-e2e.sh              # End-to-end test (OAuth, Runtime, /mcp, WAF)
 ./scripts/audit-tools.sh           # Tool catalog structural audit (15 assertions)
 ./scripts/audit-deps.sh            # npm audit (root + docker + infra)
 ./scripts/check-lark-cli-version.sh  # Detect drift between Dockerfile and scope map
 
-npm test                           # Run vitest unit tests (42 cases)
+npm test                           # Run vitest unit tests (228 cases)
+npm run lint                       # ESLint (source code)
+npm run knip                       # Dead code / unused dependency detection
 ```
 
 After deploy, subscribe to the SNS alarm topic (`AlarmTopicArn` output):
@@ -751,7 +765,7 @@ scripts/
   install.sh          One-click install (Chinese/English)
   ops.sh              Operations toolkit (status/list/revoke/refresh/rotate/logs/destroy)
   teardown.sh         Full destroy (Runtime + CDK stacks + WAF if enabled + optional user-token cleanup)
-  test.sh             Unified test entry (unit / audit / e2e / typecheck / lint)
+  test.sh             Unified test entry (unit / coverage / mutation / audit / e2e)
   test-e2e.sh         End-to-end tests (OAuth + Runtime + /mcp + WAF if enabled)
   audit-tools.sh      Tool catalog structural audit (15 assertions, with snapshot)
   audit-deps.sh       Multi-dir npm audit

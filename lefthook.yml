@@ -1,0 +1,21 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: eslint
+      glob: "*.{ts,js}"
+      run: npx eslint {staged_files} --max-warnings 5
+
+    - name: hadolint
+      glob: "**/Dockerfile*"
+      run: docker run --rm -i hadolint/hadolint < docker/Dockerfile
+
+    - name: gitleaks
+      run: gitleaks detect --source . --no-git
+      skip:
+        - ref: merge
+        - run: "! command -v gitleaks"
+
+pre-push:
+  jobs:
+    - name: test
+      run: ./scripts/test.sh

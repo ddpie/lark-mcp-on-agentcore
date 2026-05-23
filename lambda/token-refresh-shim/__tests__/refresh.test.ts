@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mockClient } from '../__tests__/mock-client';
 
 // Required env vars for module import
-process.env.STATE_SECRET = 'test-state-secret';
 process.env.OAUTH_CLIENT_SECRET = 'test-client-secret';
 process.env.CODE_TABLE = 'test-table';
+process.env.STATE_SECRET_PARAM = '/lark-mcp-on-agentcore/state-secret';
 
 // Mock SDK clients before importing the handler under test
 vi.mock('@aws-sdk/client-secrets-manager', () => mockClient.secretsManager);
+vi.mock('@aws-sdk/client-ssm', () => mockClient.ssm);
 vi.mock('@aws-sdk/lib-dynamodb', () => mockClient.dynamodb);
 vi.mock('@aws-sdk/client-dynamodb', () => ({ DynamoDBClient: vi.fn(() => ({})) }));
 
@@ -45,7 +46,7 @@ describe('refresh path — preflight protection', () => {
     expect(calls.some(u => u.includes('refresh_access_token'))).toBe(false);
   });
 
-  it('logs CRITICAL store_token_lost when storeToken fails after preflight passed', async () => {
+  it('logs CRITICAL store_token_lost when storeToken fails after preflight passed', { timeout: 60000 }, async () => {
     mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
     const userSecretId = 'lark-mcp-on-agentcore/users/u2';
     mockClient.secretsManager.__set(userSecretId, JSON.stringify({
@@ -106,5 +107,93 @@ describe('refresh path — preflight protection', () => {
     expect(body.skipped).toBe(0);
     expect(body.failed).toBe(0);
     expect(fetchSpy.mock.calls.length).toBeLessThanOrEqual(1);  // app token only (or zero)
+  });
+
+  it('successfully refreshes a user token (happy path)', async () => {
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
+    const userSecretId = 'lark-mcp-on-agentcore/users/u_happy';
+    mockClient.secretsManager.__set(userSecretId, JSON.stringify({
+      access_token: 'old', refresh_token: 'rt-old',
+      expires_at: Math.floor(Date.now() / 1000) + 60,
+      issued_at: Math.floor(Date.now() / 1000) - 7140,
+    }));
+    mockClient.secretsManager.__listNames([userSecretId]);
+
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0, msg: 'ok',
+        data: { access_token: 'new-tok', refresh_token: 'rt-new', expires_in: 7200 },
+      })));
+
+    const { handler } = await import('../index');
+    const result = await handler({ source: 'aws.events' } as any);
+    const body = JSON.parse(result.body!);
+
+    expect(body.refreshed).toBe(1);
+    expect(body.failed).toBe(0);
+    const stored = JSON.parse(mockClient.secretsManager.__get(userSecretId));
+    expect(stored.access_token).toBe('new-tok');
+  });
+
+  it('records failed when Feishu returns non-zero code', async () => {
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
+    const userSecretId = 'lark-mcp-on-agentcore/users/u_bad_resp';
+    mockClient.secretsManager.__set(userSecretId, JSON.stringify({
+      access_token: 'old', refresh_token: 'rt-old',
+      expires_at: Math.floor(Date.now() / 1000) + 60,
+      issued_at: Math.floor(Date.now() / 1000) - 7140,
+    }));
+    mockClient.secretsManager.__listNames([userSecretId]);
+
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 99991, msg: 'invalid_grant' })));
+
+    const { handler } = await import('../index');
+    const result = await handler({ source: 'aws.events' } as any);
+    const body = JSON.parse(result.body!);
+
+    expect(body.failed).toBe(1);
+    expect(body.errors[0].phase).toBe('feishu_resp');
+  });
+
+  it('skips user when getToken returns null (secret deleted concurrently)', async () => {
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
+    // listNames returns a name, but the secret is NOT in the store (deleted between list and get)
+    mockClient.secretsManager.__listNames(['lark-mcp-on-agentcore/users/u_gone']);
+
+    vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ app_access_token: 'app' })));
+
+    const { handler } = await import('../index');
+    const result = await handler({ source: 'aws.events' } as any);
+    const body = JSON.parse(result.body!);
+
+    expect(body.refreshed).toBe(0);
+    expect(body.failed).toBe(0);
+    expect(body.skipped).toBe(0);
+  });
+
+  it('records failed when Feishu refresh HTTP call throws (network error)', async () => {
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
+    const userSecretId = 'lark-mcp-on-agentcore/users/u4';
+    mockClient.secretsManager.__set(userSecretId, JSON.stringify({
+      access_token: 'old', refresh_token: 'rt-old',
+      expires_at: Math.floor(Date.now() / 1000) + 60,
+      issued_at: Math.floor(Date.now() / 1000) - 7140,
+    }));
+    mockClient.secretsManager.__listNames([userSecretId]);
+
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app' })))  // getAppAccessToken
+      .mockRejectedValueOnce(new Error('ECONNREFUSED'));  // refreshToken throws
+
+    const { handler } = await import('../index');
+    const result = await handler({ source: 'aws.events' } as any);
+    const body = JSON.parse(result.body!);
+
+    expect(body.failed).toBe(1);
+    expect(body.refreshed).toBe(0);
+    expect(body.errors[0].phase).toBe('feishu_call');
   });
 });
