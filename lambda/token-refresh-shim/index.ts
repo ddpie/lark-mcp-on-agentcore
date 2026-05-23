@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual, createHash } from 'crypto';
 import { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand, CreateSecretCommand, ListSecretsCommand } from '@aws-sdk/client-secrets-manager';
 import { storeCode, retrieveAndDeleteCode } from './dynamodb-codes';
 import { log, hashUserId } from '../shared/log';
+import { SCOPE_ALLOWLIST } from './scope-allowlist';
 
 const FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token";
 const FEISHU_REFRESH_URL = "https://open.feishu.cn/open-apis/authen/v1/oidc/refresh_access_token";
@@ -147,7 +148,12 @@ async function getToken(userId: string): Promise<StoredToken | null> {
   try {
     const resp = await sm.send(new GetSecretValueCommand({ SecretId: `${SECRET_PREFIX}/${userId}` }));
     return JSON.parse(resp.SecretString!);
-  } catch { return null; }
+  } catch (e: any) {
+    if (e.name === 'ResourceNotFoundException') return null;
+    // Throttle / AccessDenied / parse errors must surface, not silently look like "no auth".
+    log('ERROR', 'get_token_failed', { userIdHash: hashUserId(userId), error: e.message, name: e.name });
+    throw e;
+  }
 }
 
 // Probe SM writability for this user before consuming the single-use refresh_token.
@@ -186,7 +192,13 @@ async function getOpenIdMapping(openId: string): Promise<string | null> {
   try {
     const resp = await sm.send(new GetSecretValueCommand({ SecretId: `${OPENID_PREFIX}/${openId}` }));
     return JSON.parse(resp.SecretString!).userId;
-  } catch { return null; }
+  } catch (e: any) {
+    if (e.name === 'ResourceNotFoundException') return null;
+    // Treating SM throttle / AccessDenied as "no mapping" would silently fork
+    // the user into a new identity and orphan their existing tokens.
+    log('ERROR', 'get_openid_mapping_failed', { openIdHash: hashUserId(openId), error: e.message, name: e.name });
+    throw e;
+  }
 }
 
 async function listAllUserSecrets(): Promise<string[]> {
@@ -210,7 +222,28 @@ function parseBody(event: LambdaEvent): Record<string, string> {
   return params;
 }
 
+interface LambdaResponse {
+  statusCode: number;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+// Wrap the handler so every HTTP response carries Cache-Control: no-store.
+// OAuth flows must never be cached: state, codes, redirects all expire fast,
+// and a stale 200 / error from a browser or proxy cache leads to confusing
+// failures after redeploy. EventBridge invocations have no headers — pass
+// through unchanged.
 export async function handler(event: LambdaEvent) {
+  const result = await handle(event);
+  if (event.source === 'aws.events') return result;
+  const r = result as LambdaResponse;
+  return {
+    ...r,
+    headers: { ...(r.headers || {}), 'Cache-Control': 'no-store' },
+  };
+}
+
+async function handle(event: LambdaEvent) {
   await loadAppCredentials();
 
   // EventBridge scheduled refresh
@@ -222,7 +255,15 @@ export async function handler(event: LambdaEvent) {
 
     for (const name of secrets) {
       const userId = name.replace(`${SECRET_PREFIX}/`, "");
-      const stored = await getToken(userId);
+      let stored: StoredToken | null;
+      try {
+        stored = await getToken(userId);
+      } catch (e: any) {
+        // Transient SM error (throttle, AccessDenied) — skip, retry next cycle.
+        skipped++;
+        errors.push({ userIdHash: hashUserId(userId), phase: 'get_token', error: e.message });
+        continue;
+      }
       if (!stored) continue;
 
       // Adaptive window: refresh when remaining lifetime falls below 1/3 of total
@@ -293,7 +334,7 @@ export async function handler(event: LambdaEvent) {
     const baseUrl = CALLBACK_URL.replace(/\/callback$/, '');
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         issuer: baseUrl,
         authorization_endpoint: `${baseUrl}/authorize`,
@@ -301,7 +342,7 @@ export async function handler(event: LambdaEvent) {
         response_types_supported: ["code"],
         grant_types_supported: ["authorization_code"],
         code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+        token_endpoint_auth_methods_supported: ["client_secret_post"],
       }),
     };
   }
@@ -317,6 +358,8 @@ export async function handler(event: LambdaEvent) {
     // trick a victim into authorizing under an attacker-chosen id and overwrite
     // the victim's stored Feishu tokens (confused-deputy via legacy flow).
     let userId = '';
+    // extra_scope is comma-separated (no spaces). Each scope must be in the
+    // allowlist to prevent a phishing link from broadening the consent screen.
     const extraScopeRaw = (params.extra_scope || '').slice(0, 1000);
     const incrToken = params.t || '';
 
@@ -339,7 +382,19 @@ export async function handler(event: LambdaEvent) {
         }
       } catch {}
     }
-    const extraScope = /^[a-z0-9_:.\- ]+$/i.test(extraScopeRaw) ? extraScopeRaw : '';
+    // Parse comma-separated scopes; reject entire request if any scope is unknown
+    // or malformed. Re-emit as space-separated for Feishu.
+    let extraScope = '';
+    if (extraScopeRaw) {
+      const parts = extraScopeRaw.split(',').map(s => s.trim()).filter(Boolean);
+      const validScope = /^[a-z][a-z0-9_:.\-]*$/;
+      const allOk = parts.length > 0 && parts.every(s => validScope.test(s) && SCOPE_ALLOWLIST.has(s));
+      if (!allOk) {
+        log('WARN', 'extra_scope_rejected', { raw: extraScopeRaw.slice(0, 200) });
+        return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_request","error_description":"extra_scope contains unknown or malformed scope"}' };
+      }
+      extraScope = parts.join(' ');
+    }
 
     // Validate code_challenge_method if provided
     if (codeChallenge && codeChallengeMethod && codeChallengeMethod !== 'S256') {
@@ -460,6 +515,19 @@ export async function handler(event: LambdaEvent) {
       const codeVerifier = body.code_verifier || '';
       const clientSecret = body.client_secret || '';
 
+      // Verify client_secret BEFORE consuming the auth code. Otherwise a wrong
+      // secret would still single-use-burn the victim's code.
+      if (!clientSecret) {
+        log('WARN', 'token_missing_client_secret');
+        return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"client_secret required"}' };
+      }
+      const provided = Buffer.from(clientSecret);
+      const expected = Buffer.from(OAUTH_CLIENT_SECRET);
+      if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+        log('WARN', 'token_bad_client_secret');
+        return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"bad client credentials"}' };
+      }
+
       const stored = await retrieveAndDeleteCode(authCode);
       if (!stored) {
         log('WARN', 'token_invalid_code');
@@ -487,12 +555,6 @@ export async function handler(event: LambdaEvent) {
       if (computedChallenge !== stored.codeChallenge) {
         log('WARN', 'token_pkce_mismatch');
         return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_grant","error_description":"code_verifier mismatch"}' };
-      }
-
-      // Additionally verify client_secret if provided
-      if (clientSecret && clientSecret !== OAUTH_CLIENT_SECRET) {
-        log('WARN', 'token_bad_client_secret');
-        return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"bad client credentials"}' };
       }
 
       const mcpToken = generateMcpToken(stored.userId);

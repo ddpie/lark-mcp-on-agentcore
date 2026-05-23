@@ -32,7 +32,12 @@ if [ -z "${LARK_LANG:-}" ]; then
   echo "    1) 中文"
   echo "    2) English"
   echo ""
-  read -rp "  [1]: " LANG_CHOICE
+  # Drain any pre-typed input before the very first prompt (the helper isn't
+  # defined yet at this point in the script).
+  if [ -t 0 ]; then
+    while IFS= read -r -t 0.05 _ </dev/tty 2>/dev/null; do :; done
+  fi
+  read -rp "  [1]: " LANG_CHOICE </dev/tty
   case "${LANG_CHOICE:-1}" in
     2) export LARK_LANG="en" ;;
     *) export LARK_LANG="zh" ;;
@@ -174,7 +179,18 @@ step() { echo -e "\n${GREEN}=== ${L[$1]} ===${NC}\n"; }
 info() { echo -e "${CYAN}  $1${NC}"; }
 warn() { echo -e "${YELLOW}  ⚠ $1${NC}"; }
 err()  { echo -e "${RED}  ✗ $1${NC}"; }
-ask()  { read -rp "  $1: " "$2"; }
+
+# Drain any pre-typed input so a stray Enter held over from the previous prompt
+# can't auto-accept the next one. Critical for confirm prompts (region, WAF,
+# deploy start) where a held Enter could blow past intentional decisions.
+drain_stdin() {
+  if [ -t 0 ]; then
+    local _discard
+    while IFS= read -r -t 0.05 _discard </dev/tty 2>/dev/null; do :; done
+  fi
+}
+prompt() { drain_stdin; read -rp "  $1" "$2" </dev/tty; }
+ask() { drain_stdin; read -rp "  $1: " "$2" </dev/tty; }
 
 cleanup() {
   if [ "${DEPLOY_STARTED:-false}" = "true" ]; then
@@ -230,7 +246,7 @@ if [ -z "$ACCOUNT_ID" ]; then
   echo "  2) aws sso login        (SSO)"
   echo "  3) ${L[aws_retry]}"
   echo ""
-  read -rp "  [1]: " AWS_CHOICE
+  prompt "[1]: " AWS_CHOICE
   case "${AWS_CHOICE:-1}" in
     1) aws configure ;;
     2) aws sso login ;;
@@ -294,7 +310,7 @@ while true; do
   echo ""
   info "App ID:     ${APP_ID}"
   info "App Secret: ${APP_SECRET:0:4}****"
-  read -rp "  ${L[confirm_creds]} " CRED_CONFIRM
+  prompt "${L[confirm_creds]} " CRED_CONFIRM
   case "${CRED_CONFIRM:-y}" in
     [nN]) echo "  ${L[cancelled]}"; exit 0 ;;
     [rR]) echo "  ${L[re_enter]}"; unset FEISHU_APP_ID FEISHU_APP_SECRET; continue ;;
@@ -304,7 +320,7 @@ done
 
 # 自定义域名（可选）
 echo ""
-read -rp "  ${L[custom_domain]}" CUSTOM_DOMAIN
+prompt "${L[custom_domain]}" CUSTOM_DOMAIN
 if [ -n "$CUSTOM_DOMAIN" ]; then
   if [[ ! "$CUSTOM_DOMAIN" =~ ^[a-zA-Z0-9._-]+$ ]]; then
     err "Invalid domain: ${CUSTOM_DOMAIN}"
@@ -323,7 +339,7 @@ elif [ ! -t 0 ]; then
   ENABLE_WAF=0
 else
   echo ""
-  read -rp "  ${L[ask_waf]} " WAF_ANS
+  prompt "${L[ask_waf]} " WAF_ANS
   if [[ "${WAF_ANS:-n}" =~ ^[yY] ]]; then ENABLE_WAF=1; else ENABLE_WAF=0; fi
 fi
 if [ "$ENABLE_WAF" = "1" ]; then info "${L[waf_enabled]}"; else info "${L[waf_disabled]}"; fi
@@ -348,7 +364,7 @@ echo "    9) me-central-1     UAE"
 echo "    ──"
 echo "    0) ${L[manual_input]}"
 echo ""
-read -rp "  [1]: " REGION_CHOICE
+prompt "[1]: " REGION_CHOICE
 case "${REGION_CHOICE:-1}" in
   1) REGION="us-west-2" ;;
   2) REGION="us-east-1" ;;
@@ -371,7 +387,7 @@ ensure_bootstrap() {
   check=$(aws cloudformation describe-stacks --stack-name CDKToolkit --region "$target_region" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
   if [ "$check" = "NOT_FOUND" ]; then
     info "$(t not_bootstrapped "$target_region")"
-    read -rp "  ${L[run_bootstrap]} " BS_CONFIRM
+    prompt "${L[run_bootstrap]} " BS_CONFIRM
     if [[ ! "${BS_CONFIRM:-y}" =~ ^[nN] ]]; then
       ( cd "${PROJECT_DIR}/infra" && npm install --silent 2>/dev/null && \
         AWS_REGION="$target_region" npx cdk bootstrap "aws://${ACCOUNT_ID}/${target_region}" )
@@ -396,7 +412,7 @@ info "App ID:       ${APP_ID}"
 info "Region:       ${REGION}"
 info "Account:      ${ACCOUNT_ID}"
 echo ""
-read -rp "  ${L[start_deploy]} " CONFIRM
+prompt "${L[start_deploy]} " CONFIRM
 if [[ "${CONFIRM:-y}" =~ ^[nN] ]]; then
   echo "  ${L[cancelled]}"
   exit 0

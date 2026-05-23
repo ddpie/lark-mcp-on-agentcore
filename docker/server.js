@@ -132,10 +132,40 @@ function buildInputSchema(def) {
   if (def.risk === 'high-risk-write') {
     properties._confirm = {
       type: 'boolean',
-      description: 'Must be set to true to confirm this destructive operation.',
+      description: 'Must be set to true to confirm this destructive operation. Ask the user first; do not set this without explicit user approval.',
     };
   }
   return { type: 'object', properties, ...(required.length > 0 ? { required } : {}) };
+}
+
+// MCP tool annotations (spec: 2025-03-26). Clients use these to render UI:
+// destructive tools should prompt the user explicitly before invocation.
+function toolAnnotations(def) {
+  if (def.risk === 'high-risk-write') {
+    return {
+      title: def.description,
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    };
+  }
+  if (def.risk === 'write') {
+    return {
+      title: def.description,
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    };
+  }
+  return {
+    title: def.description,
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  };
 }
 
 // Build tier1 tool schemas
@@ -210,33 +240,36 @@ function patchPermissionError(output, toolName, incrAuthToken) {
   try {
     const data = JSON.parse(output);
     if (data.error && Number(data.error.code) === 99991679) {
-      let missingScope = '';
+      // Collect missing scopes as a Set, normalize to comma-separated for the URL.
+      const missing = new Set();
       // Layer 2: check local scope mapping table first
-      if (!missingScope && toolName && toolScopeMap.has(toolName)) {
-        missingScope = toolScopeMap.get(toolName).join(' ');
+      if (toolName && toolScopeMap.has(toolName)) {
+        for (const s of toolScopeMap.get(toolName)) missing.add(s);
       }
       // Layer 3: extract from lark-cli error response
-      if (!missingScope && data.error.console_url) {
+      if (missing.size === 0 && data.error.console_url) {
         try {
           const u = new URL(data.error.console_url);
-          missingScope = u.searchParams.get('scopes') || '';
+          const raw = u.searchParams.get('scopes') || '';
+          for (const s of raw.split(/[,\s]+/).filter(Boolean)) missing.add(s);
         } catch {}
       }
-      if (!missingScope) {
+      if (missing.size === 0) {
         // Capture all scope tokens — Feishu may list multiple comma/space-separated.
         const matches = [...(data.error.message || '').matchAll(/scopes?[:\s]+([a-z0-9_:.\- ,]+)/gi)];
-        if (matches.length > 0) {
-          const scopes = matches
-            .flatMap(m => m[1].split(/[,\s]+/))
-            .filter(s => /^[a-z0-9_:.\-]+$/i.test(s) && s.length > 2);
-          missingScope = [...new Set(scopes)].join(' ');
+        for (const m of matches) {
+          for (const s of m[1].split(/[,\s]+/)) {
+            if (/^[a-z0-9_:.\-]+$/i.test(s) && s.length > 2) missing.add(s);
+          }
         }
       }
 
-      if (missingScope && AUTHORIZE_BASE) {
+      if (missing.size > 0 && AUTHORIZE_BASE) {
+        const scopeList = [...missing];
         const tokenParam = incrAuthToken ? `&t=${encodeURIComponent(incrAuthToken)}` : '';
-        const authUrl = `${AUTHORIZE_BASE}/authorize?extra_scope=${encodeURIComponent(missingScope)}${tokenParam}`;
-        data.error.hint = `Missing permission: ${missingScope}. Click to authorize: ${authUrl}`;
+        // OAuth Lambda expects comma-separated extra_scope (no spaces); each scope must be in allowlist.
+        const authUrl = `${AUTHORIZE_BASE}/authorize?extra_scope=${encodeURIComponent(scopeList.join(','))}${tokenParam}`;
+        data.error.hint = `Missing permission: ${scopeList.join(' ')}. Click to authorize: ${authUrl}`;
         data.error.authorize_url = authUrl;
       } else {
         data.error.hint = 'This tool requires a permission that could not be determined automatically. Please contact ddpie.flea@gmail.com for support.';
@@ -249,13 +282,15 @@ function patchPermissionError(output, toolName, incrAuthToken) {
 }
 
 async function executeTool(def, args, userToken, toolName, incrAuthToken, abortSignal) {
-  // High-risk writes (delete, etc.) require explicit args._confirm=true,
-  // surfaced to the LLM so it must affirm intent before destructive action.
+  // High-risk writes (delete, etc.) require explicit user approval. Primary
+  // defense is the destructiveHint annotation surfaced via tools/list — a
+  // spec-compliant MCP client will pop a confirmation UI. _confirm is layered
+  // defense for clients that ignore annotations.
   if (def.risk === 'high-risk-write' && args._confirm !== true) {
     return {
       content: [{ type: 'text', text: JSON.stringify({
-        error: 'confirmation_required',
-        message: 'High-risk write operation. Re-call with args._confirm=true to proceed.',
+        error: 'user_approval_required',
+        message: 'This is a destructive operation. STOP. Ask the user to confirm in plain language (describe exactly what will be deleted/modified). Only after the user explicitly approves, re-call this tool with args._confirm=true. Do NOT silently retry.',
         tool: toolName,
         risk: def.risk,
       }) }],
@@ -271,7 +306,10 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     if (flag.type === 'boolean') { if (value) cliArgs.push(`--${flag.name}`); }
     else cliArgs.push(`--${flag.name}`, String(value));
   }
-  if (def.risk === 'high-risk-write') cliArgs.push('--yes');
+  // lark-cli's --yes is per-command. Only inject it for commands that declare
+  // it (recorded as supportsYes at build time); other high-risk-write commands
+  // (e.g. delete-dimension) would treat --yes as an unknown flag and print usage.
+  if (def.risk === 'high-risk-write' && def.supportsYes) cliArgs.push('--yes');
 
   const env = {
     ...process.env,
@@ -300,20 +338,20 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
 }
 
 function sseResponse(res, data) {
-  res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
   res.end(`event: message\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
 const server = http.createServer((req, res) => {
   // Health check (AgentCore sends GET /ping)
   if (req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ status: 'Healthy', time_of_last_update: Math.floor(Date.now() / 1000) }));
     return;
   }
 
   if (req.method !== 'POST') {
-    res.writeHead(405);
+    res.writeHead(405, { 'Cache-Control': 'no-store' });
     res.end('');
     return;
   }
@@ -326,7 +364,7 @@ const server = http.createServer((req, res) => {
     body += chunk;
     if (body.length > MAX_BODY) {
       destroyed = true;
-      if (!res.headersSent) { res.writeHead(413); res.end(); }
+      if (!res.headersSent) { res.writeHead(413, { 'Cache-Control': 'no-store' }); res.end(); }
       req.destroy();
     }
   });
@@ -336,7 +374,7 @@ const server = http.createServer((req, res) => {
 async function handleRequest(req, res, body) {
   let mcpReq;
   try { mcpReq = JSON.parse(body); } catch {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.writeHead(400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end('{"error":"invalid_json"}');
     return;
   }
@@ -362,10 +400,17 @@ async function handleRequest(req, res, body) {
     return;
   }
 
-  // tools/list
+  // tools/list — emit MCP annotations so spec-compliant clients (Quick Desktop,
+  // Claude Desktop, etc.) render an explicit user-approval UI for destructive
+  // tools instead of relying on the LLM to honor _confirm semantics.
   if (mcpReq.method === 'tools/list') {
     const tools = [
-      ...tier1Tools.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
+      ...tier1Tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+        annotations: toolAnnotations(t._def),
+      })),
       DISCOVER_TOOL,
       INVOKE_TOOL,
     ];
@@ -390,6 +435,7 @@ async function handleRequest(req, res, body) {
         description: `[${e.def.risk}] ${e.def.description}`,
         category: e.def.service,
         inputSchema: buildInputSchema(e.def),
+        annotations: toolAnnotations(e.def),
       }));
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ tools: output }) }] } });
       return;

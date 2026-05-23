@@ -35,9 +35,17 @@ async function getStateSecret(): Promise<string> {
   return stateSecret;
 }
 
-async function verifyMcpToken(token: string): Promise<{ valid: boolean; userId: string }> {
+async function verifyMcpToken(token: string): Promise<{ valid: boolean; userId: string; transientError?: boolean }> {
+  // SSM read is the only path that can throw transiently; isolate it so we can
+  // distinguish "bad token" (401) from "backend unavailable" (503).
+  let secret: string;
   try {
-    const secret = await getStateSecret();
+    secret = await getStateSecret();
+  } catch (e: any) {
+    log('ERROR', 'state_secret_load_failed', { error: e.message, name: e.name });
+    return { valid: false, userId: '', transientError: true };
+  }
+  try {
     const decoded = Buffer.from(token, 'base64url').toString();
     const lastColon = decoded.lastIndexOf(':');
     const secondLastColon = decoded.lastIndexOf(':', lastColon - 1);
@@ -53,24 +61,50 @@ async function verifyMcpToken(token: string): Promise<{ valid: boolean; userId: 
   } catch { return { valid: false, userId: '' }; }
 }
 
-async function getUserToken(userId: string): Promise<string | null> {
+async function getUserToken(userId: string): Promise<{ token: string | null; transientError?: boolean }> {
   try {
     const resp = await sm.send(new GetSecretValueCommand({ SecretId: `${SECRET_PREFIX}/${userId}` }));
     const data = JSON.parse(resp.SecretString!);
     if (data.expires_at - Date.now() / 1000 > TOKEN_BUFFER_SECONDS) {
-      return data.access_token;
+      return { token: data.access_token };
     }
-    return null;
-  } catch { return null; }
+    return { token: null };
+  } catch (e: any) {
+    if (e.name === 'ResourceNotFoundException') return { token: null };
+    // SM throttle / AccessDenied: do not surface as "not authorized" — that would
+    // misdirect users to re-authorize with Feishu when SM is the actual problem.
+    log('ERROR', 'get_user_token_failed', { userIdHash: hashUserId(userId), error: e.message, name: e.name });
+    return { token: null, transientError: true };
+  }
 }
 
+interface LambdaResponse {
+  statusCode: number;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+// MCP responses must never be cached: every call carries a unique session ID
+// and the response body contains user-scoped tool results. Stale cache here
+// would cross user boundaries.
 export async function handler(event: LambdaEvent) {
+  const r = await handle(event) as LambdaResponse;
+  return {
+    ...r,
+    headers: { ...(r.headers || {}), 'Cache-Control': 'no-store' },
+  };
+}
+
+async function handle(event: LambdaEvent) {
   const authHeader = event.headers?.authorization || event.headers?.Authorization || '';
   const bearerToken = authHeader.replace(/^Bearer\s+/i, '').trim();
 
   let userId = '';
   if (bearerToken) {
-    const { valid, userId: mcpUserId } = await verifyMcpToken(bearerToken);
+    const { valid, userId: mcpUserId, transientError } = await verifyMcpToken(bearerToken);
+    if (transientError) {
+      return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: '{"error":"backend_unavailable","error_description":"auth backend temporarily unavailable, retry"}' };
+    }
     if (valid) userId = mcpUserId;
   }
   if (!userId) {
@@ -82,11 +116,23 @@ export async function handler(event: LambdaEvent) {
     };
   }
 
-  const feishuToken = await getUserToken(userId);
+  // Sign user_id for incremental auth links — prevents tampering when user clicks link in browser.
+  // 5-min TTL: short enough to limit phishing window if a link is forwarded in chat.
+  const stateSecret = await getStateSecret();
+  const incrTokenExp = Math.floor(Date.now() / 1000) + 300;
+  const incrPayload = `${userId}:${incrTokenExp}`;
+  const incrSig = createHmac('sha256', stateSecret).update(incrPayload).digest('hex');
+  const incrToken = Buffer.from(`${incrPayload}:${incrSig}`).toString('base64url');
+
+  const { token: feishuToken, transientError } = await getUserToken(userId);
+  if (transientError) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: '{"error":"backend_unavailable","error_description":"token store temporarily unavailable, retry"}' };
+  }
   if (!feishuToken) {
     log('INFO', 'feishu_not_authorized', { userIdHash: hashUserId(userId) });
-    const authorizeUrl = AUTHORIZE_BASE ? `${AUTHORIZE_BASE}/authorize?user_id=${encodeURIComponent(userId)}` : '';
-    return { statusCode: 403, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'feishu_not_authorized', authorize_url: authorizeUrl, user_id: userId }) };
+    // Use signed t= token; raw user_id is rejected by /authorize (confused-deputy guard).
+    const authorizeUrl = AUTHORIZE_BASE ? `${AUTHORIZE_BASE}/authorize?t=${encodeURIComponent(incrToken)}` : '';
+    return { statusCode: 403, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'feishu_not_authorized', authorize_url: authorizeUrl }) };
   }
 
   const mcpPayload = event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString() : event.body || '';
@@ -95,13 +141,6 @@ export async function handler(event: LambdaEvent) {
   const encodedArn = encodeURIComponent(RUNTIME_ARN);
   // Forward client's MCP session ID (echoed from initialize response). MCP transport spec: server assigns the ID.
   const clientSessionId = event.headers?.['mcp-session-id'] || event.headers?.['Mcp-Session-Id'] || '';
-
-  // Sign user_id for incremental auth links — prevents tampering when user clicks link in browser
-  const stateSecret = await getStateSecret();
-  const incrTokenExp = Math.floor(Date.now() / 1000) + 3600;
-  const incrPayload = `${userId}:${incrTokenExp}`;
-  const incrSig = createHmac('sha256', stateSecret).update(incrPayload).digest('hex');
-  const incrToken = Buffer.from(`${incrPayload}:${incrSig}`).toString('base64url');
 
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
