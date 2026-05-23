@@ -409,7 +409,7 @@ async function handle(event: LambdaEvent) {
     let extraScope = '';
     if (extraScopeRaw) {
       const parts = extraScopeRaw.split(',').map(s => s.trim()).filter(Boolean);
-      const validScope = /^[a-z][a-z0-9_:.\-]*$/;
+      const validScope = /^[a-z][a-z0-9_:.-]*$/;
       const allOk = parts.length > 0 && parts.every(s => validScope.test(s) && SCOPE_ALLOWLIST.has(s));
       if (!allOk) {
         log('WARN', 'extra_scope_rejected', { raw: extraScopeRaw.slice(0, 200) });
@@ -489,7 +489,7 @@ async function handle(event: LambdaEvent) {
       return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error: "feishu_exchange_failed", detail: result.msg || result.code }) };
     }
 
-    let stableUserId = '';
+    let stableUserId: string;
     if (stateData.u) {
       // Incremental-auth flow: userId came from a verified `t=` token.
       stableUserId = stateData.u;

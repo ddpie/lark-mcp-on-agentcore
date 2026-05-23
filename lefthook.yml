@@ -1,0 +1,11 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: eslint
+      glob: "*.{ts,js}"
+      run: npx eslint {staged_files} --max-warnings 5
+
+pre-push:
+  jobs:
+    - name: test
+      run: ./scripts/test.sh

@@ -263,7 +263,7 @@ function patchPermissionError(output, toolName, incrAuthToken) {
         const matches = [...(data.error.message || '').matchAll(/scopes?[:\s]+([a-z0-9_:.\- ,]+)/gi)];
         for (const m of matches) {
           for (const s of m[1].split(/[,\s]+/)) {
-            if (/^[a-z0-9_:.\-]+$/i.test(s) && s.length > 2) missing.add(s);
+            if (/^[a-z0-9_:.-]+$/i.test(s) && s.length > 2) missing.add(s);
           }
         }
       }

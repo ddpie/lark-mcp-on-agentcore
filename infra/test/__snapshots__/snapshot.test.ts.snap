@@ -1422,7 +1422,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "a1e1b53d32521c850d073f45ddc45a809a03de86fdf905607da391672cd09a47.zip",
+          "S3Key": "767a934ad55a3ef0b9ab31ea95c472c580de8ca0b7935ac6954127eb374aab91.zip",
         },
         "Environment": {
           "Variables": {
@@ -1778,7 +1778,7 @@ exports[`CDK Snapshot Tests > RuntimeStack matches snapshot 1`] = `
   "Outputs": {
     "ImageUri": {
       "Value": {
-        "Fn::Sub": "123456789012.dkr.ecr.us-west-2.\${AWS::URLSuffix}/cdk-hnb659fds-container-assets-123456789012-us-west-2:f885f937931fd6ddef85e06201309dbe38fdc818947e09fc5545cd3b729ba407",
+        "Fn::Sub": "123456789012.dkr.ecr.us-west-2.\${AWS::URLSuffix}/cdk-hnb659fds-container-assets-123456789012-us-west-2:ec7e8b0351d873363ae26d8cec7c8502625ca4dd599217c586c7405488df2cb1",
       },
     },
     "RuntimeRoleArn": {

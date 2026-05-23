@@ -2,7 +2,9 @@
   "private": true,
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint lambda/ docker/server.js docker/generate-tools.js",
+    "lint:fix": "eslint lambda/ docker/server.js docker/generate-tools.js --fix"
   },
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.0.0",
@@ -15,13 +17,17 @@
     "@smithy/signature-v4": "^4.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/typescript-checker": "^9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^2.1.9",
     "esbuild": "^0.24.0",
+    "eslint": "^10.4.0",
+    "lefthook": "^2.1.8",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.59.4",
     "vitest": "^2.1.0"
   }
 }
