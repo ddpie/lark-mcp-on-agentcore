@@ -112,26 +112,35 @@ function escapeHtml(s: string): string {
 
 async function getAppAccessToken(): Promise<string> {
   await loadAppCredentials();
+  const t0 = Date.now();
   const resp = await fetch("https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
   });
+  const durationMs = Date.now() - t0;
+  if (durationMs > 3000) log('WARN', 'feishu_slow', { api: 'app_access_token', durationMs });
   return ((await resp.json()) as { app_access_token: string }).app_access_token;
 }
 
 async function exchangeCode(code: string, appToken: string) {
+  const t0 = Date.now();
   const resp = await fetch(FEISHU_TOKEN_URL, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${appToken}` },
     body: JSON.stringify({ grant_type: "authorization_code", code }),
   });
+  const durationMs = Date.now() - t0;
+  if (durationMs > 3000) log('WARN', 'feishu_slow', { api: 'exchange_code', durationMs });
   return resp.json() as Promise<{ code: number; msg: string; data?: { access_token: string; refresh_token: string; expires_in: number; open_id: string } }>;
 }
 
 async function refreshToken(rt: string, appToken: string) {
+  const t0 = Date.now();
   const resp = await fetch(FEISHU_REFRESH_URL, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${appToken}` },
     body: JSON.stringify({ grant_type: "refresh_token", refresh_token: rt }),
   });
+  const durationMs = Date.now() - t0;
+  if (durationMs > 3000) log('WARN', 'feishu_slow', { api: 'refresh_token', durationMs });
   return resp.json() as Promise<{ code: number; msg: string; data?: { access_token: string; refresh_token: string; expires_in: number } }>;
 }
 

@@ -53,15 +53,27 @@ async function verifyMcpToken(token: string): Promise<{ valid: boolean; userId: 
     const secondLastColon = decoded.lastIndexOf(':', lastColon - 1);
     const sig = decoded.slice(lastColon + 1);
     const expiresAt = parseInt(decoded.slice(secondLastColon + 1, lastColon));
-    if (isNaN(expiresAt)) return { valid: false, userId: '' };
+    if (isNaN(expiresAt)) {
+      log('WARN', 'token_verify_failed', { reason: 'malformed_payload' });
+      return { valid: false, userId: '' };
+    }
     const userId = decoded.slice(0, secondLastColon);
-    if (Date.now() / 1000 > expiresAt) return { valid: false, userId: '' };
+    if (Date.now() / 1000 > expiresAt) {
+      log('WARN', 'token_verify_failed', { reason: 'expired', userIdHash: hashUserId(userId) });
+      return { valid: false, userId: '' };
+    }
     const expected = createHmac('sha256', tokenKey!).update(`${userId}:${expiresAt}`).digest('hex');
     const sigBuf = Buffer.from(sig, 'hex');
     const expBuf = Buffer.from(expected, 'hex');
-    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return { valid: false, userId: '' };
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+      log('WARN', 'token_verify_failed', { reason: 'signature_mismatch', userIdHash: hashUserId(userId) });
+      return { valid: false, userId: '' };
+    }
     return { valid: true, userId };
-  } catch { return { valid: false, userId: '' }; }
+  } catch {
+    log('WARN', 'token_verify_failed', { reason: 'decode_error' });
+    return { valid: false, userId: '' };
+  }
 }
 
 async function getUserToken(userId: string): Promise<{ token: string | null; transientError?: boolean }> {
@@ -165,6 +177,7 @@ async function handle(event: LambdaEvent) {
 
   const url = `https://${signed.hostname}${signed.path}`;
   let resp: Response;
+  const t0 = Date.now();
   try {
     resp = await fetch(url, {
       method: 'POST',
@@ -173,11 +186,14 @@ async function handle(event: LambdaEvent) {
       signal: AbortSignal.timeout(25000),
     });
   } catch (e: any) {
-    log('ERROR', 'agentcore_fetch_failed', { userIdHash: hashUserId(userId), error: e.message, name: e.name });
+    log('ERROR', 'agentcore_fetch_failed', { userIdHash: hashUserId(userId), error: e.message, name: e.name, durationMs: Date.now() - t0 });
     return { statusCode: 504, headers: { 'Content-Type': 'application/json' }, body: '{"error":"upstream_timeout"}' };
   }
+  const durationMs = Date.now() - t0;
   if (resp.status >= 500) {
-    log('ERROR', 'agentcore_5xx', { userIdHash: hashUserId(userId), status: resp.status });
+    log('ERROR', 'agentcore_5xx', { userIdHash: hashUserId(userId), status: resp.status, durationMs });
+  } else if (durationMs > 5000) {
+    log('WARN', 'agentcore_slow', { userIdHash: hashUserId(userId), durationMs, status: resp.status });
   }
 
   const responseBody = await resp.text();
