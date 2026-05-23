@@ -28,7 +28,12 @@ if [ -z "${LARK_LANG:-}" ]; then
   echo "    1) 中文"
   echo "    2) English"
   echo ""
-  read -rp "  [1]: " LANG_CHOICE
+  # Drain any pre-typed input before the very first prompt (the helper isn't
+  # defined yet at this point in the script).
+  if [ -t 0 ]; then
+    while IFS= read -r -t 0.05 _ </dev/tty 2>/dev/null; do :; done
+  fi
+  read -rp "  [1]: " LANG_CHOICE </dev/tty
   case "${LANG_CHOICE:-1}" in
     2) export LARK_LANG="en" ;;
     *) export LARK_LANG="zh" ;;
@@ -93,10 +98,19 @@ elif command -v yum &>/dev/null; then PKG="yum"
 elif command -v brew &>/dev/null; then PKG="brew"
 fi
 
+# Drain any pre-typed input before each prompt so a held Enter from the previous
+# prompt can't auto-accept the next decision.
+drain_stdin() {
+  if [ -t 0 ]; then
+    while IFS= read -r -t 0.05 _ </dev/tty 2>/dev/null; do :; done
+  fi
+}
+prompt() { drain_stdin; read -rp "  $1" "$2" </dev/tty; }
+
 install_pkg() {
   local cmd="$1"
   echo ""
-  read -rp "  $(t missing_install "$cmd") " ans
+  prompt "$(t missing_install "$cmd") " ans
   if [[ "${ans:-y}" =~ ^[nN] ]]; then
     echo "  $(t skipped "$cmd")"
     exit 1
@@ -170,7 +184,7 @@ printf "  %-10s ✓\n" "cdk"
 
 if ! python3 -c "import boto3" &>/dev/null; then
   echo ""
-  read -rp "  ${L[missing_boto3]} " ans
+  prompt "${L[missing_boto3]} " ans
   if [[ ! "${ans:-y}" =~ ^[nN] ]]; then
     pip3 install boto3 --quiet
   fi
@@ -201,12 +215,13 @@ fi
 
 echo "  ${L[npm_deps]}"
 npm install --silent 2>/dev/null
-cd infra && npm install --silent 2>/dev/null && cd ..
+( cd infra && npm install --silent 2>/dev/null )
+( cd docker && npm install --omit=dev --silent --no-audit --no-fund 2>/dev/null )
 
 echo ""
 echo "  ${L[done]}"
 echo ""
-read -rp "  ${L[start_deploy]} " START
+prompt "${L[start_deploy]} " START
 if [[ "${START:-y}" =~ ^[nN] ]]; then
   echo ""
   echo "  $(t deploy_later "$(pwd)")"

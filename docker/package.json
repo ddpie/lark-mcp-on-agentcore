@@ -1,0 +1,8 @@
+{
+  "name": "lark-mcp-server",
+  "private": true,
+  "version": "0.2.0",
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.700.0"
+  }
+}

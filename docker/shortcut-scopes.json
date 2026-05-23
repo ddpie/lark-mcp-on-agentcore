@@ -35,13 +35,6 @@
     },
     {
       "service": "apps",
-      "command": "+list",
-      "scopes": [
-        "spark:app:read"
-      ]
-    },
-    {
-      "service": "apps",
       "command": "+update",
       "scopes": [
         "spark:app:write"

@@ -29,8 +29,14 @@ function getVersion() {
   return match ? match[0] : 'unknown';
 }
 
+// Flags hidden from the LLM-facing schema:
+// - yes / dry-run / jq: lark-cli wrapper concerns, not user intent.
+//   server.js adds --yes itself when needed (gated by supportsYes).
+const HIDDEN_FLAGS = new Set(['yes', 'dry-run', 'jq']);
+
 function parseFlags(helpText) {
   const flags = [];
+  let supportsYes = false;
   const lines = helpText.split('\n');
   for (const line of lines) {
     const m = line.match(/^\s+--(\S+)\s+(.+)/);
@@ -39,6 +45,8 @@ function parseFlags(helpText) {
     let name = rawName;
     let type = 'string';
     if (name.includes(' ')) continue;
+    if (name === 'yes') { supportsYes = true; continue; }
+    if (HIDDEN_FLAGS.has(name)) continue;
     if (rest.toLowerCase().includes('(default: false)') || rest.toLowerCase().includes('(default: true)')) type = 'boolean';
     const required = rest.includes('(required)');
     const enumMatch = rest.match(/\(enum:\s*([^)]+)\)/);
@@ -46,7 +54,7 @@ function parseFlags(helpText) {
     const description = rest.replace(/\s*\(required\)/, '').replace(/\s*\(default:[^)]+\)/, '').replace(/\s*\(enum:[^)]+\)/, '').trim();
     flags.push({ name, type, description, required, ...(enumValues && { enum: enumValues }) });
   }
-  return flags;
+  return { flags, supportsYes };
 }
 
 function detectRisk(helpText, commandName) {
@@ -104,11 +112,11 @@ for (const service of services) {
   const { shortcuts } = discoverShortcuts(service);
   for (const { command, description } of shortcuts) {
     const cmdHelp = run('lark-cli', service, command, '--help');
-    const flags = parseFlags(cmdHelp);
+    const { flags, supportsYes } = parseFlags(cmdHelp);
     const risk = detectRisk(cmdHelp, command);
     const scopes = scopeMap[`${service}:${command}`] || [];
     if (scopes.length > 0) scopeMapped++;
-    tools.push({ service, command, description, risk, flags, ...(scopes.length > 0 && { scopes }) });
+    tools.push({ service, command, description, risk, flags, ...(supportsYes && { supportsYes: true }), ...(scopes.length > 0 && { scopes }) });
   }
 }
 

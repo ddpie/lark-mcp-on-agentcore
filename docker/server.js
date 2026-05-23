@@ -6,15 +6,92 @@
 const http = require('http');
 const fs = require('fs');
 const { execFile } = require('child_process');
-const { promisify } = require('util');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 
-const execFileAsync = promisify(execFile);
+process.on('uncaughtException', (err) => {
+  console.error(JSON.stringify({ level: 'FATAL', event: 'uncaughtException', error: err.message, stack: err.stack }));
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(JSON.stringify({ level: 'ERROR', event: 'unhandledRejection', reason: String(reason) }));
+});
+
+// Track in-flight lark-cli child processes so SIGTERM can drain or kill them.
+const activeChildren = new Set();
+
+// Bounded concurrency for lark-cli child processes.
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '10', 10);
+const MAX_QUEUE_DEPTH = parseInt(process.env.MAX_QUEUE_DEPTH || '20', 10);
+let activeProcesses = 0;
+const queue = [];
+
+class ServerBusyError extends Error {
+  constructor() { super('server_busy'); this.name = 'ServerBusyError'; }
+}
+
+async function withSemaphore(fn, abortSignal) {
+  if (activeProcesses >= MAX_CONCURRENT) {
+    if (queue.length >= MAX_QUEUE_DEPTH) throw new ServerBusyError();
+    await new Promise((resolve, reject) => {
+      const entry = { resolve, reject };
+      queue.push(entry);
+      if (abortSignal) {
+        abortSignal.addEventListener('abort', () => {
+          const idx = queue.indexOf(entry);
+          if (idx >= 0) { queue.splice(idx, 1); reject(new Error('client_aborted')); }
+        }, { once: true });
+      }
+    });
+  }
+  activeProcesses++;
+  try { return await fn(); }
+  finally {
+    activeProcesses--;
+    const next = queue.shift();
+    if (next) next.resolve();
+  }
+}
+
+function runLarkCli(cliArgs, env, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const child = execFile('lark-cli', cliArgs, {
+      timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, env,
+    }, (err, stdout, stderr) => {
+      activeChildren.delete(child);
+      if (err) reject(Object.assign(err, { stdout, stderr }));
+      else resolve({ stdout, stderr });
+    });
+    activeChildren.add(child);
+  });
+}
 
 const PORT = 8000;
+const REGION = process.env.AWS_REGION || process.env.DEPLOY_REGION || 'us-west-2';
 const APP_ID = process.env.APP_ID || '';
-const APP_SECRET = process.env.APP_SECRET || '';
+const APP_SECRET_ID = process.env.APP_SECRET_ID || 'lark-mcp-on-agentcore/feishu-app';
 const BRAND = process.env.LARKSUITE_CLI_BRAND || 'feishu';
 const AUTHORIZE_BASE = process.env.AUTHORIZE_BASE || '';
+
+let APP_SECRET = '';
+let appSecretLoaded = false;
+const sm = new SecretsManagerClient({ region: REGION });
+
+async function loadAppSecret(maxRetries = 5) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const resp = await sm.send(new GetSecretValueCommand({ SecretId: APP_SECRET_ID }));
+      APP_SECRET = JSON.parse(resp.SecretString).appSecret;
+      appSecretLoaded = true;
+      console.log(JSON.stringify({ level: 'INFO', event: 'app_secret_loaded' }));
+      return;
+    } catch (e) {
+      const wait = Math.min(500 * Math.pow(2, i), 8000);
+      console.error(JSON.stringify({ level: 'WARN', event: 'app_secret_load_failed', attempt: i + 1, error: e.message, retry_in_ms: wait }));
+      if (i < maxRetries - 1) await new Promise(r => setTimeout(r, wait));
+      else throw e;
+    }
+  }
+}
 
 // Load tool catalog and tier1
 const catalogRaw = JSON.parse(fs.readFileSync('/app/generated-tools.json', 'utf8'));
@@ -52,7 +129,43 @@ function buildInputSchema(def) {
     properties[key] = prop;
     if (flag.required) required.push(key);
   }
+  if (def.risk === 'high-risk-write') {
+    properties._confirm = {
+      type: 'boolean',
+      description: 'Must be set to true to confirm this destructive operation. Ask the user first; do not set this without explicit user approval.',
+    };
+  }
   return { type: 'object', properties, ...(required.length > 0 ? { required } : {}) };
+}
+
+// MCP tool annotations (spec: 2025-03-26). Clients use these to render UI:
+// destructive tools should prompt the user explicitly before invocation.
+function toolAnnotations(def) {
+  if (def.risk === 'high-risk-write') {
+    return {
+      title: def.description,
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    };
+  }
+  if (def.risk === 'write') {
+    return {
+      title: def.description,
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    };
+  }
+  return {
+    title: def.description,
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  };
 }
 
 // Build tier1 tool schemas
@@ -127,27 +240,36 @@ function patchPermissionError(output, toolName, incrAuthToken) {
   try {
     const data = JSON.parse(output);
     if (data.error && Number(data.error.code) === 99991679) {
-      let missingScope = '';
+      // Collect missing scopes as a Set, normalize to comma-separated for the URL.
+      const missing = new Set();
       // Layer 2: check local scope mapping table first
-      if (!missingScope && toolName && toolScopeMap.has(toolName)) {
-        missingScope = toolScopeMap.get(toolName).join(' ');
+      if (toolName && toolScopeMap.has(toolName)) {
+        for (const s of toolScopeMap.get(toolName)) missing.add(s);
       }
       // Layer 3: extract from lark-cli error response
-      if (!missingScope && data.error.console_url) {
+      if (missing.size === 0 && data.error.console_url) {
         try {
           const u = new URL(data.error.console_url);
-          missingScope = u.searchParams.get('scopes') || '';
+          const raw = u.searchParams.get('scopes') || '';
+          for (const s of raw.split(/[,\s]+/).filter(Boolean)) missing.add(s);
         } catch {}
       }
-      if (!missingScope) {
-        const m = (data.error.message || '').match(/required scope (\S+)/);
-        if (m) missingScope = m[1].replace(/[,;.!)\]]+$/, '');
+      if (missing.size === 0) {
+        // Capture all scope tokens — Feishu may list multiple comma/space-separated.
+        const matches = [...(data.error.message || '').matchAll(/scopes?[:\s]+([a-z0-9_:.\- ,]+)/gi)];
+        for (const m of matches) {
+          for (const s of m[1].split(/[,\s]+/)) {
+            if (/^[a-z0-9_:.\-]+$/i.test(s) && s.length > 2) missing.add(s);
+          }
+        }
       }
 
-      if (missingScope && AUTHORIZE_BASE) {
+      if (missing.size > 0 && AUTHORIZE_BASE) {
+        const scopeList = [...missing];
         const tokenParam = incrAuthToken ? `&t=${encodeURIComponent(incrAuthToken)}` : '';
-        const authUrl = `${AUTHORIZE_BASE}/authorize?extra_scope=${encodeURIComponent(missingScope)}${tokenParam}`;
-        data.error.hint = `Missing permission: ${missingScope}. Click to authorize: ${authUrl}`;
+        // OAuth Lambda expects comma-separated extra_scope (no spaces); each scope must be in allowlist.
+        const authUrl = `${AUTHORIZE_BASE}/authorize?extra_scope=${encodeURIComponent(scopeList.join(','))}${tokenParam}`;
+        data.error.hint = `Missing permission: ${scopeList.join(' ')}. Click to authorize: ${authUrl}`;
         data.error.authorize_url = authUrl;
       } else {
         data.error.hint = 'This tool requires a permission that could not be determined automatically. Please contact ddpie.flea@gmail.com for support.';
@@ -159,7 +281,23 @@ function patchPermissionError(output, toolName, incrAuthToken) {
   return output;
 }
 
-async function executeTool(def, args, userToken, toolName, incrAuthToken) {
+async function executeTool(def, args, userToken, toolName, incrAuthToken, abortSignal) {
+  // High-risk writes (delete, etc.) require explicit user approval. Primary
+  // defense is the destructiveHint annotation surfaced via tools/list — a
+  // spec-compliant MCP client will pop a confirmation UI. _confirm is layered
+  // defense for clients that ignore annotations.
+  if (def.risk === 'high-risk-write' && args._confirm !== true) {
+    return {
+      content: [{ type: 'text', text: JSON.stringify({
+        error: 'user_approval_required',
+        message: 'This is a destructive operation. STOP. Ask the user to confirm in plain language (describe exactly what will be deleted/modified). Only after the user explicitly approves, re-call this tool with args._confirm=true. Do NOT silently retry.',
+        tool: toolName,
+        risk: def.risk,
+      }) }],
+      isError: true,
+    };
+  }
+
   const cliArgs = [def.service, def.command];
   for (const flag of def.flags) {
     const key = toSchemaKey(flag.name);
@@ -168,7 +306,10 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken) {
     if (flag.type === 'boolean') { if (value) cliArgs.push(`--${flag.name}`); }
     else cliArgs.push(`--${flag.name}`, String(value));
   }
-  if (def.risk === 'high-risk-write') cliArgs.push('--yes');
+  // lark-cli's --yes is per-command. Only inject it for commands that declare
+  // it (recorded as supportsYes at build time); other high-risk-write commands
+  // (e.g. delete-dimension) would treat --yes as an unknown flag and print usage.
+  if (def.risk === 'high-risk-write' && def.supportsYes) cliArgs.push('--yes');
 
   const env = {
     ...process.env,
@@ -181,30 +322,36 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken) {
   };
 
   try {
-    const { stdout } = await execFileAsync('lark-cli', cliArgs, { timeout: 60000, maxBuffer: 10 * 1024 * 1024, env });
+    const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, 60000), abortSignal);
     const output = stdout.trim() || '{"ok":true,"data":null}';
     return { content: [{ type: 'text', text: patchPermissionError(output, toolName, incrAuthToken) }] };
   } catch (err) {
+    if (err instanceof ServerBusyError) {
+      return { content: [{ type: 'text', text: '{"error":"server_busy","message":"Too many concurrent requests, retry shortly"}' }], isError: true };
+    }
+    if (err.message === 'client_aborted') {
+      return { content: [{ type: 'text', text: '{"error":"client_aborted"}' }], isError: true };
+    }
     const message = err.stdout?.trim() || err.stderr?.trim() || err.message;
     return { content: [{ type: 'text', text: patchPermissionError(message, toolName, incrAuthToken) }], isError: true };
   }
 }
 
 function sseResponse(res, data) {
-  res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
   res.end(`event: message\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
 const server = http.createServer((req, res) => {
   // Health check (AgentCore sends GET /ping)
   if (req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ status: 'Healthy', time_of_last_update: Math.floor(Date.now() / 1000) }));
     return;
   }
 
   if (req.method !== 'POST') {
-    res.writeHead(405);
+    res.writeHead(405, { 'Cache-Control': 'no-store' });
     res.end('');
     return;
   }
@@ -213,8 +360,13 @@ const server = http.createServer((req, res) => {
   let body = '';
   let destroyed = false;
   req.on('data', chunk => {
+    if (destroyed) return;
     body += chunk;
-    if (body.length > MAX_BODY) { destroyed = true; req.destroy(); res.writeHead(413); res.end(); return; }
+    if (body.length > MAX_BODY) {
+      destroyed = true;
+      if (!res.headersSent) { res.writeHead(413, { 'Cache-Control': 'no-store' }); res.end(); }
+      req.destroy();
+    }
   });
   req.on('end', () => { if (!destroyed) handleRequest(req, res, body); });
 });
@@ -222,10 +374,14 @@ const server = http.createServer((req, res) => {
 async function handleRequest(req, res, body) {
   let mcpReq;
   try { mcpReq = JSON.parse(body); } catch {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.writeHead(400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end('{"error":"invalid_json"}');
     return;
   }
+
+  // Propagate client-cancellation into the semaphore queue.
+  const ac = new AbortController();
+  req.on('close', () => ac.abort());
 
   // Extract user token and incremental-auth token from headers
   const userToken = req.headers['x-user-access-token'] || '';
@@ -238,16 +394,23 @@ async function handleRequest(req, res, body) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'lark-mcp-agentcore', version: '2.0.0' },
+        serverInfo: { name: 'lark-mcp-on-agentcore', version: '2.0.0' },
       },
     });
     return;
   }
 
-  // tools/list
+  // tools/list — emit MCP annotations so spec-compliant clients (Quick Desktop,
+  // Claude Desktop, etc.) render an explicit user-approval UI for destructive
+  // tools instead of relying on the LLM to honor _confirm semantics.
   if (mcpReq.method === 'tools/list') {
     const tools = [
-      ...tier1Tools.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
+      ...tier1Tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+        annotations: toolAnnotations(t._def),
+      })),
       DISCOVER_TOOL,
       INVOKE_TOOL,
     ];
@@ -257,6 +420,10 @@ async function handleRequest(req, res, body) {
 
   // tools/call
   if (mcpReq.method === 'tools/call') {
+    if (!appSecretLoaded) {
+      sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"server_initializing","message":"App secret not loaded yet, retry shortly"}' }], isError: true } });
+      return;
+    }
     const toolName = mcpReq.params?.name || '';
     const toolArgs = mcpReq.params?.arguments || {};
 
@@ -268,6 +435,7 @@ async function handleRequest(req, res, body) {
         description: `[${e.def.risk}] ${e.def.description}`,
         category: e.def.service,
         inputSchema: buildInputSchema(e.def),
+        annotations: toolAnnotations(e.def),
       }));
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ tools: output }) }] } });
       return;
@@ -286,7 +454,7 @@ async function handleRequest(req, res, body) {
         sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"no user token"}' }], isError: true } });
         return;
       }
-      const result = await executeTool(entry.def, realArgs, userToken, realName, incrAuthToken);
+      const result = await executeTool(entry.def, realArgs, userToken, realName, incrAuthToken, ac.signal);
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result });
       return;
     }
@@ -298,7 +466,7 @@ async function handleRequest(req, res, body) {
         sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"no user token"}' }], isError: true } });
         return;
       }
-      const result = await executeTool(tool._def, toolArgs, userToken, toolName, incrAuthToken);
+      const result = await executeTool(tool._def, toolArgs, userToken, toolName, incrAuthToken, ac.signal);
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result });
       return;
     }
@@ -312,5 +480,28 @@ async function handleRequest(req, res, body) {
 }
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`lark-mcp-agentcore v2 listening on :${PORT} (${tier1Tools.length} tier1 + ${allToolDefs.length} discoverable)`);
+  console.log(`lark-mcp-on-agentcore listening on :${PORT} (${tier1Tools.length} tier1 + ${allToolDefs.length} discoverable)`);
+  // Async secret load AFTER listen, so /ping returns 200 immediately.
+  loadAppSecret().catch(e => {
+    console.error(JSON.stringify({ level: 'CRITICAL', event: 'app_secret_load_giveup', error: e.message }));
+  });
 });
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(JSON.stringify({ level: 'INFO', event: 'shutdown_start', signal, active_children: activeChildren.size }));
+
+  server.close();
+  await new Promise(r => setTimeout(r, 5000));
+
+  for (const child of activeChildren) { try { child.kill('SIGTERM'); } catch {} }
+  await new Promise(r => setTimeout(r, 2000));
+  for (const child of activeChildren) { try { child.kill('SIGKILL'); } catch {} }
+
+  console.log(JSON.stringify({ level: 'INFO', event: 'shutdown_complete' }));
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
