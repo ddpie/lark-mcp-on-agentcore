@@ -5,8 +5,10 @@ import { SignatureV4 } from '@smithy/signature-v4';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
+import { log, hashUserId } from '../shared/log';
 
-const SECRET_PREFIX = process.env.SECRET_PREFIX || 'lark-mcp/users';
+const SECRET_PREFIX = process.env.SECRET_PREFIX || 'lark-mcp-on-agentcore/users';
+const STATE_SECRET_PARAM = process.env.STATE_SECRET_PARAM || '/lark-mcp-on-agentcore/state-secret';
 const RUNTIME_ARN = process.env.RUNTIME_ARN!;
 const AUTHORIZE_BASE = process.env.AUTHORIZE_BASE || '';
 const REGION = process.env.DEPLOY_REGION || process.env.AWS_REGION || 'us-west-2';
@@ -28,7 +30,7 @@ interface LambdaEvent {
 
 async function getStateSecret(): Promise<string> {
   if (stateSecret) return stateSecret;
-  const resp = await ssm.send(new GetParameterCommand({ Name: '/lark-mcp/state-secret', WithDecryption: true }));
+  const resp = await ssm.send(new GetParameterCommand({ Name: STATE_SECRET_PARAM, WithDecryption: true }));
   stateSecret = resp.Parameter!.Value!;
   return stateSecret;
 }
@@ -72,6 +74,7 @@ export async function handler(event: LambdaEvent) {
     if (valid) userId = mcpUserId;
   }
   if (!userId) {
+    log('WARN', 'auth_missing_or_invalid', { hasBearer: !!bearerToken });
     return {
       statusCode: 401,
       headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' },
@@ -81,6 +84,7 @@ export async function handler(event: LambdaEvent) {
 
   const feishuToken = await getUserToken(userId);
   if (!feishuToken) {
+    log('INFO', 'feishu_not_authorized', { userIdHash: hashUserId(userId) });
     const authorizeUrl = AUTHORIZE_BASE ? `${AUTHORIZE_BASE}/authorize?user_id=${encodeURIComponent(userId)}` : '';
     return { statusCode: 403, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'feishu_not_authorized', authorize_url: authorizeUrl, user_id: userId }) };
   }
@@ -120,11 +124,21 @@ export async function handler(event: LambdaEvent) {
   const signed = await signer.sign(request);
 
   const url = `https://${signed.hostname}${signed.path}`;
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: signed.headers as Record<string, string>,
-    body: bodyBytes,
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: signed.headers as Record<string, string>,
+      body: bodyBytes,
+      signal: AbortSignal.timeout(25000),
+    });
+  } catch (e: any) {
+    log('ERROR', 'agentcore_fetch_failed', { userIdHash: hashUserId(userId), error: e.message, name: e.name });
+    return { statusCode: 504, headers: { 'Content-Type': 'application/json' }, body: '{"error":"upstream_timeout"}' };
+  }
+  if (resp.status >= 500) {
+    log('ERROR', 'agentcore_5xx', { userIdHash: hashUserId(userId), status: resp.status });
+  }
 
   const responseBody = await resp.text();
   // Forward MCP session ID back to client so it can echo on subsequent requests

@@ -201,7 +201,8 @@ fi
 
 echo "  ${L[npm_deps]}"
 npm install --silent 2>/dev/null
-cd infra && npm install --silent 2>/dev/null && cd ..
+( cd infra && npm install --silent 2>/dev/null )
+( cd docker && npm install --omit=dev --silent --no-audit --no-fund 2>/dev/null )
 
 echo ""
 echo "  ${L[done]}"

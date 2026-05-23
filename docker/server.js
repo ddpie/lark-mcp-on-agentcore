@@ -6,15 +6,92 @@
 const http = require('http');
 const fs = require('fs');
 const { execFile } = require('child_process');
-const { promisify } = require('util');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 
-const execFileAsync = promisify(execFile);
+process.on('uncaughtException', (err) => {
+  console.error(JSON.stringify({ level: 'FATAL', event: 'uncaughtException', error: err.message, stack: err.stack }));
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(JSON.stringify({ level: 'ERROR', event: 'unhandledRejection', reason: String(reason) }));
+});
+
+// Track in-flight lark-cli child processes so SIGTERM can drain or kill them.
+const activeChildren = new Set();
+
+// Bounded concurrency for lark-cli child processes.
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '10', 10);
+const MAX_QUEUE_DEPTH = parseInt(process.env.MAX_QUEUE_DEPTH || '20', 10);
+let activeProcesses = 0;
+const queue = [];
+
+class ServerBusyError extends Error {
+  constructor() { super('server_busy'); this.name = 'ServerBusyError'; }
+}
+
+async function withSemaphore(fn, abortSignal) {
+  if (activeProcesses >= MAX_CONCURRENT) {
+    if (queue.length >= MAX_QUEUE_DEPTH) throw new ServerBusyError();
+    await new Promise((resolve, reject) => {
+      const entry = { resolve, reject };
+      queue.push(entry);
+      if (abortSignal) {
+        abortSignal.addEventListener('abort', () => {
+          const idx = queue.indexOf(entry);
+          if (idx >= 0) { queue.splice(idx, 1); reject(new Error('client_aborted')); }
+        }, { once: true });
+      }
+    });
+  }
+  activeProcesses++;
+  try { return await fn(); }
+  finally {
+    activeProcesses--;
+    const next = queue.shift();
+    if (next) next.resolve();
+  }
+}
+
+function runLarkCli(cliArgs, env, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const child = execFile('lark-cli', cliArgs, {
+      timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, env,
+    }, (err, stdout, stderr) => {
+      activeChildren.delete(child);
+      if (err) reject(Object.assign(err, { stdout, stderr }));
+      else resolve({ stdout, stderr });
+    });
+    activeChildren.add(child);
+  });
+}
 
 const PORT = 8000;
+const REGION = process.env.AWS_REGION || process.env.DEPLOY_REGION || 'us-west-2';
 const APP_ID = process.env.APP_ID || '';
-const APP_SECRET = process.env.APP_SECRET || '';
+const APP_SECRET_ID = process.env.APP_SECRET_ID || 'lark-mcp-on-agentcore/feishu-app';
 const BRAND = process.env.LARKSUITE_CLI_BRAND || 'feishu';
 const AUTHORIZE_BASE = process.env.AUTHORIZE_BASE || '';
+
+let APP_SECRET = '';
+let appSecretLoaded = false;
+const sm = new SecretsManagerClient({ region: REGION });
+
+async function loadAppSecret(maxRetries = 5) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const resp = await sm.send(new GetSecretValueCommand({ SecretId: APP_SECRET_ID }));
+      APP_SECRET = JSON.parse(resp.SecretString).appSecret;
+      appSecretLoaded = true;
+      console.log(JSON.stringify({ level: 'INFO', event: 'app_secret_loaded' }));
+      return;
+    } catch (e) {
+      const wait = Math.min(500 * Math.pow(2, i), 8000);
+      console.error(JSON.stringify({ level: 'WARN', event: 'app_secret_load_failed', attempt: i + 1, error: e.message, retry_in_ms: wait }));
+      if (i < maxRetries - 1) await new Promise(r => setTimeout(r, wait));
+      else throw e;
+    }
+  }
+}
 
 // Load tool catalog and tier1
 const catalogRaw = JSON.parse(fs.readFileSync('/app/generated-tools.json', 'utf8'));
@@ -51,6 +128,12 @@ function buildInputSchema(def) {
     if (flag.enum) prop.enum = flag.enum;
     properties[key] = prop;
     if (flag.required) required.push(key);
+  }
+  if (def.risk === 'high-risk-write') {
+    properties._confirm = {
+      type: 'boolean',
+      description: 'Must be set to true to confirm this destructive operation.',
+    };
   }
   return { type: 'object', properties, ...(required.length > 0 ? { required } : {}) };
 }
@@ -140,8 +223,14 @@ function patchPermissionError(output, toolName, incrAuthToken) {
         } catch {}
       }
       if (!missingScope) {
-        const m = (data.error.message || '').match(/required scope (\S+)/);
-        if (m) missingScope = m[1].replace(/[,;.!)\]]+$/, '');
+        // Capture all scope tokens — Feishu may list multiple comma/space-separated.
+        const matches = [...(data.error.message || '').matchAll(/scopes?[:\s]+([a-z0-9_:.\- ,]+)/gi)];
+        if (matches.length > 0) {
+          const scopes = matches
+            .flatMap(m => m[1].split(/[,\s]+/))
+            .filter(s => /^[a-z0-9_:.\-]+$/i.test(s) && s.length > 2);
+          missingScope = [...new Set(scopes)].join(' ');
+        }
       }
 
       if (missingScope && AUTHORIZE_BASE) {
@@ -159,7 +248,21 @@ function patchPermissionError(output, toolName, incrAuthToken) {
   return output;
 }
 
-async function executeTool(def, args, userToken, toolName, incrAuthToken) {
+async function executeTool(def, args, userToken, toolName, incrAuthToken, abortSignal) {
+  // High-risk writes (delete, etc.) require explicit args._confirm=true,
+  // surfaced to the LLM so it must affirm intent before destructive action.
+  if (def.risk === 'high-risk-write' && args._confirm !== true) {
+    return {
+      content: [{ type: 'text', text: JSON.stringify({
+        error: 'confirmation_required',
+        message: 'High-risk write operation. Re-call with args._confirm=true to proceed.',
+        tool: toolName,
+        risk: def.risk,
+      }) }],
+      isError: true,
+    };
+  }
+
   const cliArgs = [def.service, def.command];
   for (const flag of def.flags) {
     const key = toSchemaKey(flag.name);
@@ -181,10 +284,16 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken) {
   };
 
   try {
-    const { stdout } = await execFileAsync('lark-cli', cliArgs, { timeout: 60000, maxBuffer: 10 * 1024 * 1024, env });
+    const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, 60000), abortSignal);
     const output = stdout.trim() || '{"ok":true,"data":null}';
     return { content: [{ type: 'text', text: patchPermissionError(output, toolName, incrAuthToken) }] };
   } catch (err) {
+    if (err instanceof ServerBusyError) {
+      return { content: [{ type: 'text', text: '{"error":"server_busy","message":"Too many concurrent requests, retry shortly"}' }], isError: true };
+    }
+    if (err.message === 'client_aborted') {
+      return { content: [{ type: 'text', text: '{"error":"client_aborted"}' }], isError: true };
+    }
     const message = err.stdout?.trim() || err.stderr?.trim() || err.message;
     return { content: [{ type: 'text', text: patchPermissionError(message, toolName, incrAuthToken) }], isError: true };
   }
@@ -213,8 +322,13 @@ const server = http.createServer((req, res) => {
   let body = '';
   let destroyed = false;
   req.on('data', chunk => {
+    if (destroyed) return;
     body += chunk;
-    if (body.length > MAX_BODY) { destroyed = true; req.destroy(); res.writeHead(413); res.end(); return; }
+    if (body.length > MAX_BODY) {
+      destroyed = true;
+      if (!res.headersSent) { res.writeHead(413); res.end(); }
+      req.destroy();
+    }
   });
   req.on('end', () => { if (!destroyed) handleRequest(req, res, body); });
 });
@@ -227,6 +341,10 @@ async function handleRequest(req, res, body) {
     return;
   }
 
+  // Propagate client-cancellation into the semaphore queue.
+  const ac = new AbortController();
+  req.on('close', () => ac.abort());
+
   // Extract user token and incremental-auth token from headers
   const userToken = req.headers['x-user-access-token'] || '';
   const incrAuthToken = req.headers['x-incr-auth-token'] || '';
@@ -238,7 +356,7 @@ async function handleRequest(req, res, body) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'lark-mcp-agentcore', version: '2.0.0' },
+        serverInfo: { name: 'lark-mcp-on-agentcore', version: '2.0.0' },
       },
     });
     return;
@@ -257,6 +375,10 @@ async function handleRequest(req, res, body) {
 
   // tools/call
   if (mcpReq.method === 'tools/call') {
+    if (!appSecretLoaded) {
+      sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"server_initializing","message":"App secret not loaded yet, retry shortly"}' }], isError: true } });
+      return;
+    }
     const toolName = mcpReq.params?.name || '';
     const toolArgs = mcpReq.params?.arguments || {};
 
@@ -286,7 +408,7 @@ async function handleRequest(req, res, body) {
         sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"no user token"}' }], isError: true } });
         return;
       }
-      const result = await executeTool(entry.def, realArgs, userToken, realName, incrAuthToken);
+      const result = await executeTool(entry.def, realArgs, userToken, realName, incrAuthToken, ac.signal);
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result });
       return;
     }
@@ -298,7 +420,7 @@ async function handleRequest(req, res, body) {
         sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"no user token"}' }], isError: true } });
         return;
       }
-      const result = await executeTool(tool._def, toolArgs, userToken, toolName, incrAuthToken);
+      const result = await executeTool(tool._def, toolArgs, userToken, toolName, incrAuthToken, ac.signal);
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result });
       return;
     }
@@ -312,5 +434,28 @@ async function handleRequest(req, res, body) {
 }
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`lark-mcp-agentcore v2 listening on :${PORT} (${tier1Tools.length} tier1 + ${allToolDefs.length} discoverable)`);
+  console.log(`lark-mcp-on-agentcore listening on :${PORT} (${tier1Tools.length} tier1 + ${allToolDefs.length} discoverable)`);
+  // Async secret load AFTER listen, so /ping returns 200 immediately.
+  loadAppSecret().catch(e => {
+    console.error(JSON.stringify({ level: 'CRITICAL', event: 'app_secret_load_giveup', error: e.message }));
+  });
 });
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(JSON.stringify({ level: 'INFO', event: 'shutdown_start', signal, active_children: activeChildren.size }));
+
+  server.close();
+  await new Promise(r => setTimeout(r, 5000));
+
+  for (const child of activeChildren) { try { child.kill('SIGTERM'); } catch {} }
+  await new Promise(r => setTimeout(r, 2000));
+  for (const child of activeChildren) { try { child.kill('SIGKILL'); } catch {} }
+
+  console.log(JSON.stringify({ level: 'INFO', event: 'shutdown_complete' }));
+  process.exit(0);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

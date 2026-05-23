@@ -20,6 +20,10 @@ RUNTIME_ARN="${RUNTIME_ARN:-}"
 OAUTH_ENDPOINT="${OAUTH_ENDPOINT:-}"
 TEST_USER_ID="${TEST_USER_ID:-e2e-test-user}"
 
+urlencode() {
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
 while [[ $# -gt 0 ]]; do
   case $1 in
     --runtime-arn) RUNTIME_ARN="$2"; shift 2 ;;
@@ -31,7 +35,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$OAUTH_ENDPOINT" ]; then
-  OAUTH_ENDPOINT=$(aws cloudformation describe-stacks --stack-name LarkMcpOAuth --region $REGION \
+  OAUTH_ENDPOINT=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
     --query 'Stacks[0].Outputs[?OutputKey==`OAuthEndpoint`].OutputValue' --output text 2>/dev/null || echo "")
 fi
 
@@ -53,10 +57,12 @@ echo ""
 # 测试 1: OAuth 流程
 echo "── OAuth 流程 ──"
 if [ -n "$OAUTH_ENDPOINT" ]; then
-  HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/authorize?user_id=${TEST_USER_ID}")
+  ENC_USER=$(urlencode "$TEST_USER_ID")
+
+  HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/authorize?user_id=${ENC_USER}")
   if [ "$HTTP" = "302" ]; then pass "/authorize → 302 重定向"; else fail "/authorize → HTTP ${HTTP} (期望 302)"; fi
 
-  REDIRECT=$(curl -s -o /dev/null -w "%{redirect_url}" "${OAUTH_ENDPOINT}/authorize?user_id=${TEST_USER_ID}")
+  REDIRECT=$(curl -s -o /dev/null -w "%{redirect_url}" "${OAUTH_ENDPOINT}/authorize?user_id=${ENC_USER}")
   if echo "$REDIRECT" | grep -q "state="; then pass "/authorize 包含 HMAC state"; else fail "/authorize 缺少 state"; fi
 
   TAMPER=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/callback?code=fake&state=dGFtcGVyZWQ6MTIzOmZha2U")
@@ -64,6 +70,19 @@ if [ -n "$OAUTH_ENDPOINT" ]; then
 
   TOKEN_HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/token?user_id=test")
   if [ "$TOKEN_HTTP" = "405" ]; then pass "/token GET 返回 405 Method Not Allowed"; else fail "/token → HTTP ${TOKEN_HTTP} (期望 405)"; fi
+
+  # MCP middleware should reject unauthenticated POSTs with 401.
+  MCP_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+    "${OAUTH_ENDPOINT}/mcp")
+  if [ "$MCP_HTTP" = "401" ]; then pass "/mcp 未授权请求 → 401"; else fail "/mcp → HTTP ${MCP_HTTP} (期望 401)"; fi
+
+  # /mcp with malformed bearer should also 401.
+  MCP_BAD=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" \
+    -H "Authorization: Bearer not-a-real-token" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+    "${OAUTH_ENDPOINT}/mcp")
+  if [ "$MCP_BAD" = "401" ]; then pass "/mcp 无效 token → 401"; else fail "/mcp invalid token → HTTP ${MCP_BAD} (期望 401)"; fi
 else
   skip "OAuth 端点未配置"
 fi
@@ -120,7 +139,7 @@ from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 sm = boto3.client('secretsmanager', region_name='${REGION}')
 try:
-    secret = json.loads(sm.get_secret_value(SecretId='lark-mcp/users/${TEST_USER_ID}')['SecretString'])
+    secret = json.loads(sm.get_secret_value(SecretId='lark-mcp-on-agentcore/users/${TEST_USER_ID}')['SecretString'])
     uat = secret['access_token']
 except:
     print('NO_TOKEN')
@@ -152,18 +171,28 @@ fi
 # 测试 3: Token 存储
 echo ""
 echo "── Token 存储 ──"
-SM_TEST=$(aws secretsmanager list-secrets --region $REGION --filters "Key=name,Values=lark-mcp/users" --query 'SecretList | length(@)' --output text 2>/dev/null || echo "0")
+SM_TEST=$(aws secretsmanager list-secrets --region $REGION --filters "Key=name,Values=lark-mcp-on-agentcore/users" --query 'SecretList | length(@)' --output text 2>/dev/null || echo "0")
 if [ "${SM_TEST:-0}" -gt "0" ]; then pass "Secrets Manager 存储了 ${SM_TEST} 个用户 Token"; else skip "暂无用户 Token"; fi
 
 # 测试 4: EventBridge 刷新规则
 echo ""
 echo "── Token 刷新 ──"
-EB_RULE=$(aws events list-rules --name-prefix LarkMcpOAuth --region $REGION --query 'Rules[0].Name' --output text 2>/dev/null || echo "")
+EB_RULE=$(aws events list-rules --name-prefix LarkMcpOnAgentCoreOAuth --region $REGION --query 'Rules[0].Name' --output text 2>/dev/null || echo "")
 if [ -z "$EB_RULE" ] || [ "$EB_RULE" = "None" ]; then EB_STATE="未找到"; else
 EB_STATE=$(aws events describe-rule --name "$EB_RULE" --region $REGION --query 'State' --output text 2>/dev/null || echo "未找到"); fi
 if [ "$EB_STATE" = "ENABLED" ]; then pass "EventBridge 刷新规则: 已启用"; else skip "EventBridge 规则: ${EB_STATE}"; fi
 
 # 汇总
+echo ""
+echo "── WAF ──"
+WAF_ARN=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreWaf --region us-east-1 \
+  --query 'Stacks[0].Outputs[?OutputKey==`WebAclArn`].OutputValue' --output text 2>/dev/null || echo "")
+if [ -n "$WAF_ARN" ] && [ "$WAF_ARN" != "None" ]; then
+  pass "WAF WebACL 存在 (us-east-1)"
+else
+  skip "WAF WebACL 未找到"
+fi
+
 echo ""
 echo "═══════════════════════════════════"
 echo "  通过: ${PASS}  失败: ${FAIL}  跳过: ${SKIP}"
