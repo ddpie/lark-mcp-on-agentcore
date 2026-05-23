@@ -8,9 +8,9 @@
 
 企业参考方案：将飞书/Lark 的 200+ API 部署为远程 MCP Server，基于 AWS Bedrock AgentCore，支持多用户 OAuth 认证和 per-user 身份隔离。
 
-> **架构极薄** — 本项目不包含任何飞书 API 业务逻辑。仅做 OAuth 认证 + 请求代理 + 工具编排，200+ API 能力全部委托 [lark-cli](https://github.com/larksuite/cli)。升级 lark-cli 即升级全部工具，bug 修复自动继承，零维护成本。
+> **架构极薄** — 不直接调用飞书 API，所有 API 协议交互委托 [lark-cli](https://github.com/larksuite/cli) 处理。本项目仅负责 OAuth 认证、请求代理和工具编排。
 >
-> 升级方式：重新运行 `./scripts/deploy.sh`，CDK 自动拉取最新 lark-cli 重建容器镜像，终端用户无需任何操作。
+> 升级 lark-cli：更新 `docker/Dockerfile` 中的版本号，重新运行 `./scripts/deploy.sh`。终端用户无需任何操作。
 
 用户在 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 中一键连接，即可用自然语言操作飞书——发消息、管日程、读写多维表格、操作文档，全部以自己的飞书身份执行。
 
@@ -372,7 +372,7 @@ A: 检查两点：1) 飞书应用安全设置中是否添加了部署输出的 R
 
 **Q: 如何更新 lark-cli 版本？**
 
-A: 重新运行 `./scripts/deploy.sh`，CDK 会重新构建 Docker 镜像并拉取最新 lark-cli。
+A: 重新运行 `./scripts/deploy.sh`，CDK 自动拉取最新 lark-cli 重建镜像。可用 `./scripts/check-lark-cli-version.sh` 确认版本是否有变化。
 
 **Q: 轮换 Client Secret 后，已有用户需要重新授权吗？**
 
@@ -428,9 +428,9 @@ MIT
 
 Enterprise reference architecture: Deploy 200+ Feishu/Lark APIs as a remote MCP Server on AWS Bedrock AgentCore with multi-user OAuth and per-user identity isolation.
 
-> **Paper-thin architecture** — This project contains zero Feishu API business logic. It only handles OAuth, request proxying, and tool orchestration. All 200+ API capabilities are delegated to [lark-cli](https://github.com/larksuite/cli). Upgrading lark-cli upgrades every tool; bug fixes are inherited automatically at zero maintenance cost.
+> **Paper-thin architecture** — This project never calls Feishu APIs directly; all API protocol handling is delegated to [lark-cli](https://github.com/larksuite/cli). This project only handles OAuth, request proxying, and tool orchestration.
 >
-> To upgrade: re-run `./scripts/deploy.sh` — CDK pulls the latest lark-cli and rebuilds the container image. End users need no action.
+> To upgrade lark-cli: bump the version in `docker/Dockerfile`, re-run `./scripts/deploy.sh`. End users need no action.
 
 Users connect with one click in [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) and interact with Feishu using natural language — send messages, manage calendars, read/write Bitable, edit docs — all executed under their own Feishu identity.
 
