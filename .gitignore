@@ -11,6 +11,7 @@ dist/
 cdk.out/
 coverage/
 .stryker-tmp/
+reports/
 
 # Secrets & credentials
 .env
