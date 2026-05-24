@@ -66,7 +66,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 | **渐进授权** | 调用低频工具触发飞书未授权时，自动生成 incremental-auth 链接，用户点击链接跳转到飞书授权页确认新增权限即可，飞书会累积已有权限 |
 | **低运维** | Token 自动刷新（30min）、异常自动告警到飞书群、日志按策略过期 |
 | **安全** | PKCE + HMAC token + WAF + Secrets Manager 加密存储（[详情](docs/security_zh.md)） |
-| **轻量升级** | lark-cli 新版本发布时，改 Dockerfile 版本号 → 重新 `deploy.sh`，终端用户无需任何操作 |
+| **轻量升级** | lark-cli 新版本发布时，改 Dockerfile 中的 lark-cli 版本号 → 重新 `deploy.sh`，终端用户无需任何操作 |
 
 ## 文档
 
@@ -158,7 +158,7 @@ User requests from Quick Desktop → CloudFront → API Gateway → Middleware L
 | **Incremental auth** | Low-frequency tools that hit "permission denied" auto-generate an incremental-auth link; the user clicks the link, lands on the Feishu authorization page to approve the new scope, and Feishu accumulates the existing scopes |
 | **Low-ops** | Auto token refresh (30min), alarms auto-push to Feishu group, logs expire by policy |
 | **Secure** | PKCE + HMAC tokens + WAF + Secrets Manager encryption ([details](docs/security_en.md)) |
-| **Lightweight upgrade** | When lark-cli releases a new version, bump Dockerfile → re-run `deploy.sh`, end users need no action |
+| **Lightweight upgrade** | When lark-cli releases a new version, bump the lark-cli version in Dockerfile → re-run `deploy.sh`, end users need no action |
 
 ## Docs
 
