@@ -195,6 +195,9 @@ async function handle(event: LambdaEvent) {
   } else if (durationMs > 5000) {
     log('WARN', 'agentcore_slow', { userIdHash: hashUserId(userId), durationMs, status: resp.status });
   }
+  if (resp.status < 400) {
+    log('INFO', 'mcp_request_ok', { userIdHash: hashUserId(userId), durationMs, status: resp.status });
+  }
 
   const responseBody = await resp.text();
   // Forward MCP session ID back to client so it can echo on subsequent requests
