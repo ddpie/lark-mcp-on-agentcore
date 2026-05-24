@@ -104,3 +104,5 @@
 | **合计（不含 AgentCore）** | **~$411/月** |
 
 **注意：** AgentCore Runtime 是按实际处理时间计费的最大变量成本。具体金额取决于 AWS 定价（会随时间变化），建议查看 [AWS Bedrock AgentCore 定价页面](https://aws.amazon.com/bedrock/agentcore/pricing/) 获取最新数字。
+
+**关于 Runtime 空闲回收：** 部署时可选 5/10/15/30 分钟（默认 10 分钟，比 AWS 默认 15 分钟更省）。session 在 idle 期间仍按 vCPU-秒计费，timeout 越短越省钱、冷启动越频繁。10 分钟覆盖典型对话 burst，约比 AWS 默认节省 30% idle 成本。重新部署可调整。

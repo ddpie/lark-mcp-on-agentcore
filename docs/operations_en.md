@@ -35,9 +35,10 @@ deploy.sh is an interactive deployment script handling the full flow from enviro
 4. Custom domain (optional)
 5. WAF enable/disable
 6. Log retention days (30/90/180/365/never expire)
-7. Alarm threshold preset selection (Standard/Relaxed/Strict/Custom)
-8. Feishu alarm webhook URL + signature secret + keyword
-9. Deploy region selection
+7. AgentCore Runtime idle session timeout (5/10/15/30 min, default 10 min)
+8. Alarm threshold preset selection (Standard/Relaxed/Strict/Custom)
+9. Feishu alarm webhook URL + signature secret + keyword
+10. Deploy region selection
 
 **Step 1/5: CDK Deploy**
 - Creates/updates Feishu app credentials in Secrets Manager
@@ -87,7 +88,7 @@ The `.local/` directory is in `.gitignore` and stores local deployment state:
 
 | File | Permissions | Purpose |
 |------|------------|---------|
-| `.local/deploy-config` | 600 | Deploy parameters (language, region, WAF toggle, log retention, webhook secret/keyword) |
+| `.local/deploy-config` | 600 | Deploy parameters (language, region, WAF toggle, log retention, idle timeout, webhook secret/keyword) |
 | `.local/deploy-output.md` | 600 | Full deployment info including OAuth Client Secret (sensitive!) |
 | `.local/alarm-thresholds.json` | 600 | Custom alarm threshold overrides |
 

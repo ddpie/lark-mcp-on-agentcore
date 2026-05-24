@@ -104,3 +104,5 @@ Estimates below are based on us-west-2 pricing, assuming each user makes an aver
 | **Total (excl. AgentCore)** | **~$411/month** |
 
 **Note:** AgentCore Runtime is the largest variable cost, billed by actual processing time. Exact amounts depend on AWS pricing (which changes over time). Refer to the [AWS Bedrock AgentCore pricing page](https://aws.amazon.com/bedrock/agentcore/pricing/) for current figures.
+
+**On Runtime idle timeout:** Configurable at deploy: 5 / 10 / 15 / 30 min (default 10 min, shorter than AWS's 15 min default). Sessions accrue vCPU-seconds while idle, so a shorter timeout cuts cost at the price of more cold starts. 10 min covers typical conversation bursts and saves about 30% on idle cost vs the AWS default. Re-deploy to change.

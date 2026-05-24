@@ -109,6 +109,18 @@ A: The deploy output includes the Dashboard URL. Or search for `lark-mcp-on-agen
 
 A: Configurable at deploy time (30/90/180/365 days or never expire, default 90). Logs beyond the retention period are automatically deleted to avoid storage cost accumulation.
 
+**Q: How to configure the AgentCore Runtime idle session timeout?**
+
+A: Choose at deploy time: 5/10/15/30 min (default 10 min). The value determines how long a session stays idle before the container is reclaimed. The next request after reclamation triggers a cold start (the initial container pull takes several to a dozen seconds).
+
+Trade-off:
+- **5 min**: small user base, cost-sensitive; more cold starts
+- **10 min (recommended)**: covers typical conversation bursts, saves ~30% on idle cost vs the 15-min AWS default
+- **15 min**: AWS default
+- **30 min**: latency-sensitive scenarios where users send back-to-back queries
+
+Persisted in `.local/deploy-config` as `AGENTCORE_IDLE_TIMEOUT`; re-run `deploy.sh` to change. You can also override via env: `AGENTCORE_IDLE_TIMEOUT=300 ./scripts/deploy.sh`.
+
 **Q: How to customize alarm thresholds?**
 
 A: During deploy, choose from three presets (Standard/Relaxed/Strict) using arrow keys. Or select "Custom" to pick which alarm to edit (arrow keys), with descriptions and suggested ranges shown. Custom values are saved to `.local/alarm-thresholds.json` (not committed), and subsequent deploys will not overwrite them.
