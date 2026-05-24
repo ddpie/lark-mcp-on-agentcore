@@ -2009,19 +2009,19 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
           "Fn::Join": [
             "",
             [
-              "{"widgets":[{"type":"text","width":24,"height":1,"x":0,"y":0,"properties":{"markdown":"## MCP 请求量"}},{"type":"metric","width":8,"height":6,"x":0,"y":1,"properties":{"view":"timeSeries","title":"MCP 请求量","region":"",
+              "{"widgets":[{"type":"text","width":24,"height":1,"x":0,"y":0,"properties":{"markdown":"## 告警状态"}},{"type":"alarm","width":24,"height":3,"x":0,"y":1,"properties":{"title":"告警状态","alarms":["arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 丢失 (刷新已消耗但未存储)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 刷新失败","arn:aws:cloudwatch:us-west-2:123456789012:alarm:AgentCore 上游 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:MCP 延迟 P95 >10s","arn:aws:cloudwatch:us-west-2:123456789012:alarm:飞书未授权突增","arn:aws:cloudwatch:us-west-2:123456789012:alarm:undefined","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 被限流","arn:aws:cloudwatch:us-west-2:123456789012:alarm:API Gateway 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:OAuth Lambda 错误","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Middleware Lambda 错误"]}},{"type":"text","width":24,"height":1,"x":0,"y":4,"properties":{"markdown":"## MCP 请求量"}},{"type":"metric","width":8,"height":6,"x":0,"y":5,"properties":{"view":"timeSeries","title":"MCP 请求量","region":"",
               {
                 "Ref": "AWS::Region",
               },
-              "","metrics":[["LarkMcpOnAgentCore","McpRequestOk",{"label":"McpRequestOk","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":1,"properties":{"view":"timeSeries","title":"MCP 延迟 (ms)","region":"",
+              "","metrics":[["LarkMcpOnAgentCore","McpRequestOk",{"label":"McpRequestOk","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":5,"properties":{"view":"timeSeries","title":"MCP 延迟 (ms)","region":"",
               {
                 "Ref": "AWS::Region",
               },
-              "","metrics":[["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (Average)"}],["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (p95)","stat":"p95"}],["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (p99)","stat":"p99"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":1,"properties":{"view":"timeSeries","title":"错误与慢调用","region":"",
+              "","metrics":[["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (Average)"}],["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (p95)","stat":"p95"}],["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (p99)","stat":"p99"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":5,"properties":{"view":"timeSeries","title":"错误与慢调用","region":"",
               {
                 "Ref": "AWS::Region",
               },
-              "","metrics":[["LarkMcpOnAgentCore","AgentCore5xx",{"label":"AgentCore5xx","stat":"Sum"}],["LarkMcpOnAgentCore","AgentCoreSlow",{"label":"AgentCoreSlow","stat":"Sum"}],["LarkMcpOnAgentCore","FeishuSlow",{"label":"FeishuSlow","stat":"Sum"}]],"yAxis":{}}},{"type":"text","width":24,"height":1,"x":0,"y":7,"properties":{"markdown":"## Lambda 调用量"}},{"type":"metric","width":8,"height":6,"x":0,"y":8,"properties":{"view":"timeSeries","title":"Lambda 调用量","region":"",
+              "","metrics":[["LarkMcpOnAgentCore","AgentCore5xx",{"label":"AgentCore5xx","stat":"Sum"}],["LarkMcpOnAgentCore","AgentCoreSlow",{"label":"AgentCoreSlow","stat":"Sum"}],["LarkMcpOnAgentCore","FeishuSlow",{"label":"FeishuSlow","stat":"Sum"}]],"yAxis":{}}},{"type":"text","width":24,"height":1,"x":0,"y":11,"properties":{"markdown":"## Lambda 调用量"}},{"type":"metric","width":8,"height":6,"x":0,"y":12,"properties":{"view":"timeSeries","title":"Lambda 调用量","region":"",
               {
                 "Ref": "AWS::Region",
               },
@@ -2033,7 +2033,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
               {
                 "Ref": "MiddlewareFunction32153138",
               },
-              "",{"label":"Middleware","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":8,"properties":{"view":"timeSeries","title":"Lambda 执行时长 (ms)","region":"",
+              "",{"label":"Middleware","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":12,"properties":{"view":"timeSeries","title":"Lambda 执行时长 (ms)","region":"",
               {
                 "Ref": "AWS::Region",
               },
@@ -2053,7 +2053,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
               {
                 "Ref": "MiddlewareFunction32153138",
               },
-              "",{"label":"Middleware (p95)","stat":"p95"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":8,"properties":{"view":"timeSeries","title":"Lambda 错误","region":"",
+              "",{"label":"Middleware (p95)","stat":"p95"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":12,"properties":{"view":"timeSeries","title":"Lambda 错误","region":"",
               {
                 "Ref": "AWS::Region",
               },
@@ -2073,23 +2073,23 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
               {
                 "Ref": "MiddlewareFunction32153138",
               },
-              "",{"label":"Middleware Throttles","stat":"Sum","yAxis":"right"}]],"yAxis":{"right":{"label":"Lambda 限流"}}}},{"type":"text","width":24,"height":1,"x":0,"y":14,"properties":{"markdown":"## OAuth 授权漏斗"}},{"type":"metric","width":8,"height":6,"x":0,"y":15,"properties":{"view":"timeSeries","title":"OAuth 授权漏斗","region":"",
+              "",{"label":"Middleware Throttles","stat":"Sum","yAxis":"right"}]],"yAxis":{"right":{"label":"Lambda 限流"}}}},{"type":"text","width":24,"height":1,"x":0,"y":18,"properties":{"markdown":"## OAuth 授权漏斗"}},{"type":"metric","width":8,"height":6,"x":0,"y":19,"properties":{"view":"timeSeries","title":"OAuth 授权漏斗","region":"",
               {
                 "Ref": "AWS::Region",
               },
-              "","metrics":[["LarkMcpOnAgentCore","OAuthAuthorizeStart",{"label":"OAuthAuthorizeStart","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","OAuthCallbackSuccess",{"label":"OAuthCallbackSuccess","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","NewUserAuthorized",{"label":"NewUserAuthorized","period":3600,"stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":15,"properties":{"view":"timeSeries","title":"Token 刷新","region":"",
+              "","metrics":[["LarkMcpOnAgentCore","OAuthAuthorizeStart",{"label":"OAuthAuthorizeStart","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","OAuthCallbackSuccess",{"label":"OAuthCallbackSuccess","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","NewUserAuthorized",{"label":"NewUserAuthorized","period":3600,"stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":19,"properties":{"view":"timeSeries","title":"Token 刷新","region":"",
               {
                 "Ref": "AWS::Region",
               },
-              "","metrics":[["LarkMcpOnAgentCore","RefreshFailed",{"label":"RefreshFailed","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","TokenLost",{"label":"TokenLost","period":3600,"stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":15,"properties":{"view":"timeSeries","title":"活跃用户与鉴权失败","region":"",
+              "","metrics":[["LarkMcpOnAgentCore","RefreshFailed",{"label":"RefreshFailed","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","TokenLost",{"label":"TokenLost","period":3600,"stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":19,"properties":{"view":"timeSeries","title":"活跃用户与鉴权失败","region":"",
               {
                 "Ref": "AWS::Region",
               },
-              "","metrics":[["LarkMcpOnAgentCore","ActiveUsers",{"label":"ActiveUsers (Maximum)","period":3600,"stat":"Maximum"}],["LarkMcpOnAgentCore","AuthFail",{"label":"AuthFail","stat":"Sum","yAxis":"right"}]],"yAxis":{}}},{"type":"text","width":24,"height":1,"x":0,"y":21,"properties":{"markdown":"## API Gateway 4xx / 5xx"}},{"type":"metric","width":8,"height":6,"x":0,"y":22,"properties":{"view":"timeSeries","title":"API Gateway 4xx / 5xx","region":"",
+              "","metrics":[["LarkMcpOnAgentCore","ActiveUsers",{"label":"ActiveUsers (Maximum)","period":3600,"stat":"Maximum"}],["LarkMcpOnAgentCore","AuthFail",{"label":"AuthFail","stat":"Sum","yAxis":"right"}]],"yAxis":{}}},{"type":"text","width":24,"height":1,"x":0,"y":25,"properties":{"markdown":"## API Gateway 4xx / 5xx"}},{"type":"metric","width":8,"height":6,"x":0,"y":26,"properties":{"view":"timeSeries","title":"API Gateway 4xx / 5xx","region":"",
               {
                 "Ref": "AWS::Region",
               },
-              "","metrics":[["AWS/ApiGateway","4XXError","ApiName","lark-mcp-on-agentcore-oauth",{"label":"4xx","stat":"Sum"}],["AWS/ApiGateway","5XXError","ApiName","lark-mcp-on-agentcore-oauth",{"label":"5xx","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":22,"properties":{"view":"timeSeries","title":"Lambda 并发","region":"",
+              "","metrics":[["AWS/ApiGateway","4XXError","ApiName","lark-mcp-on-agentcore-oauth",{"label":"4xx","stat":"Sum"}],["AWS/ApiGateway","5XXError","ApiName","lark-mcp-on-agentcore-oauth",{"label":"5xx","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":26,"properties":{"view":"timeSeries","title":"Lambda 并发","region":"",
               {
                 "Ref": "AWS::Region",
               },
@@ -2101,11 +2101,11 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
               {
                 "Ref": "MiddlewareFunction32153138",
               },
-              "",{"label":"Middleware","stat":"Maximum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":22,"properties":{"view":"timeSeries","title":"飞书未授权请求","region":"",
+              "",{"label":"Middleware","stat":"Maximum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":26,"properties":{"view":"timeSeries","title":"飞书未授权请求","region":"",
               {
                 "Ref": "AWS::Region",
               },
-              "","metrics":[["LarkMcpOnAgentCore","FeishuNotAuthorized",{"label":"FeishuNotAuthorized","stat":"Sum"}],["LarkMcpOnAgentCore","FeishuSlowLatencyMs",{"label":"FeishuSlowLatencyMs (Average)","yAxis":"right"}],["LarkMcpOnAgentCore","FeishuSlowLatencyMs",{"label":"FeishuSlowLatencyMs (p95)","stat":"p95","yAxis":"right"}]],"yAxis":{"right":{"label":"飞书 API 延迟 (ms)"}}}},{"type":"text","width":24,"height":1,"x":0,"y":28,"properties":{"markdown":"## 告警状态"}},{"type":"alarm","width":24,"height":3,"x":0,"y":29,"properties":{"title":"告警状态","alarms":["arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 丢失 (刷新已消耗但未存储)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 刷新失败","arn:aws:cloudwatch:us-west-2:123456789012:alarm:AgentCore 上游 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:MCP 延迟 P95 >10s","arn:aws:cloudwatch:us-west-2:123456789012:alarm:飞书未授权突增","arn:aws:cloudwatch:us-west-2:123456789012:alarm:undefined","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 被限流","arn:aws:cloudwatch:us-west-2:123456789012:alarm:API Gateway 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:OAuth Lambda 错误","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Middleware Lambda 错误"]}}]}",
+              "","metrics":[["LarkMcpOnAgentCore","FeishuNotAuthorized",{"label":"FeishuNotAuthorized","stat":"Sum"}],["LarkMcpOnAgentCore","FeishuSlowLatencyMs",{"label":"FeishuSlowLatencyMs (Average)","yAxis":"right"}],["LarkMcpOnAgentCore","FeishuSlowLatencyMs",{"label":"FeishuSlowLatencyMs (p95)","stat":"p95","yAxis":"right"}]],"yAxis":{"right":{"label":"飞书 API 延迟 (ms)"}}}}]}",
             ],
           ],
         },
