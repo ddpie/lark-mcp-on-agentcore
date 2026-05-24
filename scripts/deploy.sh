@@ -192,8 +192,23 @@ for cmd in node docker aws python3; do
 done
 
 if command -v docker &>/dev/null && ! docker info &>/dev/null; then
-  err "${L[docker_not_running]}"
-  DEPS_OK=false
+  warn "${L[docker_not_running]}"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    info "  open -a Docker"
+    open -a Docker 2>/dev/null || true
+  fi
+  echo ""
+  info "  Waiting for Docker to start..."
+  for _i in $(seq 1 30); do
+    docker info &>/dev/null && break
+    sleep 2
+  done
+  if ! docker info &>/dev/null; then
+    err "${L[docker_not_running]}"
+    DEPS_OK=false
+  else
+    info "  Docker: ✓"
+  fi
 fi
 
 if ! python3 -c "import boto3" &>/dev/null; then
