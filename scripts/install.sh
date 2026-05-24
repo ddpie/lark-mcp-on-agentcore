@@ -6,11 +6,15 @@ if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
   echo "  bash 4+ required (current: ${BASH_VERSION})" >&2
   echo "" >&2
   if command -v brew &>/dev/null; then
+    NEW_BASH="$(brew --prefix)/bin/bash"
+    if [ -x "$NEW_BASH" ] && [[ "$("$NEW_BASH" -c 'echo ${BASH_VERSINFO[0]}')" -ge 4 ]]; then
+      echo "  Found ${NEW_BASH} (bash 4+), restarting..." >&2
+      exec "$NEW_BASH" <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
+    fi
     printf "  Install bash 4+ via Homebrew and continue? (Y/n) " >&2
     read -r _ans </dev/tty 2>/dev/null || _ans="y"
     if [[ ! "${_ans:-y}" =~ ^[nN] ]]; then
       brew install bash
-      NEW_BASH="$(brew --prefix)/bin/bash"
       echo "  Restarting with ${NEW_BASH}..." >&2
       exec "$NEW_BASH" <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
     fi
