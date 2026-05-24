@@ -328,6 +328,8 @@ done
 # Previous deploy config is read inline by each prompt section below.
 # Env vars always take priority over saved config.
 
+step configure_deploy
+
 # 自定义域名（可选）— remember previous choice
 PREV_DOMAIN=""
 if [ -f "$DEPLOY_CONFIG" ]; then
@@ -638,7 +640,6 @@ if [ -z "$REGION_SELECTED" ]; then
 fi
 
 # CDK Bootstrap (deploy region + us-east-1 for the CloudFront-scope WAF)
-step step_1
 ensure_bootstrap() {
   local target_region="$1"
   local check
@@ -677,7 +678,7 @@ fi
 DEPLOY_STARTED=true
 
 # 清理残留资源
-step clean_residuals
+info "${L[clean_residuals]}"
 for STACK_NAME in LarkMcpOnAgentCoreOAuth LarkMcpOnAgentCoreRuntime; do
   STACK_STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
     --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
@@ -737,7 +738,7 @@ fi
 
 info "Clean up done ✓"
 
-# CDK 部署
+step step_1
 echo ""
 info "${L[creating_secrets]}"
 SECRET_FILE=$(mktemp); chmod 600 "$SECRET_FILE"
