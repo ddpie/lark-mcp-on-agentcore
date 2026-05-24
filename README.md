@@ -58,10 +58,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 ## 特点
 
-| | 说明 |
+| 特点 | 说明 |
 |---|---|
 | **200+ 工具** | 28 个高频工具直接提供，其余通过 `lark_discover` / `lark_invoke` 按需调用 |
-| **多用户** | 多用户共享一个部署，per-user OAuth 身份隔离 |
+| **多用户** | 一份部署多人共用，每位用户以自己飞书身份调用 |
+| **按需付费** | AgentCore Runtime 空闲缩零，按 vCPU-秒 + 内存-秒计费 |
+| **渐进授权** | 调用低频工具触发飞书未授权时，自动生成 incremental-auth 链接，用户点击链接跳转到飞书授权页确认新增权限即可，飞书会累积已有权限 |
 | **低运维** | Token 自动刷新（30min）、异常自动告警到飞书群、日志按策略过期 |
 | **安全** | PKCE + HMAC token + WAF + Secrets Manager 加密存储（[详情](docs/security_zh.md)） |
 | **轻量升级** | lark-cli 新版本发布时，改 Dockerfile 版本号 → 重新 `deploy.sh`，终端用户无需任何操作 |
@@ -148,11 +150,13 @@ User requests from Quick Desktop → CloudFront → API Gateway → Middleware L
 
 ## Highlights
 
-| | Description |
+| Highlight | Description |
 |---|---|
 | **200+ tools** | 28 high-frequency tools exposed directly; the rest reachable via `lark_discover` / `lark_invoke` on demand |
-| **Multi-user** | Shared deployment with per-user OAuth identity isolation |
-| **Low-ops** | Auto token refresh (30min), alarms auto-push to Feishu group, logs expire by policy — no daily manual intervention |
+| **Multi-user** | One deployment shared across users; each request runs under the user's own Feishu identity |
+| **Pay-per-use** | AgentCore Runtime scales to zero when idle, billed by vCPU-seconds + memory-seconds |
+| **Incremental auth** | Low-frequency tools that hit "permission denied" auto-generate an incremental-auth link; the user clicks the link, lands on the Feishu authorization page to approve the new scope, and Feishu accumulates the existing scopes |
+| **Low-ops** | Auto token refresh (30min), alarms auto-push to Feishu group, logs expire by policy |
 | **Secure** | PKCE + HMAC tokens + WAF + Secrets Manager encryption ([details](docs/security_en.md)) |
 | **Lightweight upgrade** | When lark-cli releases a new version, bump Dockerfile → re-run `deploy.sh`, end users need no action |
 
