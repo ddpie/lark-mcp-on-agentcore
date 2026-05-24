@@ -49,32 +49,30 @@
   <!-- ===== Layer 2: Edge ===== -->
   <rect x="80" y="100" width="700" height="88" rx="8" fill="#f8f9fa" stroke="#bbb" stroke-width="1"/>
 
-  <rect x="110" y="140" width="160" height="36" rx="4" fill="#fff" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
-  <text x="190" y="162" text-anchor="middle" font-size="11">WAFv2<tspan dx="6" fill="#999" font-size="9">(可选)</tspan></text>
-  <line x1="270" y1="158" x2="298" y2="158" stroke="#666" stroke-width="1.2" marker-end="url(#arr)"/>
+  <rect x="160" y="132" width="240" height="48" rx="4" fill="#fff" stroke="#333" stroke-width="1.2"/>
+  <text x="280" y="152" text-anchor="middle" font-size="11" font-weight="500">CloudFront</text>
+  <text x="280" y="170" text-anchor="middle" font-size="9" fill="#999" font-weight="400">+ WAFv2 (可选)</text>
+  <line x1="400" y1="158" x2="448" y2="158" stroke="#666" stroke-width="1.2" marker-end="url(#arr)"/>
 
-  <rect x="300" y="140" width="160" height="36" rx="4" fill="#fff" stroke="#333" stroke-width="1.2"/>
-  <text x="380" y="162" text-anchor="middle" font-size="11" font-weight="500">CloudFront</text>
-  <line x1="460" y1="158" x2="484" y2="158" stroke="#666" stroke-width="1.2" marker-end="url(#arr)"/>
-
-  <rect x="486" y="140" width="200" height="36" rx="4" fill="#fff" stroke="#333" stroke-width="1.2"/>
-  <text x="586" y="162" text-anchor="middle" font-size="11" font-weight="500">API Gateway</text>
+  <rect x="450" y="132" width="240" height="48" rx="4" fill="#fff" stroke="#333" stroke-width="1.2"/>
+  <text x="570" y="161" text-anchor="middle" font-size="11" font-weight="500">API Gateway</text>
 
   <!-- API GW 出口分叉: 左路 L 形, 右路直线 -->
-  <path d="M 540 176 L 540 215 L 280 215 L 280 240" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+  <path d="M 510 180 L 510 215 L 280 215 L 280 240" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
   <text x="320" y="232" fill="#666" font-size="10">/authorize /callback /token</text>
 
-  <line x1="640" y1="176" x2="640" y2="240" stroke="#333" stroke-width="1.5" marker-end="url(#arr)"/>
-  <text x="648" y="216" fill="#666" font-size="10">/mcp</text>
+  <line x1="630" y1="180" x2="630" y2="240" stroke="#333" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="638" y="216" fill="#666" font-size="10">/mcp</text>
 
   <!-- ===== Layer 3: 计算 ===== -->
   <rect x="100" y="240" width="280" height="60" rx="6" fill="#fff" stroke="#333" stroke-width="1.2"/>
   <text x="240" y="266" text-anchor="middle" font-size="13" font-weight="500">OAuth Lambda</text>
   <text x="240" y="286" text-anchor="middle" font-size="10" fill="#666">OAuth 2.0 流程 + Token 自动刷新</text>
 
-  <!-- EventBridge 触发器, OAuth Lambda 左下 chip -->
-  <rect x="106" y="304" width="136" height="20" rx="3" fill="#fafafa" stroke="#bbb" stroke-width="0.8" stroke-dasharray="3,2"/>
-  <text x="174" y="318" text-anchor="middle" font-size="10" fill="#666">触发器 · EventBridge 1h cron</text>
+  <!-- EventBridge 触发器, 在 OAuth Lambda 下方, 箭头向上指入 Lambda -->
+  <rect x="110" y="324" width="260" height="22" rx="3" fill="#fafafa" stroke="#bbb" stroke-width="0.8" stroke-dasharray="3,2"/>
+  <text x="240" y="339" text-anchor="middle" font-size="10" fill="#666">EventBridge · 每 30 分钟触发 Token 刷新</text>
+  <line x1="240" y1="324" x2="240" y2="304" stroke="#888" stroke-width="1.2" marker-end="url(#arr)"/>
 
   <rect x="500" y="240" width="280" height="60" rx="6" fill="#fff" stroke="#333" stroke-width="1.2"/>
   <text x="640" y="266" text-anchor="middle" font-size="13" font-weight="500">Middleware Lambda</text>
