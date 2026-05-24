@@ -458,6 +458,53 @@ else
 fi
 export LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-}"
 
+# AgentCore Runtime idle session timeout. Honors AGENTCORE_IDLE_TIMEOUT env;
+# default 600s (10 min) — covers typical conversation bursts while saving idle
+# vCPU-seconds vs the AWS default of 900s.
+if [ -z "${AGENTCORE_IDLE_TIMEOUT+x}" ]; then
+  PREV_IDLE=""
+  if [ -f "$DEPLOY_CONFIG" ]; then
+    PREV_IDLE=$(grep '^AGENTCORE_IDLE_TIMEOUT=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+  fi
+  if [ ! -t 0 ]; then
+    AGENTCORE_IDLE_TIMEOUT="${PREV_IDLE:-600}"
+  elif [ -n "$PREV_IDLE" ]; then
+    echo ""
+    info "$(t idle_timeout_set "$PREV_IDLE")"
+    if confirm "${L[idle_timeout_keep]}"; then
+      AGENTCORE_IDLE_TIMEOUT="$PREV_IDLE"
+    else
+      echo ""
+      echo "  ${L[ask_idle_timeout]}"
+      echo ""
+      PICK_DEFAULT=2
+      pick _IDLE_PICK "${L[idle_5min]}" "${L[idle_10min]}" "${L[idle_15min]}" "${L[idle_30min]}"
+      case "$_IDLE_PICK" in
+        "${L[idle_5min]}")  AGENTCORE_IDLE_TIMEOUT="300" ;;
+        "${L[idle_15min]}") AGENTCORE_IDLE_TIMEOUT="900" ;;
+        "${L[idle_30min]}") AGENTCORE_IDLE_TIMEOUT="1800" ;;
+        *)                  AGENTCORE_IDLE_TIMEOUT="600" ;;
+      esac
+    fi
+  else
+    echo ""
+    echo "  ${L[ask_idle_timeout]}"
+    echo ""
+    PICK_DEFAULT=2
+    pick _IDLE_PICK "${L[idle_5min]}" "${L[idle_10min]}" "${L[idle_15min]}" "${L[idle_30min]}"
+    case "$_IDLE_PICK" in
+      "${L[idle_5min]}")  AGENTCORE_IDLE_TIMEOUT="300" ;;
+      "${L[idle_15min]}") AGENTCORE_IDLE_TIMEOUT="900" ;;
+      "${L[idle_30min]}") AGENTCORE_IDLE_TIMEOUT="1800" ;;
+      *)                  AGENTCORE_IDLE_TIMEOUT="600" ;;
+    esac
+  fi
+fi
+# Defensive: guard against malformed env override (empty / non-integer / zero)
+[[ "$AGENTCORE_IDLE_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || AGENTCORE_IDLE_TIMEOUT="600"
+info "$(t idle_timeout_set "$AGENTCORE_IDLE_TIMEOUT")"
+export AGENTCORE_IDLE_TIMEOUT
+
 # Alarm thresholds — preset picker + optional custom editor
 ALARM_THRESHOLDS_FILE="${PROJECT_DIR}/config/alarm-thresholds.json"
 ALARM_PRESETS_FILE="${PROJECT_DIR}/config/alarm-presets.json"
@@ -930,6 +977,7 @@ fi
 step step_2
 RUNTIME_ID=$(APP_ID="$APP_ID" REGION="$REGION" ROLE_ARN="$ROLE_ARN" \
   IMAGE_URI="$IMAGE_URI" OAUTH_ENDPOINT="$OAUTH_ENDPOINT" \
+  AGENTCORE_IDLE_TIMEOUT="$AGENTCORE_IDLE_TIMEOUT" \
   python3 << 'PYEOF'
 import os, boto3, sys
 region = os.environ['REGION']
@@ -939,6 +987,7 @@ runtime_config = {
     'agentRuntimeArtifact': {'containerConfiguration': {'containerUri': os.environ['IMAGE_URI']}},
     'networkConfiguration': {'networkMode': 'PUBLIC'},
     'protocolConfiguration': {'serverProtocol': 'MCP'},
+    'idleRuntimeSessionTimeout': int(os.environ['AGENTCORE_IDLE_TIMEOUT']),
     'requestHeaderConfiguration': {'requestHeaderAllowlist': ['X-User-Access-Token', 'X-Runtime-User-Id', 'X-Incr-Auth-Token']},
     'environmentVariables': {
         'APP_ID': os.environ['APP_ID'],
@@ -1072,6 +1121,7 @@ REGION=${REGION}
 CUSTOM_DOMAIN=${CUSTOM_DOMAIN:-}
 SKIP_WAF=${SKIP_WAF}
 LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-}
+AGENTCORE_IDLE_TIMEOUT=${AGENTCORE_IDLE_TIMEOUT:-600}
 ALARM_WEBHOOK_SECRET=${ALARM_WEBHOOK_SECRET:-}
 ALARM_WEBHOOK_KEYWORD=${ALARM_WEBHOOK_KEYWORD:-}
 CFGEOF
