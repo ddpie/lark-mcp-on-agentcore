@@ -434,8 +434,16 @@ ALARM_OVERRIDES_FILE="${LOCAL_DIR}/alarm-thresholds.json"
 if [ -t 0 ]; then
   echo ""
   echo "  ${L[ask_alarm_thresholds]}"
-  echo ""
-  pick _ALARM_PRESET "${L[alarm_preset_standard]}" "${L[alarm_preset_relaxed]}" "${L[alarm_preset_strict]}" "${L[alarm_preset_custom]}"
+  _SKIP_ALARM_CONFIG=""
+  if [ -f "$ALARM_OVERRIDES_FILE" ]; then
+    if confirm "${L[alarm_thresholds_keep]}"; then
+      _SKIP_ALARM_CONFIG=1
+      info "${L[alarm_thresholds_kept]}"
+    fi
+  fi
+  if [ -z "$_SKIP_ALARM_CONFIG" ]; then
+    echo ""
+    pick _ALARM_PRESET "${L[alarm_preset_standard]}" "${L[alarm_preset_relaxed]}" "${L[alarm_preset_strict]}" "${L[alarm_preset_custom]}"
   if [ "$_ALARM_PRESET" = "${L[alarm_preset_custom]}" ]; then
     echo ""
     # Build pick labels from alarm names + current thresholds
@@ -541,6 +549,7 @@ json.dump(preset, open(overrides_f, 'w'), indent=2)
 os.chmod(overrides_f, 0o600)
 "
     info "$(t alarm_preset_applied "$_ALARM_PRESET")"
+  fi
   fi
 fi
 
