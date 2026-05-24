@@ -6,7 +6,7 @@
 
 [中文](#lark-mcp-on-agentcore) | [English](#english)
 
-将 200+ 飞书 API 部署为远程 MCP 服务，为 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 提供飞书工具能力。连接后，用户可通过自然语言完成发消息、管日程、读写多维表格等操作。基于 AWS Bedrock AgentCore 托管，支持多用户 OAuth 身份隔离、自动弹性伸缩（空闲缩零）、可观测性（5 板块 Dashboard + 10 项告警 + 飞书群通知）。API 协议层完全委托 [lark-cli](https://github.com/larksuite/cli)，飞书新增 API 时只需更新 Dockerfile 中的 lark-cli 版本并重新部署，无需修改业务代码。
+将 [lark-cli](https://github.com/larksuite/cli) 的 200+ 命令封装为远程 MCP 工具（覆盖飞书 2500+ API），为 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 提供飞书工具能力。连接后，用户可通过自然语言完成发消息、管日程、读写多维表格等操作。基于 AWS Bedrock AgentCore 托管，支持多用户 OAuth 身份隔离、自动弹性伸缩（空闲缩零）、可观测性（5 板块 Dashboard + 10 项告警 + 飞书群通知）。API 协议层完全委托 lark-cli，飞书新增 API 时只需更新 Dockerfile 中的 lark-cli 版本并重新部署，无需修改业务代码。
 
 ## 效果
 
@@ -98,7 +98,7 @@ MIT
 
 # English
 
-Deploy 200+ Feishu APIs as a remote MCP service for [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/). Once connected, users send messages, manage calendars, read/write Bitable, and more through natural language. Hosted on AWS Bedrock AgentCore with multi-user OAuth isolation, auto-scaling (scale-to-zero), and observability (5-section dashboard + 10 alarms + Feishu group notifications). API layer fully delegated to [lark-cli](https://github.com/larksuite/cli) — when Feishu adds new APIs, just bump the lark-cli version in Dockerfile and re-deploy. No application code changes.
+Wrap [lark-cli](https://github.com/larksuite/cli)'s 200+ commands as remote MCP tools (covering Feishu's 2500+ APIs) for [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/). Once connected, users send messages, manage calendars, read/write Bitable, and more through natural language. Hosted on AWS Bedrock AgentCore with multi-user OAuth isolation, auto-scaling (scale-to-zero), and observability (5-section dashboard + 10 alarms + Feishu group notifications). API layer fully delegated to lark-cli — when Feishu adds new APIs, just bump the lark-cli version in Dockerfile and re-deploy. No application code changes.
 
 ## What it looks like
 
