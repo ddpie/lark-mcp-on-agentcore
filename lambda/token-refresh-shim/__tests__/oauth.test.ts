@@ -436,12 +436,12 @@ describe('/callback — full Feishu exchange path', () => {
     const r = await call({
       path: '/callback',
       httpMethod: 'GET',
+      headers: { 'accept-language': 'zh-CN,zh;q=0.9' },
       queryStringParameters: { code: 'feishu-code', state },
     });
     expect(r.statusCode).toBe(200);
     expect(r.headers?.['Content-Type']).toContain('text/html');
     expect(r.body).toContain('授权成功');
-    // Name from /authen/v1/user_info should be rendered, not the hex userId
     expect(r.body).toContain('张三');
   });
 
@@ -770,7 +770,7 @@ describe('/callback — edge cases', () => {
     });
     const state = buildState({ u: undefined, r: undefined });
     // Legacy flow with no open_id in Feishu response → random hex userId
-    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+    const r = await call({ path: '/callback', httpMethod: 'GET', headers: { 'accept-language': 'zh' }, queryStringParameters: { code: 'ok', state } });
     expect(r.statusCode).toBe(200);
     expect(r.body).toContain('授权成功');
   });
@@ -933,5 +933,69 @@ describe('EventBridge — getToken transient error handling', () => {
 
     expect(body.skipped).toBe(1);
     expect(body.failed).toBe(0);
+  });
+});
+
+// =============================================================================
+// /callback — i18n (Accept-Language based)
+// =============================================================================
+
+describe('/callback — i18n success page', () => {
+  it('renders English when Accept-Language is en', async () => {
+    mockFeishu();
+    const state = buildState({ u: 'ou_en_user' });
+    const r = await call({
+      path: '/callback',
+      httpMethod: 'GET',
+      headers: { 'accept-language': 'en-US,en;q=0.9' },
+      queryStringParameters: { code: 'feishu-code', state },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('Authorized');
+    expect(r.body).toContain('has been authorized');
+    expect(r.body).toContain('Return to Amazon Quick Desktop');
+    expect(r.body).toContain('lang="en"');
+  });
+
+  it('renders Chinese when Accept-Language starts with zh', async () => {
+    mockFeishu();
+    const state = buildState({ u: 'ou_zh_user' });
+    const r = await call({
+      path: '/callback',
+      httpMethod: 'GET',
+      headers: { 'accept-language': 'zh-TW,zh;q=0.9,en;q=0.8' },
+      queryStringParameters: { code: 'feishu-code', state },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('授权成功');
+    expect(r.body).toContain('已完成飞书授权');
+    expect(r.body).toContain('lang="zh"');
+  });
+
+  it('falls back to English when Accept-Language is unknown', async () => {
+    mockFeishu();
+    const state = buildState({ u: 'ou_ja_user' });
+    const r = await call({
+      path: '/callback',
+      httpMethod: 'GET',
+      headers: { 'accept-language': 'ja-JP,ja;q=0.9' },
+      queryStringParameters: { code: 'feishu-code', state },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('Authorized');
+    expect(r.body).toContain('lang="en"');
+  });
+
+  it('falls back to English when no Accept-Language header', async () => {
+    mockFeishu();
+    const state = buildState({ u: 'ou_no_lang' });
+    const r = await call({
+      path: '/callback',
+      httpMethod: 'GET',
+      queryStringParameters: { code: 'feishu-code', state },
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('Authorized');
+    expect(r.body).toContain('lang="en"');
   });
 });

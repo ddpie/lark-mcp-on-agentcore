@@ -8,6 +8,10 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         "Ref": "AlarmTopicD01E77F9",
       },
     },
+    "DashboardUrl": {
+      "Description": "CloudWatch observability dashboard",
+      "Value": "https://us-west-2.console.aws.amazon.com/cloudwatch/home?region=us-west-2#dashboards/dashboard/lark-mcp-on-agentcore",
+    },
     "FeishuRedirectUrl": {
       "Description": "Add this to Feishu app redirect URLs",
       "Value": {
@@ -105,6 +109,88 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
     },
   },
   "Resources": {
+    "ActiveUsersFilter2A40EF46": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "refresh_cycle" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "OAuthFunctionLogRetention2C2C17E3",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "ActiveUsers",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "$.total",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "AgentCore5xxAlarmF45FDD3B": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "AlarmTopicD01E77F9",
+          },
+        ],
+        "AlarmName": "AgentCore 上游 5xx",
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "EvaluationPeriods": 1,
+        "MetricName": "AgentCore5xx",
+        "Namespace": "LarkMcpOnAgentCore",
+        "Period": 300,
+        "Statistic": "Sum",
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+        "Threshold": 3,
+        "TreatMissingData": "notBreaching",
+      },
+      "Type": "AWS::CloudWatch::Alarm",
+    },
+    "AgentCore5xxFilter28574BE7": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "agentcore_5xx" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "MiddlewareFunctionLogRetentionE264B832",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "AgentCore5xx",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "AgentCoreSlowFilterF53D476C": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "agentcore_slow" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "MiddlewareFunctionLogRetentionE264B832",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "AgentCoreSlow",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
     "AlarmTopicD01E77F9": {
       "Properties": {
         "DisplayName": "Lark MCP on AgentCore alarms",
@@ -117,6 +203,138 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         "TopicName": "lark-mcp-on-agentcore-alarms",
       },
       "Type": "AWS::SNS::Topic",
+    },
+    "ApiGateway5xxAlarm4F808175": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "AlarmTopicD01E77F9",
+          },
+        ],
+        "AlarmName": "API Gateway 5xx",
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "Dimensions": [
+          {
+            "Name": "ApiName",
+            "Value": "lark-mcp-on-agentcore-oauth",
+          },
+        ],
+        "EvaluationPeriods": 2,
+        "MetricName": "5XXError",
+        "Namespace": "AWS/ApiGateway",
+        "Period": 300,
+        "Statistic": "Sum",
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+        "Threshold": 5,
+        "TreatMissingData": "notBreaching",
+      },
+      "Type": "AWS::CloudWatch::Alarm",
+    },
+    "AuthFailFilter99B2630C": {
+      "Properties": {
+        "FilterPattern": "?"token_verify_failed" ?"auth_missing_or_invalid"",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "MiddlewareFunctionLogRetentionE264B832",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "AuthFail",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "FeishuNotAuthAlarm074D66D7": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "AlarmTopicD01E77F9",
+          },
+        ],
+        "AlarmName": "飞书未授权突增",
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "EvaluationPeriods": 2,
+        "MetricName": "FeishuNotAuthorized",
+        "Namespace": "LarkMcpOnAgentCore",
+        "Period": 300,
+        "Statistic": "Sum",
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+        "Threshold": 10,
+        "TreatMissingData": "notBreaching",
+      },
+      "Type": "AWS::CloudWatch::Alarm",
+    },
+    "FeishuNotAuthorizedFilterF0BCEC8F": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "feishu_not_authorized" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "MiddlewareFunctionLogRetentionE264B832",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "FeishuNotAuthorized",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "FeishuSlowFilter4553D081": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "feishu_slow" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "OAuthFunctionLogRetention2C2C17E3",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "FeishuSlow",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "FeishuSlowLatencyFilter9DC53A55": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "feishu_slow" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "OAuthFunctionLogRetention2C2C17E3",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "FeishuSlowLatencyMs",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "$.durationMs",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
     },
     "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A": {
       "DependsOn": [
@@ -207,6 +425,101 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       },
       "Type": "AWS::IAM::Policy",
     },
+    "McpLatencyAlarm256CD734": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "AlarmTopicD01E77F9",
+          },
+        ],
+        "AlarmName": "MCP 延迟 P95 >10s",
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "EvaluationPeriods": 3,
+        "ExtendedStatistic": "p95",
+        "MetricName": "McpLatencyMs",
+        "Namespace": "LarkMcpOnAgentCore",
+        "Period": 300,
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+        "Threshold": 10000,
+        "TreatMissingData": "notBreaching",
+      },
+      "Type": "AWS::CloudWatch::Alarm",
+    },
+    "McpLatencyFilter9C4954B4": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "mcp_request_ok" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "MiddlewareFunctionLogRetentionE264B832",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "McpLatencyMs",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "$.durationMs",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "McpRequestOkFilter546FB180": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "mcp_request_ok" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "MiddlewareFunctionLogRetentionE264B832",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "McpRequestOk",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "MiddlewareConcurrencyAlarmEFE2C1CE": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "AlarmTopicD01E77F9",
+          },
+        ],
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "MiddlewareFunction32153138",
+            },
+          },
+        ],
+        "EvaluationPeriods": 3,
+        "MetricName": "ConcurrentExecutions",
+        "Namespace": "AWS/Lambda",
+        "Period": 60,
+        "Statistic": "Maximum",
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+        "Threshold": 800,
+        "TreatMissingData": "notBreaching",
+      },
+      "Type": "AWS::CloudWatch::Alarm",
+    },
     "MiddlewareErrorAlarmFB29B09C": {
       "Properties": {
         "AlarmActions": [
@@ -214,7 +527,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "Ref": "AlarmTopicD01E77F9",
           },
         ],
-        "AlarmName": "lark-mcp-on-agentcore-middleware-errors",
+        "AlarmName": "Middleware Lambda 错误",
         "ComparisonOperator": "GreaterThanOrEqualToThreshold",
         "Dimensions": [
           {
@@ -248,7 +561,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "5aa9d401c282cc2c84363134a75ef7c38d7202e67a8fc79f9191ad2b9e489aea.zip",
+          "S3Key": "0dafe392c62c7c6223c97ff7550df62d251cf9962b9dbd39cb0360fd86a3b107.zip",
         },
         "Environment": {
           "Variables": {
@@ -277,6 +590,28 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         "Timeout": 60,
       },
       "Type": "AWS::Lambda::Function",
+    },
+    "MiddlewareFunctionLogRetentionE264B832": {
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              "/aws/lambda/",
+              {
+                "Ref": "MiddlewareFunction32153138",
+              },
+            ],
+          ],
+        },
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "Custom::LogRetention",
     },
     "MiddlewareFunctionServiceRole1ED1018C": {
       "Properties": {
@@ -345,6 +680,25 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         ],
       },
       "Type": "AWS::IAM::Policy",
+    },
+    "NewUserFilter8CC6FB64": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "new_user_authorized" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "OAuthFunctionLogRetention2C2C17E3",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "NewUserAuthorized",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
     },
     "OAuthApi8AB10ACC": {
       "Properties": {
@@ -1347,6 +1701,25 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       },
       "Type": "AWS::CloudFront::Distribution",
     },
+    "OAuthCallbackOkFilter19C8FD8D": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "oauth_callback_success" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "OAuthFunctionLogRetention2C2C17E3",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "OAuthCallbackSuccess",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
     "OAuthCodesFF09132A": {
       "DeletionPolicy": "Delete",
       "Properties": {
@@ -1388,7 +1761,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "Ref": "AlarmTopicD01E77F9",
           },
         ],
-        "AlarmName": "lark-mcp-on-agentcore-oauth-errors",
+        "AlarmName": "OAuth Lambda 错误",
         "ComparisonOperator": "GreaterThanOrEqualToThreshold",
         "Dimensions": [
           {
@@ -1422,7 +1795,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "7d42f2dcc4ef27dceb5b0aacbc9d002d7102008719b513f2977762a88dacf2c2.zip",
+          "S3Key": "72ed94754f5277ada5b01d70f2fe0dbb8226abaff36c7a3f74a190017a6edec2.zip",
         },
         "Environment": {
           "Variables": {
@@ -1611,6 +1984,141 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       },
       "Type": "AWS::IAM::Policy",
     },
+    "OAuthStartFilter03F29B92": {
+      "Properties": {
+        "FilterPattern": "{ $.event = "oauth_authorize_start" }",
+        "LogGroupName": {
+          "Fn::GetAtt": [
+            "OAuthFunctionLogRetention2C2C17E3",
+            "LogGroupName",
+          ],
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "OAuthAuthorizeStart",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "ObservabilityDashboard136CA6C4": {
+      "Properties": {
+        "DashboardBody": {
+          "Fn::Join": [
+            "",
+            [
+              "{"widgets":[{"type":"text","width":24,"height":1,"x":0,"y":0,"properties":{"markdown":"## MCP 请求量"}},{"type":"metric","width":8,"height":6,"x":0,"y":1,"properties":{"view":"timeSeries","title":"MCP 请求量","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["LarkMcpOnAgentCore","McpRequestOk",{"label":"McpRequestOk","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":1,"properties":{"view":"timeSeries","title":"MCP 延迟 (ms)","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (Average)"}],["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (p95)","stat":"p95"}],["LarkMcpOnAgentCore","McpLatencyMs",{"label":"McpLatencyMs (p99)","stat":"p99"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":1,"properties":{"view":"timeSeries","title":"错误与慢调用","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["LarkMcpOnAgentCore","AgentCore5xx",{"label":"AgentCore5xx","stat":"Sum"}],["LarkMcpOnAgentCore","AgentCoreSlow",{"label":"AgentCoreSlow","stat":"Sum"}],["LarkMcpOnAgentCore","FeishuSlow",{"label":"FeishuSlow","stat":"Sum"}]],"yAxis":{}}},{"type":"text","width":24,"height":1,"x":0,"y":7,"properties":{"markdown":"## Lambda 调用量"}},{"type":"metric","width":8,"height":6,"x":0,"y":8,"properties":{"view":"timeSeries","title":"Lambda 调用量","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["AWS/Lambda","Invocations","FunctionName","",
+              {
+                "Ref": "OAuthFunction814F9D6D",
+              },
+              "",{"label":"OAuth","stat":"Sum"}],["AWS/Lambda","Invocations","FunctionName","",
+              {
+                "Ref": "MiddlewareFunction32153138",
+              },
+              "",{"label":"Middleware","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":8,"properties":{"view":"timeSeries","title":"Lambda 执行时长 (ms)","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["AWS/Lambda","Duration","FunctionName","",
+              {
+                "Ref": "OAuthFunction814F9D6D",
+              },
+              "",{"label":"OAuth (avg)"}],["AWS/Lambda","Duration","FunctionName","",
+              {
+                "Ref": "OAuthFunction814F9D6D",
+              },
+              "",{"label":"OAuth (p95)","stat":"p95"}],["AWS/Lambda","Duration","FunctionName","",
+              {
+                "Ref": "MiddlewareFunction32153138",
+              },
+              "",{"label":"Middleware (avg)"}],["AWS/Lambda","Duration","FunctionName","",
+              {
+                "Ref": "MiddlewareFunction32153138",
+              },
+              "",{"label":"Middleware (p95)","stat":"p95"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":8,"properties":{"view":"timeSeries","title":"Lambda 错误","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["AWS/Lambda","Errors","FunctionName","",
+              {
+                "Ref": "OAuthFunction814F9D6D",
+              },
+              "",{"label":"OAuth Errors","stat":"Sum"}],["AWS/Lambda","Errors","FunctionName","",
+              {
+                "Ref": "MiddlewareFunction32153138",
+              },
+              "",{"label":"Middleware Errors","stat":"Sum"}],["AWS/Lambda","Throttles","FunctionName","",
+              {
+                "Ref": "OAuthFunction814F9D6D",
+              },
+              "",{"label":"OAuth Throttles","stat":"Sum","yAxis":"right"}],["AWS/Lambda","Throttles","FunctionName","",
+              {
+                "Ref": "MiddlewareFunction32153138",
+              },
+              "",{"label":"Middleware Throttles","stat":"Sum","yAxis":"right"}]],"yAxis":{"right":{"label":"Lambda 限流"}}}},{"type":"text","width":24,"height":1,"x":0,"y":14,"properties":{"markdown":"## OAuth 授权漏斗"}},{"type":"metric","width":8,"height":6,"x":0,"y":15,"properties":{"view":"timeSeries","title":"OAuth 授权漏斗","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["LarkMcpOnAgentCore","OAuthAuthorizeStart",{"label":"OAuthAuthorizeStart","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","OAuthCallbackSuccess",{"label":"OAuthCallbackSuccess","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","NewUserAuthorized",{"label":"NewUserAuthorized","period":3600,"stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":15,"properties":{"view":"timeSeries","title":"Token 刷新","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["LarkMcpOnAgentCore","RefreshFailed",{"label":"RefreshFailed","period":3600,"stat":"Sum"}],["LarkMcpOnAgentCore","TokenLost",{"label":"TokenLost","period":3600,"stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":15,"properties":{"view":"timeSeries","title":"活跃用户与鉴权失败","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["LarkMcpOnAgentCore","ActiveUsers",{"label":"ActiveUsers (Maximum)","period":3600,"stat":"Maximum"}],["LarkMcpOnAgentCore","AuthFail",{"label":"AuthFail","stat":"Sum","yAxis":"right"}]],"yAxis":{}}},{"type":"text","width":24,"height":1,"x":0,"y":21,"properties":{"markdown":"## API Gateway 4xx / 5xx"}},{"type":"metric","width":8,"height":6,"x":0,"y":22,"properties":{"view":"timeSeries","title":"API Gateway 4xx / 5xx","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["AWS/ApiGateway","4XXError","ApiName","lark-mcp-on-agentcore-oauth",{"label":"4xx","stat":"Sum"}],["AWS/ApiGateway","5XXError","ApiName","lark-mcp-on-agentcore-oauth",{"label":"5xx","stat":"Sum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":8,"y":22,"properties":{"view":"timeSeries","title":"Lambda 并发","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["AWS/Lambda","ConcurrentExecutions","FunctionName","",
+              {
+                "Ref": "OAuthFunction814F9D6D",
+              },
+              "",{"label":"OAuth","stat":"Maximum"}],["AWS/Lambda","ConcurrentExecutions","FunctionName","",
+              {
+                "Ref": "MiddlewareFunction32153138",
+              },
+              "",{"label":"Middleware","stat":"Maximum"}]],"yAxis":{}}},{"type":"metric","width":8,"height":6,"x":16,"y":22,"properties":{"view":"timeSeries","title":"飞书未授权请求","region":"",
+              {
+                "Ref": "AWS::Region",
+              },
+              "","metrics":[["LarkMcpOnAgentCore","FeishuNotAuthorized",{"label":"FeishuNotAuthorized","stat":"Sum"}],["LarkMcpOnAgentCore","FeishuSlowLatencyMs",{"label":"FeishuSlowLatencyMs (Average)","yAxis":"right"}],["LarkMcpOnAgentCore","FeishuSlowLatencyMs",{"label":"FeishuSlowLatencyMs (p95)","stat":"p95","yAxis":"right"}]],"yAxis":{"right":{"label":"飞书 API 延迟 (ms)"}}}},{"type":"text","width":24,"height":1,"x":0,"y":28,"properties":{"markdown":"## 告警状态"}},{"type":"alarm","width":24,"height":3,"x":0,"y":29,"properties":{"title":"告警状态","alarms":["arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 丢失 (刷新已消耗但未存储)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 刷新失败","arn:aws:cloudwatch:us-west-2:123456789012:alarm:AgentCore 上游 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:MCP 延迟 P95 >10s","arn:aws:cloudwatch:us-west-2:123456789012:alarm:飞书未授权突增","arn:aws:cloudwatch:us-west-2:123456789012:alarm:undefined","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 被限流","arn:aws:cloudwatch:us-west-2:123456789012:alarm:API Gateway 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:OAuth Lambda 错误","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Middleware Lambda 错误"]}}]}",
+            ],
+          ],
+        },
+        "DashboardName": "lark-mcp-on-agentcore",
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+      },
+      "Type": "AWS::CloudWatch::Dashboard",
+    },
     "RefreshFailedAlarmB973F059": {
       "Properties": {
         "AlarmActions": [
@@ -1618,7 +2126,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "Ref": "AlarmTopicD01E77F9",
           },
         ],
-        "AlarmName": "lark-mcp-on-agentcore-refresh-failed",
+        "AlarmName": "Token 刷新失败",
         "ComparisonOperator": "GreaterThanOrEqualToThreshold",
         "EvaluationPeriods": 1,
         "MetricName": "RefreshFailed",
@@ -1655,6 +2163,39 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       },
       "Type": "AWS::Logs::MetricFilter",
     },
+    "ThrottleAlarm26FC7A69": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "AlarmTopicD01E77F9",
+          },
+        ],
+        "AlarmName": "Lambda 被限流",
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "MiddlewareFunction32153138",
+            },
+          },
+        ],
+        "EvaluationPeriods": 1,
+        "MetricName": "Throttles",
+        "Namespace": "AWS/Lambda",
+        "Period": 300,
+        "Statistic": "Sum",
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+        "Threshold": 1,
+        "TreatMissingData": "notBreaching",
+      },
+      "Type": "AWS::CloudWatch::Alarm",
+    },
     "TokenLossAlarm4342D89C": {
       "Properties": {
         "AlarmActions": [
@@ -1662,7 +2203,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "Ref": "AlarmTopicD01E77F9",
           },
         ],
-        "AlarmName": "lark-mcp-on-agentcore-token-lost",
+        "AlarmName": "Token 丢失 (刷新已消耗但未存储)",
         "ComparisonOperator": "GreaterThanOrEqualToThreshold",
         "EvaluationPeriods": 1,
         "MetricName": "TokenLost",
