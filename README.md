@@ -6,7 +6,7 @@
 
 [中文](#lark-mcp-on-agentcore) | [English](#english)
 
-将 [lark-cli](https://github.com/larksuite/cli) 的 200+ 命令封装为远程 MCP 工具（覆盖飞书 2500+ API），为 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 提供飞书工具能力。连接后，用户可通过自然语言完成发消息、管日程、读写多维表格等操作。基于 AWS Bedrock AgentCore 托管，支持多用户 OAuth 身份隔离、自动弹性伸缩（空闲缩零）、可观测性（5 板块 Dashboard + 10 项告警 + 飞书群通知）。API 协议层完全委托 lark-cli，飞书新增 API 时只需更新 Dockerfile 中的 lark-cli 版本并重新部署，无需修改业务代码。
+为 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 提供飞书工具能力的远程 MCP 服务，开箱即用 200+ 工具（覆盖飞书 2500+ API）。连接后，用户可通过自然语言完成发消息、管日程、读写多维表格等操作。基于 AWS Bedrock AgentCore 托管，支持多用户 OAuth 身份隔离、自动弹性伸缩（空闲缩零）、可观测性（5 板块 Dashboard + 10 项告警 + 飞书群通知）。
 
 ## 效果
 
@@ -37,7 +37,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 ## 架构
 
-用户通过 Quick Desktop 发起请求 → CloudFront → API Gateway → Middleware Lambda（验证 MCP Token + SigV4 签名）→ AgentCore Runtime（lark-cli 容器处理飞书 API 调用）。OAuth Lambda 负责用户授权和 Token 自动刷新（每 30 分钟），EventBridge 定时触发。所有 Token 加密存储在 Secrets Manager 中。
+用户通过 Quick Desktop 发起请求 → CloudFront → API Gateway → Middleware Lambda（验证 MCP Token + SigV4 签名）→ AgentCore Runtime（MCP 服务容器处理飞书 API 调用）。OAuth Lambda 负责用户授权和 Token 自动刷新（每 30 分钟），EventBridge 定时触发。所有 Token 加密存储在 Secrets Manager 中。
 
 <p align="center">
   <img src="docs/images/architecture.svg" alt="Architecture" width="720">
@@ -90,6 +90,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 ./scripts/teardown.sh        # 销毁所有资源
 ```
 
+## 风险提示
+
+AI Agent 以用户身份调用飞书 API 存在模型幻觉、prompt injection 等固有风险。详见 [lark-cli 安全与风险提示](https://github.com/larksuite/cli/blob/main/README.zh.md#安全与风险提示使用前必读)。
+
 ## License
 
 MIT
@@ -98,7 +102,7 @@ MIT
 
 # English
 
-Wrap [lark-cli](https://github.com/larksuite/cli)'s 200+ commands as remote MCP tools (covering Feishu's 2500+ APIs) for [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/). Once connected, users send messages, manage calendars, read/write Bitable, and more through natural language. Hosted on AWS Bedrock AgentCore with multi-user OAuth isolation, auto-scaling (scale-to-zero), and observability (5-section dashboard + 10 alarms + Feishu group notifications). API layer fully delegated to lark-cli — when Feishu adds new APIs, just bump the lark-cli version in Dockerfile and re-deploy. No application code changes.
+A remote Feishu MCP service for [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/), shipping 200+ tools out of the box (covering Feishu's 2500+ APIs). Once connected, users send messages, manage calendars, read/write Bitable, and more through natural language. Hosted on AWS Bedrock AgentCore with multi-user OAuth isolation, auto-scaling (scale-to-zero), and observability (5-section dashboard + 10 alarms + Feishu group notifications).
 
 ## What it looks like
 
@@ -129,7 +133,7 @@ Check deps → Feishu credentials → Region / WAF / Log retention / Alarm prese
 
 ## Architecture
 
-User requests from Quick Desktop → CloudFront → API Gateway → Middleware Lambda (MCP token verification + SigV4 signing) → AgentCore Runtime (lark-cli container handles Feishu API calls). OAuth Lambda manages user authorization and auto-refreshes tokens every 30 minutes via EventBridge. All tokens encrypted in Secrets Manager.
+User requests from Quick Desktop → CloudFront → API Gateway → Middleware Lambda (MCP token verification + SigV4 signing) → AgentCore Runtime (MCP service container handles Feishu API calls). OAuth Lambda manages user authorization and auto-refreshes tokens every 30 minutes via EventBridge. All tokens encrypted in Secrets Manager.
 
 <p align="center">
   <img src="docs/images/architecture-en.svg" alt="Architecture" width="720">
@@ -181,6 +185,10 @@ User requests from Quick Desktop → CloudFront → API Gateway → Middleware L
 ./scripts/ops.sh logs        # Lambda logs
 ./scripts/teardown.sh        # Destroy all resources
 ```
+
+## Risk Notice
+
+Having an AI Agent operate Feishu APIs as the user carries inherent risks such as model hallucination and prompt injection. See [lark-cli Security Warnings](https://github.com/larksuite/cli/blob/main/README.md#security--risk-warnings-read-before-use).
 
 ## License
 
