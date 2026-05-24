@@ -1,11 +1,22 @@
+import { createHmac } from 'crypto';
 import i18n from '../../config/i18n.json';
 
 interface SNSRecord { Sns: { Message: string; Subject?: string; Timestamp?: string } }
 interface SNSEvent { Records: SNSRecord[] }
 
 const WEBHOOK_URL = process.env.FEISHU_WEBHOOK_URL || '';
+const WEBHOOK_SECRET = process.env.FEISHU_WEBHOOK_SECRET || '';
+const WEBHOOK_KEYWORD = process.env.FEISHU_WEBHOOK_KEYWORD || '';
 const LANG = process.env.DEPLOY_LANG || 'en';
 const t = i18n.alarm[LANG as keyof typeof i18n.alarm] || i18n.alarm.en;
+
+function signRequest(): { timestamp: string; sign: string } | null {
+  if (!WEBHOOK_SECRET) return null;
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const stringToSign = `${timestamp}\n${WEBHOOK_SECRET}`;
+  const sign = createHmac('sha256', stringToSign).update('').digest('base64');
+  return { timestamp, sign };
+}
 
 interface AlarmMessage {
   AlarmName?: string;
@@ -27,11 +38,12 @@ export async function handler(event: SNSEvent): Promise<void> {
     }
 
     const isAlarm = alarm.NewStateValue === 'ALARM';
+    const keyword = WEBHOOK_KEYWORD ? `[${WEBHOOK_KEYWORD}] ` : '';
     const title = isAlarm
-      ? `🔴 ${t.alarm}: ${alarm.AlarmName}`
-      : `✅ ${t.ok}: ${alarm.AlarmName}`;
+      ? `🔴 ${keyword}${t.alarm}: ${alarm.AlarmName}`
+      : `✅ ${keyword}${t.ok}: ${alarm.AlarmName}`;
 
-    const card = {
+    const card: Record<string, unknown> = {
       msg_type: 'interactive',
       card: {
         header: {
@@ -60,6 +72,12 @@ export async function handler(event: SNSEvent): Promise<void> {
         ],
       },
     };
+
+    const sig = signRequest();
+    if (sig) {
+      card.timestamp = sig.timestamp;
+      card.sign = sig.sign;
+    }
 
     const resp = await fetch(WEBHOOK_URL, {
       method: 'POST',
