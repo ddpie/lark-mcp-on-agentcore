@@ -9,14 +9,16 @@ if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
     NEW_BASH="$(brew --prefix)/bin/bash"
     if [ -x "$NEW_BASH" ] && [[ "$("$NEW_BASH" -c 'echo ${BASH_VERSINFO[0]}')" -ge 4 ]]; then
       echo "  Found ${NEW_BASH} (bash 4+), restarting..." >&2
-      exec "$NEW_BASH" <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
+      _tmp=$(mktemp); curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh > "$_tmp"
+      exec "$NEW_BASH" "$_tmp"
     fi
     printf "  Install bash 4+ via Homebrew and continue? (Y/n) " >&2
     read -r _ans </dev/tty 2>/dev/null || _ans="y"
     if [[ ! "${_ans:-y}" =~ ^[nN] ]]; then
       brew install bash
       echo "  Restarting with ${NEW_BASH}..." >&2
-      exec "$NEW_BASH" <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
+      _tmp=$(mktemp); curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh > "$_tmp"
+      exec "$NEW_BASH" "$_tmp"
     fi
   fi
   echo "  Manual upgrade:" >&2
