@@ -30,5 +30,5 @@ Thumbs.db
 *.swp
 *.swo
 
-# Deploy output (contains account-specific info)
-deploy-output.md
+# Local deploy state (account-specific, not committed)
+.local/

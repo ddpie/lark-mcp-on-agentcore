@@ -20,22 +20,60 @@ fi
 REPO="https://github.com/ddpie/lark-mcp-on-agentcore.git"
 DIR="lark-mcp-on-agentcore"
 
+# Arrow-key picker (same as deploy.sh)
+pick() {
+  local _var="$1"; shift
+  local -a _items=("$@")
+  local _count=${#_items[@]}
+  local _sel=${PICK_DEFAULT:-1}
+  (( _sel < 1 || _sel > _count )) && _sel=1
+  if [ ! -t 0 ] || [ ! -t 1 ]; then
+    eval "$_var=\"\${_items[\$((_sel-1))]}\""
+    unset PICK_DEFAULT; return
+  fi
+  while IFS= read -r -t 0.05 _ </dev/tty 2>/dev/null; do :; done
+  trap 'printf "\033[?25h" >/dev/tty; exit 130' INT
+  printf '\033[?25l' >/dev/tty
+  _pick_draw() {
+    local i
+    for ((i=1; i<=_count; i++)); do
+      if ((i == _sel)); then
+        printf '\033[36m  ❯ %s\033[0m\n' "${_items[$((i-1))]}" >/dev/tty
+      else
+        printf '    %s\n' "${_items[$((i-1))]}" >/dev/tty
+      fi
+    done
+  }
+  _pick_draw
+  while true; do
+    local _key
+    IFS= read -rsn1 _key </dev/tty
+    if [[ "$_key" == $'\x1b' ]]; then
+      read -rsn2 -t 0.1 _key </dev/tty
+      case "$_key" in
+        '[A') (( _sel > 1 )) && (( _sel-- )) ;;
+        '[B') (( _sel < _count )) && (( _sel++ )) ;;
+      esac
+      printf '\033[%dA' "$_count" >/dev/tty
+      _pick_draw
+    elif [[ -z "$_key" || "$_key" == $'\n' ]]; then
+      break
+    fi
+  done
+  printf '\033[?25h' >/dev/tty
+  trap - INT
+  eval "$_var=\"\${_items[\$((_sel-1))]}\""
+  unset PICK_DEFAULT
+}
+
 # Language selection (only ask if not already set)
 if [ -z "${LARK_LANG:-}" ]; then
   echo ""
   echo "  Select language / 选择语言:"
   echo ""
-  echo "    1) 中文"
-  echo "    2) English"
-  echo ""
-  # Drain any pre-typed input before the very first prompt (the helper isn't
-  # defined yet at this point in the script).
-  if [ -t 0 ]; then
-    while IFS= read -r -t 0.05 _ </dev/tty 2>/dev/null; do :; done
-  fi
-  read -rp "  [1]: " LANG_CHOICE </dev/tty
-  case "${LANG_CHOICE:-1}" in
-    2) export LARK_LANG="en" ;;
+  pick _LANG_PICK "中文" "English"
+  case "$_LANG_PICK" in
+    English) export LARK_LANG="en" ;;
     *) export LARK_LANG="zh" ;;
   esac
 fi
@@ -45,7 +83,7 @@ declare -A L
 if [ "$LARK_LANG" = "zh" ]; then
   L[title]="Lark MCP on AgentCore - 安装"
   L[checking_deps]="检查依赖..."
-  L[missing_install]="缺少 %s，是否自动安装? (Y/n)"
+  L[missing_install]="缺少 %s，是否自动安装?"
   L[skipped]="跳过。请手动安装 %s 后重试。"
   L[install_failed]="安装失败，请手动安装 %s。"
   L[installing_node]="安装 Node.js 20..."
@@ -53,18 +91,20 @@ if [ "$LARK_LANG" = "zh" ]; then
   L[installing_aws]="安装 AWS CLI..."
   L[installing_cdk]="安装 AWS CDK..."
   L[start_docker]="请启动 Docker Desktop"
-  L[missing_boto3]="缺少 python3 boto3，是否安装? (Y/n)"
+  L[missing_boto3]="缺少 python3 boto3，是否安装?"
   L[all_ready]="所有依赖就绪。"
   L[dir_exists]="目录已存在，更新中..."
   L[cloning]="克隆代码..."
   L[npm_deps]="安装 npm 依赖..."
   L[done]="安装完成。"
-  L[start_deploy]="现在开始部署? (Y/n)"
+  L[start_deploy]="现在开始部署?"
   L[deploy_later]="稍后部署: cd %s && ./scripts/deploy.sh"
+  L[yes]="是"
+  L[no]="否"
 else
   L[title]="Lark MCP on AgentCore - Install"
   L[checking_deps]="Checking dependencies..."
-  L[missing_install]="Missing %s, install automatically? (Y/n)"
+  L[missing_install]="Missing %s, install automatically?"
   L[skipped]="Skipped. Please install %s manually."
   L[install_failed]="Install failed. Please install %s manually."
   L[installing_node]="Installing Node.js 20..."
@@ -72,14 +112,16 @@ else
   L[installing_aws]="Installing AWS CLI..."
   L[installing_cdk]="Installing AWS CDK..."
   L[start_docker]="Please start Docker Desktop"
-  L[missing_boto3]="Missing python3 boto3, install? (Y/n)"
+  L[missing_boto3]="Missing python3 boto3, install?"
   L[all_ready]="All dependencies ready."
   L[dir_exists]="Directory exists, updating..."
   L[cloning]="Cloning repository..."
   L[npm_deps]="Installing npm dependencies..."
   L[done]="Installation complete."
-  L[start_deploy]="Start deployment now? (Y/n)"
+  L[start_deploy]="Start deployment now?"
   L[deploy_later]="Deploy later: cd %s && ./scripts/deploy.sh"
+  L[yes]="Yes"
+  L[no]="No"
 fi
 
 t() { printf "${L[$1]}" "${@:2}"; }
@@ -98,20 +140,17 @@ elif command -v yum &>/dev/null; then PKG="yum"
 elif command -v brew &>/dev/null; then PKG="brew"
 fi
 
-# Drain any pre-typed input before each prompt so a held Enter from the previous
-# prompt can't auto-accept the next decision.
-drain_stdin() {
-  if [ -t 0 ]; then
-    while IFS= read -r -t 0.05 _ </dev/tty 2>/dev/null; do :; done
-  fi
+confirm() {
+  local _q="$1"
+  echo "  $_q"
+  pick _YN "${L[yes]}" "${L[no]}"
+  [[ "$_YN" == "${L[yes]}" ]]
 }
-prompt() { drain_stdin; read -rp "  $1" "$2" </dev/tty; }
 
 install_pkg() {
   local cmd="$1"
   echo ""
-  prompt "$(t missing_install "$cmd") " ans
-  if [[ "${ans:-y}" =~ ^[nN] ]]; then
+  if ! confirm "$(t missing_install "$cmd")"; then
     echo "  $(t skipped "$cmd")"
     exit 1
   fi
@@ -184,8 +223,7 @@ printf "  %-10s ✓\n" "cdk"
 
 if ! python3 -c "import boto3" &>/dev/null; then
   echo ""
-  prompt "${L[missing_boto3]} " ans
-  if [[ ! "${ans:-y}" =~ ^[nN] ]]; then
+  if confirm "${L[missing_boto3]}"; then
     pip3 install boto3 --quiet
   fi
 fi
@@ -221,8 +259,7 @@ npm install --silent 2>/dev/null
 echo ""
 echo "  ${L[done]}"
 echo ""
-prompt "${L[start_deploy]} " START
-if [[ "${START:-y}" =~ ^[nN] ]]; then
+if ! confirm "${L[start_deploy]}"; then
   echo ""
   echo "  $(t deploy_later "$(pwd)")"
   exit 0

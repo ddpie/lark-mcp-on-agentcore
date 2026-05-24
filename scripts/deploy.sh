@@ -17,6 +17,9 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+LOCAL_DIR="${PROJECT_DIR}/.local"
+mkdir -p "$LOCAL_DIR"
+DEPLOY_CONFIG="${LOCAL_DIR}/deploy-config"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -24,161 +27,103 @@ CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Language selection (only ask if not already set by install.sh)
+# Arrow-key interactive picker. Usage: pick RESULT_VAR "label1" "label2" ...
+# Optional: set PICK_DEFAULT=N (1-based) before calling to pre-select.
+pick() {
+  local _var="$1"; shift
+  local -a _items=("$@")
+  local _count=${#_items[@]}
+  local _sel=${PICK_DEFAULT:-1}
+  (( _sel < 1 || _sel > _count )) && _sel=1
+
+  # Non-interactive: auto-select default
+  if [ ! -t 0 ] || [ ! -t 1 ]; then
+    eval "$_var=\"\${_items[\$((_sel-1))]}\""
+    unset PICK_DEFAULT
+    return
+  fi
+
+  # Drain any buffered input to prevent stray Enter from auto-selecting
+  while IFS= read -r -t 0.05 _ </dev/tty 2>/dev/null; do :; done
+
+  # Hide cursor; restore on interrupt and exit
+  trap 'printf "\033[?25h" >/dev/tty; exit 130' INT
+  printf '\033[?25l' >/dev/tty
+
+  _pick_draw() {
+    local i
+    for ((i=1; i<=_count; i++)); do
+      if ((i == _sel)); then
+        printf '\033[36m  ❯ %s\033[0m\n' "${_items[$((i-1))]}" >/dev/tty
+      else
+        printf '    %s\n' "${_items[$((i-1))]}" >/dev/tty
+      fi
+    done
+  }
+
+  _pick_draw
+  while true; do
+    local _key
+    IFS= read -rsn1 _key </dev/tty
+    if [[ "$_key" == $'\x1b' ]]; then
+      read -rsn2 -t 0.1 _key </dev/tty
+      case "$_key" in
+        '[A') (( _sel > 1 )) && (( _sel-- )) ;;       # Up
+        '[B') (( _sel < _count )) && (( _sel++ )) ;;  # Down
+      esac
+      printf '\033[%dA' "$_count" >/dev/tty
+      _pick_draw
+    elif [[ -z "$_key" || "$_key" == $'\n' ]]; then
+      break
+    fi
+  done
+
+  # Show cursor and restore trap
+  printf '\033[?25h' >/dev/tty
+  trap - INT
+  eval "$_var=\"\${_items[\$((_sel-1))]}\""
+  unset PICK_DEFAULT
+}
+
+# Language selection (only ask if not already set by install.sh or saved config)
+if [ -z "${LARK_LANG:-}" ] && [ -f "$DEPLOY_CONFIG" ]; then
+  SAVED_LANG=$(grep '^LARK_LANG=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+  [ -n "$SAVED_LANG" ] && export LARK_LANG="$SAVED_LANG"
+fi
 if [ -z "${LARK_LANG:-}" ]; then
   echo ""
   echo "  Select language / 选择语言:"
   echo ""
-  echo "    1) 中文"
-  echo "    2) English"
-  echo ""
-  # Drain any pre-typed input before the very first prompt (the helper isn't
-  # defined yet at this point in the script).
-  if [ -t 0 ]; then
-    while IFS= read -r -t 0.05 _ </dev/tty 2>/dev/null; do :; done
-  fi
-  read -rp "  [1]: " LANG_CHOICE </dev/tty
-  case "${LANG_CHOICE:-1}" in
-    2) export LARK_LANG="en" ;;
+  pick _LANG_PICK "中文" "English"
+  case "$_LANG_PICK" in
+    English) export LARK_LANG="en" ;;
     *) export LARK_LANG="zh" ;;
   esac
 fi
 
-# --- i18n messages ---
-declare -A L
-if [ "$LARK_LANG" = "zh" ]; then
-  L[title]="Lark MCP on AgentCore - 部署"
-  L[title_done]="部署完成 ✓"
-  L[check_env]="检查环境"
-  L[docker_not_running]="Docker 未启动，请先启动 Docker。"
-  L[run_install]="请先运行 install.sh 安装依赖:"
-  L[aws_not_configured]="AWS 凭证未配置"
-  L[aws_retry]="重试                  (已通过环境变量设置)"
-  L[aws_fail]="无法认证 AWS，请检查凭证后重试。"
-  L[configure_feishu]="配置飞书应用"
-  L[feishu_creds_needed]="需要飞书开放平台的应用凭证 (App ID + App Secret)"
-  L[feishu_platform]="飞书开放平台: https://open.feishu.cn/app"
-  L[ask_app_id]="飞书 App ID (如 cli_xxx)"
-  L[ask_app_secret]="飞书 App Secret: "
-  L[app_id_empty]="App ID 不能为空。"
-  L[app_secret_empty]="App Secret 不能为空。"
-  L[verifying_creds]="验证飞书凭证..."
-  L[creds_valid]="凭证有效 ✓"
-  L[creds_invalid]="凭证无效 (飞书返回错误: %s)。请检查 App ID 和 App Secret。"
-  L[confirm_creds]="确认? (Y=确认/n=取消/r=重新输入)"
-  L[cancelled]="已取消。"
-  L[re_enter]="重新输入..."
-  L[custom_domain]="自定义域名 (可选，直接回车跳过): "
-  L[ask_waf]="启用 CloudFront WAF (在 us-east-1 部署速率限制规则)? (y/N)"
-  L[waf_enabled]="WAF: 启用 (us-east-1)"
-  L[waf_disabled]="WAF: 禁用"
-  L[select_region]="选择部署区域:"
-  L[manual_input]="手动输入"
-  L[ask_region]="区域 (如 ca-central-1)"
-  L[not_bootstrapped]="区域 %s 尚未 Bootstrap。"
-  L[run_bootstrap]="现在执行 cdk bootstrap? (Y/n)"
-  L[confirm_deploy]="确认部署"
-  L[start_deploy]="开始部署? (Y/n)"
-  L[interrupted]="部署中断。可通过以下方式清理:"
-  L[or_rerun]="或重新运行此脚本完成部署"
-  L[clean_residuals]="清理残留资源"
-  L[step_1]="第 1/4 步: CDK 部署"
-  L[step_2]="第 2/4 步: AgentCore Runtime"
-  L[step_3]="第 3/4 步: Runtime Endpoint"
-  L[step_4]="第 4/4 步: 配置 Middleware"
-  L[verify]="验证"
-  L[creating_secrets]="创建/更新 Secrets Manager..."
-  L[building]="构建 Docker 镜像 + 部署基础设施..."
-  L[cdk_failed]="CDK 部署失败，最后 20 行日志:"
-  L[cdk_check]="CDK 部署失败，请检查上方输出。"
-  L[runtime_failed]="创建 AgentCore Runtime 失败。"
-  L[waiting_runtime]="等待 Runtime 就绪..."
-  L[testing_oauth]="测试 OAuth..."
-  L[testing_runtime]="测试 Runtime..."
-  L[deploy_info]="部署信息（请保存）"
-  L[next_steps]="接下来请完成以下步骤:"
-  L[step1_title]="步骤 1: 配置飞书应用重定向 URL"
-  L[step1_open]="打开飞书应用安全设置:"
-  L[step1_add]="添加重定向 URL:"
-  L[step2_title]="步骤 2: 配置 Quick Desktop"
-  L[step2_nav]="Quick Desktop: Settings → Capabilities → Browse Connections (跳转浏览器)"
-  L[step2_browser]="浏览器中: Connectors → Create for your team → Model Context Protocol →"
-  L[conn_info]="连接信息:"
-  L[oauth_config]="OAuth 配置 (Create integration 后填写):"
-  L[save_connect]="保存 → Connect → 浏览器授权飞书 → 自动连接"
-  L[operations]="运维命令"
-  L[op_list]="查看用户:    ./scripts/ops.sh list-users"
-  L[op_revoke]="撤销授权:    ./scripts/ops.sh revoke <user_id>"
-  L[op_status]="系统状态:    ./scripts/ops.sh status"
-  L[op_destroy]="销毁资源:    ./scripts/teardown.sh"
-  L[info_saved]="以上信息已保存到:"
-else
-  L[title]="Lark MCP on AgentCore - Deploy"
-  L[title_done]="Deployment Complete ✓"
-  L[check_env]="Check Environment"
-  L[docker_not_running]="Docker is not running. Please start Docker first."
-  L[run_install]="Please run install.sh first:"
-  L[aws_not_configured]="AWS credentials not configured"
-  L[aws_retry]="Retry                (already set via env)"
-  L[aws_fail]="Cannot authenticate AWS. Please check credentials."
-  L[configure_feishu]="Configure Feishu App"
-  L[feishu_creds_needed]="Feishu Open Platform app credentials required (App ID + App Secret)"
-  L[feishu_platform]="Feishu Open Platform: https://open.feishu.cn/app"
-  L[ask_app_id]="Feishu App ID (e.g. cli_xxx)"
-  L[ask_app_secret]="Feishu App Secret: "
-  L[app_id_empty]="App ID cannot be empty."
-  L[app_secret_empty]="App Secret cannot be empty."
-  L[verifying_creds]="Verifying Feishu credentials..."
-  L[creds_valid]="Credentials valid ✓"
-  L[creds_invalid]="Credentials invalid (Feishu error: %s). Please check App ID and App Secret."
-  L[confirm_creds]="Confirm? (Y=yes/n=cancel/r=re-enter)"
-  L[cancelled]="Cancelled."
-  L[re_enter]="Re-entering..."
-  L[custom_domain]="Custom domain (optional, press Enter to skip): "
-  L[ask_waf]="Enable CloudFront WAF (rate-limit rules deployed in us-east-1)? (y/N)"
-  L[waf_enabled]="WAF: enabled (us-east-1)"
-  L[waf_disabled]="WAF: disabled"
-  L[select_region]="Select deployment region:"
-  L[manual_input]="Manual input"
-  L[ask_region]="Region (e.g. ca-central-1)"
-  L[not_bootstrapped]="Region %s not yet bootstrapped."
-  L[run_bootstrap]="Run cdk bootstrap now? (Y/n)"
-  L[confirm_deploy]="Confirm Deployment"
-  L[start_deploy]="Start deployment? (Y/n)"
-  L[interrupted]="Deployment interrupted. To clean up:"
-  L[or_rerun]="Or re-run this script to resume."
-  L[clean_residuals]="Clean Up Residuals"
-  L[step_1]="Step 1/4: CDK Deploy"
-  L[step_2]="Step 2/4: AgentCore Runtime"
-  L[step_3]="Step 3/4: Runtime Endpoint"
-  L[step_4]="Step 4/4: Configure Middleware"
-  L[verify]="Verify"
-  L[creating_secrets]="Creating/updating Secrets Manager..."
-  L[building]="Building Docker image + deploying infrastructure..."
-  L[cdk_failed]="CDK deploy failed. Last 20 lines:"
-  L[cdk_check]="CDK deploy failed. Check output above."
-  L[runtime_failed]="Failed to create AgentCore Runtime."
-  L[waiting_runtime]="Waiting for Runtime to be ready..."
-  L[testing_oauth]="Testing OAuth..."
-  L[testing_runtime]="Testing Runtime..."
-  L[deploy_info]="Deployment Info (please save)"
-  L[next_steps]="Next steps:"
-  L[step1_title]="Step 1: Configure Feishu App Redirect URL"
-  L[step1_open]="Open Feishu app security settings:"
-  L[step1_add]="Add redirect URL:"
-  L[step2_title]="Step 2: Configure Quick Desktop"
-  L[step2_nav]="Quick Desktop: Settings → Capabilities → Browse Connections (opens browser)"
-  L[step2_browser]="In browser: Connectors → Create for your team → Model Context Protocol →"
-  L[conn_info]="Connection info:"
-  L[oauth_config]="OAuth config (fill after Create integration):"
-  L[save_connect]="Save → Connect → Authorize in browser → Connected"
-  L[operations]="Operations"
-  L[op_list]="List users:     ./scripts/ops.sh list-users"
-  L[op_revoke]="Revoke user:    ./scripts/ops.sh revoke <user_id>"
-  L[op_status]="System status:  ./scripts/ops.sh status"
-  L[op_destroy]="Destroy:        ./scripts/teardown.sh"
-  L[info_saved]="Info saved to:"
+# --- i18n messages (loaded from config/i18n.json) ---
+if ! command -v python3 &>/dev/null; then
+  echo "  ERROR: python3 is required but not found" >&2
+  exit 1
 fi
+declare -A L
+I18N_FILE="${PROJECT_DIR}/config/i18n.json"
+if [ ! -f "$I18N_FILE" ]; then
+  echo "  ERROR: config/i18n.json not found" >&2
+  exit 1
+fi
+eval "$(python3 -c "
+import json, sys, re
+data = json.load(open(sys.argv[1]))['shell']
+lang = sys.argv[2]
+strings = data.get(lang, data['en'])
+for k, v in strings.items():
+    if not re.match(r'^[a-z][a-z0-9_]*$', k):
+        print(f'ERROR: invalid i18n key: {k}', file=sys.stderr)
+        sys.exit(1)
+    safe = v.replace(\"'\", \"'\\\"'\\\"'\")
+    print(f\"L[{k}]='{safe}'\")
+" "$I18N_FILE" "$LARK_LANG")"
 
 t() { printf "${L[$1]}" "${@:2}"; }
 step() { echo -e "\n${GREEN}=== ${L[$1]} ===${NC}\n"; }
@@ -197,6 +142,16 @@ drain_stdin() {
 }
 prompt() { drain_stdin; read -rp "  $1" "$2" </dev/tty; }
 ask() { drain_stdin; read -rp "  $1: " "$2" </dev/tty; }
+
+# Yes/No picker. Returns 0 for yes, 1 for no. Default is first option (yes).
+# Usage: if confirm "Question?"; then ... fi
+# For default=no: PICK_DEFAULT=2 confirm "Question?"
+confirm() {
+  local _q="$1"
+  echo "  $_q"
+  pick _YN "${L[yes]}" "${L[no]}"
+  [[ "$_YN" == "${L[yes]}" ]]
+}
 
 cleanup() {
   if [ "${DEPLOY_STARTED:-false}" = "true" ]; then
@@ -248,15 +203,11 @@ ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/nu
 if [ -z "$ACCOUNT_ID" ]; then
   warn "${L[aws_not_configured]}"
   echo ""
-  echo "  1) aws configure        (Access Key)"
-  echo "  2) aws sso login        (SSO)"
-  echo "  3) ${L[aws_retry]}"
-  echo ""
-  prompt "[1]: " AWS_CHOICE
-  case "${AWS_CHOICE:-1}" in
-    1) aws configure ;;
-    2) aws sso login ;;
-    3) ;;
+  pick _AWS_PICK "aws configure  (Access Key)" "aws sso login  (SSO)" "${L[aws_retry]}"
+  case "$_AWS_PICK" in
+    aws\ configure*) aws configure ;;
+    aws\ sso*) aws sso login ;;
+    *) ;;
   esac
   ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
   if [ -z "$ACCOUNT_ID" ]; then
@@ -265,16 +216,48 @@ if [ -z "$ACCOUNT_ID" ]; then
   fi
 fi
 REGION=$(aws configure get region 2>/dev/null || echo "us-west-2")
+# Override with saved region from previous deploy if available
+if [ -f "$DEPLOY_CONFIG" ]; then
+  SAVED_REGION=$(grep '^REGION=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+  [ -n "$SAVED_REGION" ] && REGION="$SAVED_REGION"
+fi
 info "AWS Account: ${ACCOUNT_ID}"
 info "Region: ${REGION}"
 
 # 配置飞书应用
 step configure_feishu
-echo "  ${L[feishu_creds_needed]}"
-echo "  ${L[feishu_platform]}"
-echo ""
 
-while true; do
+# Check if credentials already exist in Secrets Manager (from a prior deploy)
+EXISTING_CREDS=""
+EXISTING_APP_ID=""
+if aws secretsmanager describe-secret --secret-id "lark-mcp-on-agentcore/feishu-app" --region "$REGION" &>/dev/null; then
+  EXISTING_CREDS=$(aws secretsmanager get-secret-value --secret-id "lark-mcp-on-agentcore/feishu-app" --region "$REGION" \
+    --query 'SecretString' --output text 2>/dev/null || echo "")
+  if [ -n "$EXISTING_CREDS" ]; then
+    EXISTING_APP_ID=$(echo "$EXISTING_CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('appId',''))" 2>/dev/null || echo "")
+  fi
+fi
+
+if [ -n "$EXISTING_APP_ID" ] && [ -z "${FEISHU_APP_ID:-}" ] && [ -z "${FEISHU_APP_SECRET:-}" ]; then
+  info "$(t feishu_creds_existing "$EXISTING_APP_ID")"
+  if confirm "${L[feishu_creds_keep]}"; then
+    APP_SECRET=$(echo "$EXISTING_CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('appSecret',''))" 2>/dev/null || echo "")
+    if [ -n "$APP_SECRET" ]; then
+      APP_ID="$EXISTING_APP_ID"
+      info "${L[creds_valid]}"
+    else
+      warn "${L[app_secret_empty]}"
+    fi
+  fi
+fi
+
+if [ -z "${APP_ID:-}" ]; then
+  echo "  ${L[feishu_creds_needed]}"
+  echo "  ${L[feishu_platform]}"
+  echo ""
+fi
+
+while [ -z "${APP_ID:-}" ]; do
   if [ -n "${FEISHU_APP_ID:-}" ]; then
     APP_ID="$FEISHU_APP_ID"
     info "App ID (env): ${APP_ID}"
@@ -316,10 +299,10 @@ while true; do
   echo ""
   info "App ID:     ${APP_ID}"
   info "App Secret: ${APP_SECRET:0:4}****"
-  prompt "${L[confirm_creds]} " CRED_CONFIRM
-  case "${CRED_CONFIRM:-y}" in
-    [nN]) echo "  ${L[cancelled]}"; exit 0 ;;
-    [rR]) echo "  ${L[re_enter]}"; unset FEISHU_APP_ID FEISHU_APP_SECRET; continue ;;
+  pick _CRED_CONFIRM "${L[opt_confirm]}" "${L[opt_re_enter]}" "${L[opt_cancel]}"
+  case "$_CRED_CONFIRM" in
+    "${L[opt_cancel]}") echo "  ${L[cancelled]}"; exit 0 ;;
+    "${L[opt_re_enter]}") unset FEISHU_APP_ID FEISHU_APP_SECRET; APP_ID=""; APP_SECRET=""; continue ;;
     *)
       info "${L[verifying_creds]}"
       VERIFY_RESP=$(curl -s --max-time 10 -X POST \
@@ -335,15 +318,36 @@ while true; do
         # shellcheck disable=SC2059
         printf "  ${L[creds_invalid]}\n" "${VERIFY_MSG:-unknown}"
         unset FEISHU_APP_ID FEISHU_APP_SECRET
+        APP_ID=""; APP_SECRET=""
         continue
       fi
       ;;
   esac
 done
 
-# 自定义域名（可选）
-echo ""
-prompt "${L[custom_domain]}" CUSTOM_DOMAIN
+# Previous deploy config is read inline by each prompt section below.
+# Env vars always take priority over saved config.
+
+# 自定义域名（可选）— remember previous choice
+PREV_DOMAIN=""
+if [ -f "$DEPLOY_CONFIG" ]; then
+  PREV_DOMAIN=$(grep '^CUSTOM_DOMAIN=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+fi
+if [ -z "${CUSTOM_DOMAIN+x}" ]; then
+  if [ -n "$PREV_DOMAIN" ] && [ -t 0 ]; then
+    echo ""
+    info "$(t custom_domain_existing "$PREV_DOMAIN")"
+    pick _DOMAIN_ACT "${L[keep]}" "${L[change]}" "${L[clear]}"
+    case "$_DOMAIN_ACT" in
+      "${L[clear]}") CUSTOM_DOMAIN="" ;;
+      "${L[change]}") prompt "${L[custom_domain]}" CUSTOM_DOMAIN ;;
+      *) CUSTOM_DOMAIN="$PREV_DOMAIN" ;;
+    esac
+  else
+    echo ""
+    prompt "${L[custom_domain]}" CUSTOM_DOMAIN
+  fi
+fi
 if [ -n "$CUSTOM_DOMAIN" ]; then
   if [[ ! "$CUSTOM_DOMAIN" =~ ^[a-zA-Z0-9._-]+$ ]]; then
     err "Invalid domain: ${CUSTOM_DOMAIN}"
@@ -352,55 +356,277 @@ if [ -n "$CUSTOM_DOMAIN" ]; then
   info "Custom domain: ${CUSTOM_DOMAIN}"
 fi
 
-# WAF (default: off). Honor SKIP_WAF=1/0 env override; on non-interactive
-# stdin (CI/cron), default to off without prompting.
-if [ "${SKIP_WAF:-}" = "1" ]; then
-  ENABLE_WAF=0
-elif [ "${SKIP_WAF:-}" = "0" ]; then
-  ENABLE_WAF=1
+# WAF (default: off). Honor SKIP_WAF env override; on non-interactive default off.
+if [ -n "${SKIP_WAF+x}" ]; then
+  # Explicit env override
+  if [ "${SKIP_WAF}" = "0" ]; then ENABLE_WAF=1; else ENABLE_WAF=0; fi
 elif [ ! -t 0 ]; then
   ENABLE_WAF=0
 else
+  PREV_WAF=""
+  if [ -f "$DEPLOY_CONFIG" ]; then
+    PREV_WAF=$(grep '^SKIP_WAF=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+  fi
+  if [ "$PREV_WAF" = "0" ]; then _WAF_DEF=1; else _WAF_DEF=2; fi
   echo ""
-  prompt "${L[ask_waf]} " WAF_ANS
-  if [[ "${WAF_ANS:-n}" =~ ^[yY] ]]; then ENABLE_WAF=1; else ENABLE_WAF=0; fi
+  echo "  ${L[ask_waf]}"
+  PICK_DEFAULT=$_WAF_DEF
+  pick _WAF_PICK "${L[enable]}" "${L[disable]}"
+  if [ "$_WAF_PICK" = "${L[enable]}" ]; then ENABLE_WAF=1; else ENABLE_WAF=0; fi
 fi
 if [ "$ENABLE_WAF" = "1" ]; then info "${L[waf_enabled]}"; else info "${L[waf_disabled]}"; fi
 export SKIP_WAF=$([ "$ENABLE_WAF" = "1" ] && echo 0 || echo 1)
 
-# 选择区域
-echo ""
-echo "  ${L[select_region]}"
-echo ""
-echo "    ── Americas ──"
-echo "    1) us-west-2        Oregon"
-echo "    2) us-east-1        Virginia"
-echo "    ── Asia Pacific ──"
-echo "    3) ap-southeast-1   Singapore"
-echo "    4) ap-northeast-1   Tokyo"
-echo "    5) ap-southeast-2   Sydney"
-echo "    6) ap-south-1       Mumbai"
-echo "    ── Europe/Middle East ──"
-echo "    7) eu-west-1        Ireland"
-echo "    8) eu-central-1     Frankfurt"
-echo "    9) me-central-1     UAE"
-echo "    ──"
-echo "    0) ${L[manual_input]}"
-echo ""
-prompt "[1]: " REGION_CHOICE
-case "${REGION_CHOICE:-1}" in
-  1) REGION="us-west-2" ;;
-  2) REGION="us-east-1" ;;
-  3) REGION="ap-southeast-1" ;;
-  4) REGION="ap-northeast-1" ;;
-  5) REGION="ap-southeast-2" ;;
-  6) REGION="ap-south-1" ;;
-  7) REGION="eu-west-1" ;;
-  8) REGION="eu-central-1" ;;
-  9) REGION="me-central-1" ;;
-  0) ask "${L[ask_region]}" REGION ;;
-  *) REGION="us-west-2" ;;
-esac
+# Log retention. Honor LOG_RETENTION_DAYS env override; on non-interactive
+# stdin default to 90 without prompting.
+if [ -z "${LOG_RETENTION_DAYS+x}" ]; then
+  PREV_LOG_RET=""
+  if [ -f "$DEPLOY_CONFIG" ]; then
+    PREV_LOG_RET=$(grep '^LOG_RETENTION_DAYS=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+  fi
+  if [ ! -t 0 ]; then
+    LOG_RETENTION_DAYS="${PREV_LOG_RET:-90}"
+  elif [ -n "$PREV_LOG_RET" ]; then
+    echo ""
+    info "$(t log_retention_set "$PREV_LOG_RET")"
+    if confirm "${L[log_retention_keep]}"; then
+      LOG_RETENTION_DAYS="$PREV_LOG_RET"
+    else
+      echo ""
+      echo "  ${L[ask_log_retention]}"
+      echo ""
+      PICK_DEFAULT=2
+      pick _LOG_PICK "${L[log_30]}" "${L[log_90]}" "${L[log_180]}" "${L[log_365]}" "${L[log_never]}"
+      case "$_LOG_PICK" in
+        "${L[log_30]}")   LOG_RETENTION_DAYS="30" ;;
+        "${L[log_180]}")  LOG_RETENTION_DAYS="180" ;;
+        "${L[log_365]}")  LOG_RETENTION_DAYS="365" ;;
+        "${L[log_never]}") LOG_RETENTION_DAYS="" ;;
+        *)                LOG_RETENTION_DAYS="90" ;;
+      esac
+    fi
+  else
+    echo ""
+    echo "  ${L[ask_log_retention]}"
+    echo ""
+    PICK_DEFAULT=2
+    pick _LOG_PICK "${L[log_30]}" "${L[log_90]}" "${L[log_180]}" "${L[log_365]}" "${L[log_never]}"
+    case "$_LOG_PICK" in
+      30*)    LOG_RETENTION_DAYS="30" ;;
+      180*)   LOG_RETENTION_DAYS="180" ;;
+      365*)   LOG_RETENTION_DAYS="365" ;;
+      never*) LOG_RETENTION_DAYS="" ;;
+      *)      LOG_RETENTION_DAYS="90" ;;
+    esac
+  fi
+fi
+if [ -n "$LOG_RETENTION_DAYS" ]; then
+  info "$(t log_retention_set "$LOG_RETENTION_DAYS")"
+else
+  info "${L[log_retention_forever]}"
+fi
+export LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-}"
+
+# Alarm thresholds — preset picker + optional custom editor
+ALARM_THRESHOLDS_FILE="${PROJECT_DIR}/config/alarm-thresholds.json"
+ALARM_PRESETS_FILE="${PROJECT_DIR}/config/alarm-presets.json"
+ALARM_OVERRIDES_FILE="${LOCAL_DIR}/alarm-thresholds.json"
+if [ -t 0 ]; then
+  echo ""
+  echo "  ${L[ask_alarm_thresholds]}"
+  echo ""
+  pick _ALARM_PRESET "${L[alarm_preset_standard]}" "${L[alarm_preset_relaxed]}" "${L[alarm_preset_strict]}" "${L[alarm_preset_custom]}"
+  if [ "$_ALARM_PRESET" = "${L[alarm_preset_custom]}" ]; then
+    echo ""
+    # Build pick labels from alarm names + current thresholds
+    mapfile -t _ALARM_LABELS < <(python3 -c "
+import json, os
+defaults = json.load(open('${ALARM_THRESHOLDS_FILE}'))
+overrides_f = '${ALARM_OVERRIDES_FILE}'
+overrides = json.load(open(overrides_f)) if os.path.exists(overrides_f) else {}
+i18n = json.load(open('${PROJECT_DIR}/config/i18n.json'))
+lang = '${LARK_LANG}'
+names = i18n.get('alarmNames', {}).get(lang, i18n.get('alarmNames', {}).get('en', {}))
+for k, v in defaults.items():
+    t = overrides.get(k, v['threshold'])
+    unit = v.get('unit', '') if lang == 'zh' else v.get('unit_en', v.get('unit', ''))
+    label = names.get(k, k)
+    print(f'{label}  [{t} {unit}]')
+")
+    _DONE_LABEL="${L[alarm_done]}"
+    while true; do
+      pick _ALARM_CHOICE "${_ALARM_LABELS[@]}" "$_DONE_LABEL"
+      [ "$_ALARM_CHOICE" = "$_DONE_LABEL" ] && break
+      # Get alarm key by index
+      _ALARM_IDX=0
+      for _i in "${!_ALARM_LABELS[@]}"; do
+        if [ "${_ALARM_LABELS[$_i]}" = "$_ALARM_CHOICE" ]; then _ALARM_IDX=$_i; break; fi
+      done
+      # Show description and ask for new value
+      _ALARM_INFO=$(python3 -c "
+import json, os
+defaults = json.load(open('${ALARM_THRESHOLDS_FILE}'))
+overrides_f = '${ALARM_OVERRIDES_FILE}'
+overrides = json.load(open(overrides_f)) if os.path.exists(overrides_f) else {}
+i18n = json.load(open('${PROJECT_DIR}/config/i18n.json'))
+lang = '${LARK_LANG}'
+keys = list(defaults.keys())
+k = keys[${_ALARM_IDX}]
+v = defaults[k]
+t = overrides.get(k, v['threshold'])
+descs = {x.replace('alarm_desc_', ''): y for x, y in i18n.get('shell', {}).get(lang, i18n.get('shell', {}).get('en', {})).items() if x.startswith('alarm_desc_')}
+desc = descs.get(k, '')
+print(f'{desc}')
+print(f'{v.get(\"range\", \"\")} {v.get(\"unit\", \"\")}')
+print(f'{t}')
+print(f'{k}')
+")
+      _DESC=$(echo "$_ALARM_INFO" | sed -n '1p')
+      _RANGE=$(echo "$_ALARM_INFO" | sed -n '2p')
+      _CURRENT=$(echo "$_ALARM_INFO" | sed -n '3p')
+      _KEY=$(echo "$_ALARM_INFO" | sed -n '4p')
+      echo ""
+      info "$_DESC"
+      info "  ($_RANGE)"
+      ask "$_ALARM_CHOICE → " _NEW_VAL
+      if [ -n "$_NEW_VAL" ] && [ "$_NEW_VAL" != "$_CURRENT" ]; then
+        _OVERRIDES_F="$ALARM_OVERRIDES_FILE" _AKEY="$_KEY" _AVAL="$_NEW_VAL" python3 -c "
+import json, os
+overrides_f = os.environ['_OVERRIDES_F']
+key = os.environ['_AKEY']
+val_str = os.environ['_AVAL']
+overrides = json.load(open(overrides_f)) if os.path.exists(overrides_f) else {}
+try:
+    overrides[key] = int(val_str) if '.' not in val_str else float(val_str)
+    os.makedirs(os.path.dirname(overrides_f), exist_ok=True)
+    json.dump(overrides, open(overrides_f, 'w'), indent=2)
+    os.chmod(overrides_f, 0o600)
+except ValueError:
+    pass
+"
+        # Update the label for next loop iteration
+        _ALARM_LABELS[$_ALARM_IDX]=$(python3 -c "
+import json, os
+defaults = json.load(open('${ALARM_THRESHOLDS_FILE}'))
+overrides_f = '${ALARM_OVERRIDES_FILE}'
+overrides = json.load(open(overrides_f)) if os.path.exists(overrides_f) else {}
+i18n = json.load(open('${PROJECT_DIR}/config/i18n.json'))
+lang = '${LARK_LANG}'
+names = i18n.get('alarmNames', {}).get(lang, i18n.get('alarmNames', {}).get('en', {}))
+keys = list(defaults.keys())
+k = keys[${_ALARM_IDX}]
+v = defaults[k]
+t = overrides.get(k, v['threshold'])
+unit = v.get('unit', '') if lang == 'zh' else v.get('unit_en', v.get('unit', ''))
+print(f'{names.get(k, k)}  [{t} {unit}]')
+")
+      fi
+      echo ""
+    done
+    info "${L[alarm_thresholds_custom]}"
+  else
+    # Apply preset
+    _PRESET_NAME=""
+    if [ "$_ALARM_PRESET" = "${L[alarm_preset_relaxed]}" ]; then _PRESET_NAME="relaxed"
+    elif [ "$_ALARM_PRESET" = "${L[alarm_preset_strict]}" ]; then _PRESET_NAME="strict"
+    else _PRESET_NAME="standard"
+    fi
+    python3 -c "
+import json, os
+presets = json.load(open('${ALARM_PRESETS_FILE}'))
+preset = presets['${_PRESET_NAME}']
+overrides_f = '${ALARM_OVERRIDES_FILE}'
+os.makedirs(os.path.dirname(overrides_f), exist_ok=True)
+json.dump(preset, open(overrides_f, 'w'), indent=2)
+os.chmod(overrides_f, 0o600)
+"
+    info "$(t alarm_preset_applied "$_ALARM_PRESET")"
+  fi
+fi
+
+# Alarm webhook. Persisted in SSM so re-deploys can read the previous value.
+# Honor ALARM_WEBHOOK_URL env override; on non-interactive stdin, skip prompt.
+WEBHOOK_SSM_NAME="/lark-mcp-on-agentcore/alarm-webhook-url"
+if [ -z "${ALARM_WEBHOOK_URL+x}" ]; then
+  EXISTING_WEBHOOK=$(aws ssm get-parameter --name "$WEBHOOK_SSM_NAME" --region "$REGION" \
+    --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+  if [ ! -t 0 ]; then
+    ALARM_WEBHOOK_URL="${EXISTING_WEBHOOK}"
+  elif [ -n "$EXISTING_WEBHOOK" ]; then
+    echo ""
+    info "$(t webhook_existing "${EXISTING_WEBHOOK:0:60}...")"
+    pick _WEBHOOK_ACT "${L[keep]}" "${L[change]}" "${L[clear]}"
+    case "$_WEBHOOK_ACT" in
+      "${L[clear]}") ALARM_WEBHOOK_URL="" ;;
+      "${L[change]}")
+        echo ""
+        info "${L[webhook_hint]}"
+        ask "${L[ask_webhook]}" ALARM_WEBHOOK_URL
+        ;;
+      *) ALARM_WEBHOOK_URL="$EXISTING_WEBHOOK" ;;
+    esac
+  else
+    echo ""
+    info "${L[webhook_hint]}"
+    ask "${L[ask_webhook]}" ALARM_WEBHOOK_URL
+  fi
+fi
+if [ -n "$ALARM_WEBHOOK_URL" ]; then
+  if aws ssm get-parameter --name "$WEBHOOK_SSM_NAME" --region "$REGION" &>/dev/null; then
+    aws ssm put-parameter --name "$WEBHOOK_SSM_NAME" --value "$ALARM_WEBHOOK_URL" \
+      --type String --region "$REGION" --overwrite >/dev/null 2>&1
+  else
+    aws ssm put-parameter --name "$WEBHOOK_SSM_NAME" --value "$ALARM_WEBHOOK_URL" \
+      --type String --region "$REGION" \
+      --tags "Key=project,Value=lark-mcp-on-agentcore" >/dev/null 2>&1
+  fi
+  info "${L[webhook_set]}"
+else
+  # Clear persisted value if user explicitly cleared it
+  if [ "${_WEBHOOK_ACT:-}" = "${L[clear]}" ]; then
+    aws ssm delete-parameter --name "$WEBHOOK_SSM_NAME" --region "$REGION" >/dev/null 2>&1 || true
+    info "${L[webhook_cleared]}"
+  else
+    info "${L[webhook_skip]}"
+  fi
+fi
+export ALARM_WEBHOOK_URL="${ALARM_WEBHOOK_URL:-}"
+
+# 选择区域 — remember previous choice
+PREV_REGION=""
+if [ -f "$DEPLOY_CONFIG" ]; then
+  PREV_REGION=$(grep '^REGION=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+fi
+REGION_SELECTED=""
+if [ -n "$PREV_REGION" ] && [ -t 0 ]; then
+  echo ""
+  info "$(t region_existing "$PREV_REGION")"
+  if confirm "${L[region_keep]}"; then
+    REGION="$PREV_REGION"
+    REGION_SELECTED=1
+  fi
+fi
+if [ -z "$REGION_SELECTED" ]; then
+  echo ""
+  echo "  ${L[select_region]}"
+  echo ""
+  pick _REGION_PICK \
+    "us-west-2        Oregon" \
+    "us-east-1        Virginia" \
+    "ap-southeast-1   Singapore" \
+    "ap-northeast-1   Tokyo" \
+    "ap-southeast-2   Sydney" \
+    "ap-south-1       Mumbai" \
+    "eu-west-1        Ireland" \
+    "eu-central-1     Frankfurt" \
+    "me-central-1     UAE" \
+    "${L[manual_input]}"
+  # Extract region code (first word)
+  REGION=$(echo "$_REGION_PICK" | awk '{print $1}')
+  if [ "$REGION" = "${L[manual_input]}" ]; then
+    ask "${L[ask_region]}" REGION
+  fi
+fi
 
 # CDK Bootstrap (deploy region + us-east-1 for the CloudFront-scope WAF)
 step step_1
@@ -410,8 +636,7 @@ ensure_bootstrap() {
   check=$(aws cloudformation describe-stacks --stack-name CDKToolkit --region "$target_region" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
   if [ "$check" = "NOT_FOUND" ]; then
     info "$(t not_bootstrapped "$target_region")"
-    prompt "${L[run_bootstrap]} " BS_CONFIRM
-    if [[ ! "${BS_CONFIRM:-y}" =~ ^[nN] ]]; then
+    if confirm "${L[run_bootstrap]}"; then
       ( cd "${PROJECT_DIR}/infra" && npm install --silent 2>/dev/null && \
         AWS_REGION="$target_region" npx cdk bootstrap "aws://${ACCOUNT_ID}/${target_region}" )
     else
@@ -435,8 +660,7 @@ info "App ID:       ${APP_ID}"
 info "Region:       ${REGION}"
 info "Account:      ${ACCOUNT_ID}"
 echo ""
-prompt "${L[start_deploy]} " CONFIRM
-if [[ "${CONFIRM:-y}" =~ ^[nN] ]]; then
+if ! confirm "${L[start_deploy]}"; then
   echo "  ${L[cancelled]}"
   exit 0
 fi
@@ -757,6 +981,8 @@ fi
 # MCP endpoint
 MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`McpEndpoint`].OutputValue' --output text 2>/dev/null || echo "N/A")
+DASHBOARD_URL=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
+  --query 'Stacks[0].Outputs[?OutputKey==`DashboardUrl`].OutputValue' --output text 2>/dev/null || echo "")
 
 # 验证
 step verify
@@ -782,12 +1008,22 @@ except Exception as e:
 
 DEPLOY_STARTED=false
 
+# Save deploy config for next run
+cat > "$DEPLOY_CONFIG" << CFGEOF
+LARK_LANG=${LARK_LANG}
+REGION=${REGION}
+CUSTOM_DOMAIN=${CUSTOM_DOMAIN:-}
+SKIP_WAF=${SKIP_WAF}
+LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-}
+CFGEOF
+chmod 600 "$DEPLOY_CONFIG"
+
 # OAuth Client 信息
 OAUTH_CLIENT_ID="lark-mcp-on-agentcore"
 OAUTH_CLIENT_SECRET_VAL="${OAUTH_SECRET_VAL}"
 
 # 保存部署信息
-DEPLOY_INFO="${PROJECT_DIR}/deploy-output.md"
+DEPLOY_INFO="${LOCAL_DIR}/deploy-output.md"
 umask 077
 cat > "$DEPLOY_INFO" << INFOEOF
 # Lark MCP on AgentCore - Deployment Info
@@ -859,10 +1095,13 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo ""
 echo "  MCP Endpoint:          ${MCP_ENDPOINT}"
 echo "  OAuth Client ID:       ${OAUTH_CLIENT_ID}"
-echo "  OAuth Client Secret:   ${OAUTH_CLIENT_SECRET_VAL:0:8}..."
+echo "  OAuth Client Secret:   ${OAUTH_CLIENT_SECRET_VAL}"
 echo "  Token URL:             ${OAUTH_ENDPOINT}/token"
 echo "  Authorization URL:     ${OAUTH_ENDPOINT}/authorize"
 echo "  Redirect URL:          ${REDIRECT_URL}"
+if [ -n "$DASHBOARD_URL" ]; then
+echo "  Dashboard:             ${DASHBOARD_URL}"
+fi
 echo ""
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

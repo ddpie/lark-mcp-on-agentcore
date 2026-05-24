@@ -4,6 +4,7 @@ import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { storeCode, retrieveAndDeleteCode } from './dynamodb-codes';
 import { log, hashUserId } from '../shared/log';
 import { SCOPE_ALLOWLIST } from './scope-allowlist';
+import i18n from '../../config/i18n.json';
 
 const FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token";
 const FEISHU_REFRESH_URL = "https://open.feishu.cn/open-apis/authen/v1/oidc/refresh_access_token";
@@ -12,7 +13,6 @@ const SECRET_PREFIX = process.env.SECRET_PREFIX || "lark-mcp-on-agentcore/users"
 const OPENID_PREFIX = process.env.OPENID_PREFIX || "lark-mcp-on-agentcore/openid-map";
 const APP_SECRET_ID = process.env.APP_SECRET_ID || "lark-mcp-on-agentcore/feishu-app";
 const STATE_SECRET_PARAM = process.env.STATE_SECRET_PARAM || '/lark-mcp-on-agentcore/state-secret';
-const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || "lark-mcp-on-agentcore";
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
 const FEISHU_SCOPES = process.env.FEISHU_SCOPES || '';
 const STATE_TTL_SECONDS = 300;
@@ -110,6 +110,23 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+const SUPPORTED_LANGS = Object.keys(i18n.callback);
+
+function detectLang(acceptLang: string): string {
+  if (!acceptLang) return 'en';
+  const entries = acceptLang.split(',').map(part => {
+    const [tag, ...params] = part.trim().split(';');
+    const qParam = params.find(p => p.trim().startsWith('q='));
+    const q = qParam ? parseFloat(qParam.trim().slice(2)) : 1.0;
+    return { lang: tag.trim().toLowerCase().split('-')[0], q: isNaN(q) ? 0 : q };
+  });
+  entries.sort((a, b) => b.q - a.q);
+  for (const { lang: prefix } of entries) {
+    if (SUPPORTED_LANGS.includes(prefix)) return prefix;
+  }
+  return 'en';
+}
+
 async function getAppAccessToken(): Promise<string> {
   await loadAppCredentials();
   const t0 = Date.now();
@@ -159,7 +176,7 @@ async function getUserInfo(userAccessToken: string): Promise<string> {
 
 const PROJECT_TAGS = [{ Key: "project", Value: "lark-mcp-on-agentcore" }];
 
-async function storeToken(userId: string, data: { access_token: string; refresh_token: string; expires_in: number }) {
+async function storeToken(userId: string, data: { access_token: string; refresh_token: string; expires_in: number }): Promise<boolean> {
   const secretId = `${SECRET_PREFIX}/${userId}`;
   const now = Math.floor(Date.now() / 1000);
   const value = JSON.stringify({
@@ -168,8 +185,8 @@ async function storeToken(userId: string, data: { access_token: string; refresh_
     expires_at: now + data.expires_in,
     issued_at: now,
   });
-  try { await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value })); }
-  catch (e: any) { if (e.name === "ResourceNotFoundException") await sm.send(new CreateSecretCommand({ Name: secretId, SecretString: value, Tags: PROJECT_TAGS })); else throw e; }
+  try { await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value })); return false; }
+  catch (e: any) { if (e.name === "ResourceNotFoundException") { await sm.send(new CreateSecretCommand({ Name: secretId, SecretString: value, Tags: PROJECT_TAGS })); return true; } throw e; }
 }
 
 interface StoredToken { access_token: string; refresh_token: string; expires_at: number; issued_at: number }
@@ -378,6 +395,7 @@ async function handle(event: LambdaEvent) {
 
   // /authorize — OAuth 2.0 authorization endpoint
   if (path.includes("/authorize")) {
+    log('INFO', 'oauth_authorize_start', {});
     if (!CALLBACK_URL) return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: '{"error":"server_misconfigured","error_description":"callback URL cannot be derived"}' };
     const redirectUri = params.redirect_uri || '';
     const clientState = params.state || '';
@@ -509,10 +527,12 @@ async function handle(event: LambdaEvent) {
     } else {
       stableUserId = randomBytes(16).toString('hex');
     }
-    await storeToken(stableUserId, result.data);
+    const isNewUser = await storeToken(stableUserId, result.data);
     if (result.data.open_id && stableUserId !== result.data.open_id) {
       await storeOpenIdMapping(result.data.open_id, stableUserId);
     }
+    log('INFO', 'oauth_callback_success', { userIdHash: hashUserId(stableUserId) });
+    if (isNewUser) log('INFO', 'new_user_authorized', { userIdHash: hashUserId(stableUserId) });
 
     // Standard OAuth flow: generate auth code and redirect back to client
     if (stateData.r) {
@@ -529,10 +549,12 @@ async function handle(event: LambdaEvent) {
     }
 
     // Legacy flow: show success page + auto-redirect back to Quick Desktop via custom URL scheme.
-    // Match lark-cli convention: "授权成功! 用户: {name}". Fall back to short userId.
     const userName = await getUserInfo(result.data.access_token);
     const displayName = userName || `${stableUserId.slice(0, 8)}…`;
-    const successHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>授权成功 / Authorized</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:480px;margin:80px auto;padding:24px;text-align:center;color:#222}h2{color:#0a7d2c;margin-bottom:8px}.btn{display:inline-block;padding:10px 20px;margin-top:20px;background:#0a66c2;color:#fff;text-decoration:none;border-radius:6px;font-size:14px}p{color:#666;font-size:14px;line-height:1.5}.hint{color:#999;font-size:12px;margin-top:24px}</style></head><body><h2>✓ 授权成功 / Authorized</h2><p>${escapeHtml(displayName)} 已完成飞书授权。</p><a class="btn" href="awsquick://connector-refresh">返回 Amazon Quick Desktop</a><p class="hint">点击按钮回到 Quick Desktop 继续会话，或直接关闭此页面。<br>Click the button to return to Quick Desktop, or close this tab.</p></body></html>`;
+    const acceptLang = event.headers?.['accept-language'] || event.headers?.['Accept-Language'] || '';
+    const langKey = detectLang(acceptLang);
+    const ct = (i18n.callback as Record<string, typeof i18n.callback.en>)[langKey] || i18n.callback.en;
+    const successHtml = `<!DOCTYPE html><html lang="${langKey}"><head><meta charset="utf-8"><title>${ct.title}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:480px;margin:80px auto;padding:24px;text-align:center;color:#222}h2{color:#0a7d2c;margin-bottom:8px}.btn{display:inline-block;padding:10px 20px;margin-top:20px;background:#0a66c2;color:#fff;text-decoration:none;border-radius:6px;font-size:14px}p{color:#666;font-size:14px;line-height:1.5}.hint{color:#999;font-size:12px;margin-top:24px}</style></head><body><h2>${ct.heading}</h2><p>${ct.message.replace('%s', escapeHtml(displayName))}</p><a class="btn" href="awsquick://connector-refresh">${ct.button}</a><p class="hint">${ct.hint}</p></body></html>`;
     return { statusCode: 200, headers: { "Content-Type": "text/html; charset=utf-8" }, body: successHtml };
   }
 
