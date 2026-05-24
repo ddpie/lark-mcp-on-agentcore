@@ -316,7 +316,7 @@ async function handle(event: LambdaEvent) {
 
       const totalTtl = stored.expires_at - stored.issued_at;
       const remaining = stored.expires_at - Date.now() / 1000;
-      if (remaining > totalTtl / 3) return;
+      if (remaining > totalTtl / 2) return;
 
       if (!(await preflightWritable(`${SECRET_PREFIX}/${userId}`, userId))) {
         skipped++;

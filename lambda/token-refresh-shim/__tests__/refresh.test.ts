@@ -94,7 +94,7 @@ describe('refresh path — preflight protection', () => {
     mockClient.secretsManager.__set(userSecretId, JSON.stringify({
       access_token: 'tok', refresh_token: 'rt',
       expires_at: now + 6000,   // remaining 6000s
-      issued_at: now - 1200,    // total 7200s — remaining (6000) > totalTtl/3 (2400)
+      issued_at: now - 1200,    // total 7200s — remaining (6000) > totalTtl/2 (3600)
     }));
     mockClient.secretsManager.__listNames([userSecretId]);
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(new Response('{}'));

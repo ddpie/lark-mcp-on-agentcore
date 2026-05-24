@@ -1795,7 +1795,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "72ed94754f5277ada5b01d70f2fe0dbb8226abaff36c7a3f74a190017a6edec2.zip",
+          "S3Key": "a1d60cc96d3b53aacbac0aafd4758f56a56010c2053bbd7b19eba0af01a98d30.zip",
         },
         "Environment": {
           "Variables": {
@@ -2242,7 +2242,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
     },
     "TokenRefreshRule33B5CF67": {
       "Properties": {
-        "ScheduleExpression": "rate(1 hour)",
+        "ScheduleExpression": "rate(30 minutes)",
         "State": "ENABLED",
         "Tags": [
           {

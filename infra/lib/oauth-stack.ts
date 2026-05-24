@@ -209,7 +209,7 @@ export class OAuthStack extends cdk.Stack {
     // CALLBACK_URL is set post-deploy by deploy.sh (avoids circular dependency with CloudFront)
 
     new events.Rule(this, "TokenRefreshRule", {
-      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      schedule: events.Schedule.rate(cdk.Duration.minutes(30)),
       targets: [new targets.LambdaFunction(oauthFn)],
     });
 
