@@ -5,11 +5,21 @@ if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
   echo "" >&2
   echo "  bash 4+ required (current: ${BASH_VERSION})" >&2
   echo "" >&2
-  echo "  Upgrade:" >&2
-  echo "    macOS:  brew install bash && sudo bash -c 'echo /opt/homebrew/bin/bash >> /etc/shells'" >&2
+  if command -v brew &>/dev/null; then
+    printf "  Install bash 4+ via Homebrew and continue? (Y/n) " >&2
+    read -r _ans </dev/tty 2>/dev/null || _ans="y"
+    if [[ ! "${_ans:-y}" =~ ^[nN] ]]; then
+      brew install bash
+      NEW_BASH="$(brew --prefix)/bin/bash"
+      echo "  Restarting with ${NEW_BASH}..." >&2
+      exec "$NEW_BASH" "$0" "$@"
+    fi
+  fi
+  echo "  Manual upgrade:" >&2
+  echo "    macOS:  brew install bash" >&2
   echo "    Linux:  sudo apt-get install -y bash  (or yum install bash)" >&2
   echo "" >&2
-  echo "  Then re-run this script with the new bash:" >&2
+  echo "  Then re-run:" >&2
   echo "    /opt/homebrew/bin/bash ./scripts/deploy.sh" >&2
   echo "" >&2
   exit 1
