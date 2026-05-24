@@ -987,7 +987,7 @@ runtime_config = {
     'agentRuntimeArtifact': {'containerConfiguration': {'containerUri': os.environ['IMAGE_URI']}},
     'networkConfiguration': {'networkMode': 'PUBLIC'},
     'protocolConfiguration': {'serverProtocol': 'MCP'},
-    'idleRuntimeSessionTimeout': int(os.environ['AGENTCORE_IDLE_TIMEOUT']),
+    'lifecycleConfiguration': {'idleRuntimeSessionTimeout': int(os.environ['AGENTCORE_IDLE_TIMEOUT'])},
     'requestHeaderConfiguration': {'requestHeaderAllowlist': ['X-User-Access-Token', 'X-Runtime-User-Id', 'X-Incr-Auth-Token']},
     'environmentVariables': {
         'APP_ID': os.environ['APP_ID'],
