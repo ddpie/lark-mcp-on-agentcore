@@ -1,0 +1,106 @@
+[中文](cost_zh.md) | [English](cost_en.md)
+
+# 成本
+
+## 计费模型
+
+按需付费，无固定月费。大部分组件都有 AWS 免费额度，低用量场景下月成本极低。
+
+## 固定成本 vs 按用量成本
+
+| 类型 | 组件 | 说明 |
+|------|------|------|
+| **固定** | Secrets Manager (feishu-app) | 始终存在的 1 个 Secret，存储飞书 App ID/Secret |
+| **固定** | SSM Parameter Store (state-secret + oauth-client-secret) | 2 个 SecureString，标准层免费 |
+| **固定** | CloudWatch Alarms x 10 | 部署即产生，不随用户数变化 |
+| **固定** | ECR 镜像存储 | 每次部署覆盖同一镜像，约 600 MB |
+| **固定** | EventBridge 规则 | 每 30 分钟触发一次 Lambda，免费额度内 |
+| **固定** | WAFv2（可选） | WebACL + 规则的月费固定 |
+| **按用量** | Secrets Manager (用户 Token) | 每个授权用户 1 个 user secret；当用户经历过增量授权时还会有 1 个 openid-map secret（首次标准 OAuth 不创建） |
+| **按用量** | AgentCore Runtime | vCPU-秒 + 内存-秒，按实际 MCP 请求处理时间计费 |
+| **按用量** | Lambda 调用 | MCP 请求 → Middleware Lambda；Token 刷新 → OAuth Lambda；告警转发 → Alarm Webhook Lambda（仅在配置 webhook 时创建） |
+| **按用量** | API Gateway | 每个 MCP/OAuth 请求经过 API Gateway |
+| **按用量** | CloudFront | 每个请求的数据传输 |
+| **按用量** | CloudWatch Logs | 日志摄入量和存储量随请求量增长 |
+| **按用量** | DynamoDB | OAuth 授权码的写入/读取/删除 |
+
+## 组件明细
+
+| 组件 | 计费方式 |
+|------|---------|
+| AgentCore Runtime | 按 vCPU-秒 + 内存-秒 计费（详见 [AWS 官方定价](https://aws.amazon.com/bedrock/agentcore/pricing/)） |
+| Secrets Manager | $0.40/密钥/月 + $0.05/10,000 次 API 调用 |
+| DynamoDB (OAuth codes) | PAY_PER_REQUEST，临时数据 + TTL，月成本 < $0.10 |
+| CloudWatch Logs | 按摄入量 $0.50/GB + 存储 $0.03/GB/月（部署时可配置保留天数） |
+| CloudWatch Alarms x 10 | $0.10/告警/月，合计 ~$1.00 |
+| SSM Parameter Store (Standard SecureString x 2) | 免费（Standard 层无费用，仅当升级到 Advanced 时按 $0.05/参数/月计费） |
+| ECR 镜像存储 | ~$0.10/GB/月（镜像约 600 MB） |
+| WAFv2（可选，默认关） | $5/WebACL/月 + $1/规则/月 + $0.60/百万请求 |
+| Lambda | $0.20/百万请求 + 计算时间（128-512 MB，10-120s） |
+| API Gateway | $3.50/百万请求 (REST API) |
+| CloudFront | $0.085/GB 传输 + $0.0075/万请求 (PriceClass 200) |
+| EventBridge | $1.00/百万事件（每月约 1,440 次触发，免费额度内） |
+| SNS | $0.50/百万通知 |
+
+## 月成本估算
+
+以下估算基于 us-west-2 区域定价，假设每用户每工作日平均发起 20 次 MCP 请求，每次请求 AgentCore 处理时间约 3 秒。
+
+**Secrets Manager 估算口径：** 下表假设每位用户保有 2 个 Secret（1 个 user token + 1 个 openid-map），这是最坏情况——所有用户都经历过增量授权。仅做过标准 OAuth 的用户只占 1 个 Secret，实际成本通常落在表中"上限值"的 50%-100% 区间。
+
+### 10 用户（小团队/试用）
+
+每用户 2 个 Secret（user token + openid-map）+ 1 个固定 Secret = 21 个 Secret。
+
+| 组件 | 月成本 |
+|------|--------|
+| Secrets Manager (1 固定 + 10 user + 10 openid) | $8.40 |
+| SSM Parameter Store (Standard) | 免费 |
+| CloudWatch Alarms x 10 | $1.00 |
+| ECR (~0.6 GB) | $0.06 |
+| Lambda (OAuth: ~1440 次刷新 + Middleware: ~4400 次) | 免费额度内 |
+| API Gateway (~4400 请求) | 免费额度内 |
+| CloudFront (~4400 请求) | 免费额度内 |
+| CloudWatch Logs (~50 MB/月) | $0.03 |
+| DynamoDB | < $0.01 |
+| AgentCore Runtime (~3700 vCPU-秒) | 按 AWS 定价 |
+| **合计（不含 AgentCore/WAF）** | **~$9.50/月** |
+
+### 100 用户（中型团队）
+
+每用户 2 个 Secret + 1 个固定 Secret = 201 个 Secret。
+
+| 组件 | 月成本 |
+|------|--------|
+| Secrets Manager (1 + 100 + 100) | $80.40 |
+| SSM Parameter Store (Standard) | 免费 |
+| CloudWatch Alarms x 10 | $1.00 |
+| ECR (~0.6 GB) | $0.06 |
+| Lambda (~1440 刷新 + ~44000 MCP) | $0.01 (仍在免费额度边缘) |
+| API Gateway (~44000 请求) | $0.15 |
+| CloudFront (~44000 请求, ~100 MB 传输) | $0.04 |
+| CloudWatch Logs (~500 MB/月) | $0.25 |
+| DynamoDB (~100 次授权) | < $0.01 |
+| AgentCore Runtime (~37000 vCPU-秒) | 按 AWS 定价 |
+| **合计（不含 AgentCore/WAF）** | **~$82/月** |
+
+### 500 用户（大型团队）
+
+每用户 2 个 Secret + 1 个固定 Secret = 1001 个 Secret。
+
+| 组件 | 月成本 |
+|------|--------|
+| Secrets Manager (1 + 500 + 500) | $400.40 |
+| SSM Parameter Store (Standard) | 免费 |
+| CloudWatch Alarms x 10 | $1.00 |
+| ECR (~0.6 GB) | $0.06 |
+| Lambda (~1440 刷新 + ~220000 MCP) | $0.20 |
+| API Gateway (~220000 请求) | $0.77 |
+| CloudFront (~220000 请求, ~500 MB 传输) | $0.20 |
+| CloudWatch Logs (~2.5 GB/月) | $1.25 |
+| DynamoDB (~500 次授权) | < $0.05 |
+| AgentCore Runtime (~185000 vCPU-秒) | 按 AWS 定价 |
+| WAFv2（推荐启用）| $7.00 + $0.13 |
+| **合计（不含 AgentCore）** | **~$411/月** |
+
+**注意：** AgentCore Runtime 是按实际处理时间计费的最大变量成本。具体金额取决于 AWS 定价（会随时间变化），建议查看 [AWS Bedrock AgentCore 定价页面](https://aws.amazon.com/bedrock/agentcore/pricing/) 获取最新数字。
