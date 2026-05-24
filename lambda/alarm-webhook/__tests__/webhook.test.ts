@@ -132,4 +132,57 @@ describe('alarm-webhook Lambda', () => {
     expect(fields[1].text.content).toContain('Region');
     process.env.DEPLOY_LANG = orig;
   });
+
+  it('includes signature (timestamp + sign) when FEISHU_WEBHOOK_SECRET is set', async () => {
+    const orig = process.env.FEISHU_WEBHOOK_SECRET;
+    process.env.FEISHU_WEBHOOK_SECRET = 'test-secret-123';
+    vi.resetModules();
+    const { handler } = await import('../index');
+    await handler(snsEvent({ AlarmName: 'sig-test', NewStateValue: 'ALARM' }) as any);
+
+    expect(fetchCalls).toHaveLength(1);
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.timestamp).toBeDefined();
+    expect(body.sign).toBeDefined();
+    expect(typeof body.timestamp).toBe('string');
+    expect(body.sign.length).toBeGreaterThan(10);
+    process.env.FEISHU_WEBHOOK_SECRET = orig;
+  });
+
+  it('does not include signature when FEISHU_WEBHOOK_SECRET is empty', async () => {
+    const orig = process.env.FEISHU_WEBHOOK_SECRET;
+    process.env.FEISHU_WEBHOOK_SECRET = '';
+    vi.resetModules();
+    const { handler } = await import('../index');
+    await handler(snsEvent({ AlarmName: 'no-sig', NewStateValue: 'ALARM' }) as any);
+
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.timestamp).toBeUndefined();
+    expect(body.sign).toBeUndefined();
+    process.env.FEISHU_WEBHOOK_SECRET = orig;
+  });
+
+  it('includes keyword in title when FEISHU_WEBHOOK_KEYWORD is set', async () => {
+    const orig = process.env.FEISHU_WEBHOOK_KEYWORD;
+    process.env.FEISHU_WEBHOOK_KEYWORD = 'alert';
+    vi.resetModules();
+    const { handler } = await import('../index');
+    await handler(snsEvent({ AlarmName: 'kw-test', NewStateValue: 'ALARM' }) as any);
+
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.card.header.title.content).toContain('[alert]');
+    process.env.FEISHU_WEBHOOK_KEYWORD = orig;
+  });
+
+  it('no keyword prefix when FEISHU_WEBHOOK_KEYWORD is empty', async () => {
+    const orig = process.env.FEISHU_WEBHOOK_KEYWORD;
+    process.env.FEISHU_WEBHOOK_KEYWORD = '';
+    vi.resetModules();
+    const { handler } = await import('../index');
+    await handler(snsEvent({ AlarmName: 'no-kw', NewStateValue: 'ALARM' }) as any);
+
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.card.header.title.content).not.toContain('[');
+    process.env.FEISHU_WEBHOOK_KEYWORD = orig;
+  });
 });

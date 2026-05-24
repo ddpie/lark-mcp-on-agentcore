@@ -632,6 +632,24 @@ else
 fi
 export ALARM_WEBHOOK_URL="${ALARM_WEBHOOK_URL:-}"
 
+# Webhook security (keyword + signature secret)
+if [ -n "$ALARM_WEBHOOK_URL" ] && [ -t 0 ]; then
+  if [ -z "${ALARM_WEBHOOK_SECRET+x}" ]; then
+    ALARM_WEBHOOK_SECRET=$(grep '^ALARM_WEBHOOK_SECRET=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+  fi
+  if [ -z "${ALARM_WEBHOOK_KEYWORD+x}" ]; then
+    ALARM_WEBHOOK_KEYWORD=$(grep '^ALARM_WEBHOOK_KEYWORD=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+  fi
+  if [ -z "$ALARM_WEBHOOK_SECRET" ] && [ -z "$ALARM_WEBHOOK_KEYWORD" ]; then
+    echo ""
+    info "${L[webhook_hint]}"
+    ask "${L[ask_webhook_secret]}" ALARM_WEBHOOK_SECRET
+    ask "${L[ask_webhook_keyword]}" ALARM_WEBHOOK_KEYWORD
+  fi
+fi
+export ALARM_WEBHOOK_SECRET="${ALARM_WEBHOOK_SECRET:-}"
+export ALARM_WEBHOOK_KEYWORD="${ALARM_WEBHOOK_KEYWORD:-}"
+
 # 选择区域 — remember previous choice
 PREV_REGION=""
 if [ -f "$DEPLOY_CONFIG" ]; then
@@ -1054,6 +1072,8 @@ REGION=${REGION}
 CUSTOM_DOMAIN=${CUSTOM_DOMAIN:-}
 SKIP_WAF=${SKIP_WAF}
 LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-}
+ALARM_WEBHOOK_SECRET=${ALARM_WEBHOOK_SECRET:-}
+ALARM_WEBHOOK_KEYWORD=${ALARM_WEBHOOK_KEYWORD:-}
 CFGEOF
 chmod 600 "$DEPLOY_CONFIG"
 

@@ -452,7 +452,12 @@ export class OAuthStack extends cdk.Stack {
         timeout: cdk.Duration.seconds(10),
         memorySize: 128,
         ...(logRetention ? { logRetention } : {}),
-        environment: { FEISHU_WEBHOOK_URL: alarmWebhook, DEPLOY_LANG: lang },
+        environment: {
+          FEISHU_WEBHOOK_URL: alarmWebhook,
+          FEISHU_WEBHOOK_SECRET: process.env.ALARM_WEBHOOK_SECRET || "",
+          FEISHU_WEBHOOK_KEYWORD: process.env.ALARM_WEBHOOK_KEYWORD || "",
+          DEPLOY_LANG: lang,
+        },
         bundling: { externalModules: [], minify: true, target: "node20" },
       });
       alarmTopic.addSubscription(new snsSubscriptions.LambdaSubscription(webhookFn));
