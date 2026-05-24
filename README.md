@@ -31,11 +31,9 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
 ```
 
-全程交互式引导（箭头键选择，不用输数字）：
-
 检查依赖 → 飞书凭证 → 区域 / WAF / 日志保留 / 告警预设 / Webhook → 确认 → 自动部署
 
-> macOS / Linux 均兼容。重复部署自动记忆上次配置，直接回车保留。
+> 重复部署或升级版本时自动填入上次配置，按需修改。
 
 ## 架构
 
@@ -123,11 +121,9 @@ Every action runs under the user's own Feishu identity — data is isolated per 
 bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
 ```
 
-Fully interactive (arrow-key selection, no numbers to type):
-
 Check deps → Feishu credentials → Region / WAF / Log retention / Alarm presets / Webhook → Confirm → Auto deploy
 
-> Compatible with macOS and Linux. Re-deploys remember previous config — just press Enter to keep.
+> Re-deploys and upgrades pre-fill previous config; change only what you need.
 
 ## Architecture
 
