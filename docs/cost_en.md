@@ -4,7 +4,7 @@
 
 ## Billing Model
 
-Pay-as-you-go with no fixed monthly fee. Most components have AWS free tier, so monthly costs are minimal at low usage levels.
+No license or subscription fees. Infrastructure costs split into a small fixed portion (incurred once deployed) and usage-based portion (scales with users and requests). Most components have AWS free tier, so monthly costs are minimal at low usage levels.
 
 ## Fixed vs Usage-Based Costs
 
