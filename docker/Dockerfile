@@ -4,8 +4,9 @@ FROM node:20-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d
 
 # Pin lark-cli to the version whose scope mapping is captured in shortcut-scopes.json.
 # Drift is detected by scripts/check-lark-cli-version.sh.
-ARG LARK_CLI_VERSION=1.0.39
+ARG LARK_CLI_VERSION=1.0.40
 
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -19,8 +20,9 @@ RUN npx @larksuite/cli@${LARK_CLI_VERSION} install 2>/dev/null || npm install -g
 RUN npx skills add larksuite/cli -y -g 2>/dev/null || true
 
 # Install server runtime dependencies (AWS SDK for SM secret loading)
+WORKDIR /app
 COPY package.json /app/package.json
-RUN cd /app && npm install --omit=dev --no-audit --no-fund
+RUN npm install --omit=dev --no-audit --no-fund
 
 COPY generate-tools.js /app/generate-tools.js
 COPY shortcut-scopes.json /app/shortcut-scopes.json

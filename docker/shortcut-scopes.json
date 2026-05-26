@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.39",
-    "extracted_at": "2026-05-22",
+    "lark_cli_version": "1.0.40",
+    "extracted_at": "2026-05-26",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -31,6 +31,13 @@
       "command": "+html-publish",
       "scopes": [
         "spark:app:publish"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+list",
+      "scopes": [
+        "spark:app:read"
       ]
     },
     {
@@ -809,7 +816,8 @@
       "service": "drive",
       "command": "+inspect",
       "scopes": [
-        "drive:drive.metadata:readonly"
+        "drive:drive.metadata:readonly",
+        "wiki:node:retrieve"
       ]
     },
     {
@@ -847,14 +855,18 @@
       "service": "drive",
       "command": "+status",
       "scopes": [
-        "drive:drive.metadata:readonly"
+        "drive:drive.metadata:readonly",
+        "drive:file:download"
       ]
     },
     {
       "service": "drive",
       "command": "+sync",
       "scopes": [
-        "drive:drive.metadata:readonly"
+        "drive:drive.metadata:readonly",
+        "drive:file:download",
+        "drive:file:upload",
+        "space:folder:create"
       ]
     },
     {
@@ -921,7 +933,9 @@
       "service": "im",
       "command": "+chat-messages-list",
       "scopes": [
-        "im:message:readonly"
+        "contact:user.base:readonly",
+        "im:message.group_msg:get_as_user",
+        "im:message.p2p_msg:get_as_user"
       ]
     },
     {
@@ -969,14 +983,17 @@
       "service": "im",
       "command": "+messages-mget",
       "scopes": [
-        "im:message:readonly"
+        "contact:user.basic_profile:readonly",
+        "im:message.group_msg:get_as_user",
+        "im:message.p2p_msg:get_as_user"
       ]
     },
     {
       "service": "im",
       "command": "+messages-reply",
       "scopes": [
-        "im:message:send_as_bot"
+        "im:message",
+        "im:message.send_as_user"
       ]
     },
     {
@@ -998,14 +1015,17 @@
       "service": "im",
       "command": "+messages-send",
       "scopes": [
-        "im:message:send_as_bot"
+        "im:message",
+        "im:message.send_as_user"
       ]
     },
     {
       "service": "im",
       "command": "+threads-messages-list",
       "scopes": [
-        "im:message:readonly"
+        "contact:user.basic_profile:readonly",
+        "im:message.group_msg:get_as_user",
+        "im:message.p2p_msg:get_as_user"
       ]
     },
     {
