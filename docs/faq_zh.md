@@ -24,7 +24,7 @@ A: 检查两点：1) 飞书应用安全设置中是否添加了部署输出的 R
 
 **Q: 如何更新 lark-cli 版本？**
 
-A: 重新运行 `./scripts/deploy.sh`，CDK 自动拉取最新 lark-cli 重建镜像。可用 `./scripts/check-lark-cli-version.sh` 确认版本是否有变化。
+A: 使用 Claude Code 执行升级（会自动调用 `.claude/skills/bump-lark-cli.md`），或手动操作：修改 `docker/Dockerfile` 中的 `LARK_CLI_VERSION`、从源码重新提取 scope 映射、运行 `./scripts/deploy.sh`。
 
 **Q: 轮换 Client Secret 后，已有用户需要重新授权吗？**
 

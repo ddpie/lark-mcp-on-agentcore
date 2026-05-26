@@ -38,6 +38,9 @@ scripts/
   build-scope-allowlist.sh   Regenerate OAuth scope allowlist
 ```
 
+.claude/skills/  (Claude Code project-level skills)
+  bump-lark-cli.md   lark-cli version upgrade runbook (extraction strategy + steps)
+
 .local/ (gitignored, per-deployment state)
   deploy-config            Deploy configuration memory
   alarm-thresholds.json    User-customized alarm thresholds

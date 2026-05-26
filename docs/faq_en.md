@@ -24,7 +24,7 @@ A: Check two things: 1) The Redirect URL from deploy output is added to your Fei
 
 **Q: How to upgrade lark-cli?**
 
-A: Re-run `./scripts/deploy.sh`. CDK rebuilds the Docker image with the latest lark-cli. Use `./scripts/check-lark-cli-version.sh` to verify the version actually changed. Existing users are unaffected.
+A: Use Claude Code to perform the upgrade (it will invoke `.claude/skills/bump-lark-cli.md` automatically), or do it manually: update `LARK_CLI_VERSION` in `docker/Dockerfile`, re-extract the scope mapping from source, then run `./scripts/deploy.sh`. Existing users are unaffected.
 
 **Q: Does rotating Client Secret require users to re-authorize?**
 

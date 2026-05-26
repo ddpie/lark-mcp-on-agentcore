@@ -38,6 +38,9 @@ scripts/
   build-scope-allowlist.sh   重新生成 OAuth scope allowlist
 ```
 
+.claude/skills/  （Claude Code 项目级 skill）
+  bump-lark-cli.md   lark-cli 版本升级 runbook (提取策略 + 步骤)
+
 .local/ （已 gitignore，存储每次部署的本地状态）
   deploy-config            部署配置记忆
   alarm-thresholds.json    用户自定义告警阈值
