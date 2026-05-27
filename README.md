@@ -68,6 +68,54 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 | **安全** | PKCE + HMAC token + WAF + Secrets Manager 加密存储（[详情](docs/security_zh.md)） |
 | **轻量升级** | lark-cli 新版本发布时，改 Dockerfile 中的 lark-cli 版本号 → 重新 `deploy.sh`，终端用户无需任何操作 |
 
+## 工具列表
+
+### Tier 1 高频工具（28 个，直接注册）
+
+| 类别 | 工具 |
+|------|------|
+| IM (5) | 发消息、搜索消息、群列表、聊天记录、搜索群 |
+| Calendar (4) | 日程概览、创建日程、查忙闲、找会议室 |
+| Docs (4) | 创建、获取、搜索、编辑文档 |
+| Base (4) | 获取表、查询数据、批量创建记录、搜索记录 |
+| Drive (3) | 搜索、上传、下载文件 |
+| Task (3) | 创建任务、我的任务、完成任务 |
+| Contact (2) | 搜索用户、获取用户信息 |
+| Sheets (2) | 读取、写入单元格 |
+| Mail (1) | 发送邮件 |
+
+### Meta Tools（2 个）
+
+| 工具 | 说明 |
+|------|------|
+| `lark_discover` | 按关键词或分类搜索其余所有 lark-cli 命令，返回名称 + 完整参数 schema |
+| `lark_invoke` | 执行 discover 找到的工具（传入 tool_name + args） |
+
+高频操作直接调用即可；其余操作 AI 会自动通过 discover 搜索再 invoke 执行，无需额外配置。
+
+<details>
+<summary>Tier 2 工具（200+，通过 discover/invoke 调用）</summary>
+
+| 类别 | 代表功能 |
+|------|----------|
+| Base | 高级权限管理、复制表格、字段/表单/仪表盘 CRUD、记录导入导出 |
+| Sheets | 追加行、批量样式、合并单元格、条件格式、数据验证 |
+| Mail | 草稿管理、回复、转发、全部回复、模板、邮件规则 |
+| Task | 指派、评论、关注者、提醒、子任务、清单管理 |
+| Drive | 评论、权限申请、创建文件夹、移动/复制、导出 |
+| IM | 创建群聊、更新群信息、消息回复、书签、下载附件 |
+| OKR | 周期列表、目标详情、进展记录、上传图片 |
+| VC | 会议搜索、入会/离会、纪要、录制、事件列表 |
+| Wiki | 空间列表、节点创建/复制/移动、删除空间 |
+| Docs | 媒体下载/插入/预览、批量操作 |
+| Calendar | 回复邀请(RSVP)、智能时间建议、更新日程 |
+| Markdown | 创建、获取、覆盖 Markdown 文件 |
+| Minutes | 搜索妙记、下载音视频、上传生成妙记 |
+| Slides | 创建演示文稿、上传图片、替换页面元素 |
+| Whiteboard | 导出画板、更新画板内容 |
+
+</details>
+
 ## 文档
 
 | 主题 | 链接 |
@@ -163,6 +211,54 @@ User requests from Quick Desktop → CloudFront → API Gateway → Middleware L
 | **Low-ops** | Auto token refresh (30min), alarms auto-push to Feishu group, logs expire by policy |
 | **Secure** | PKCE + HMAC tokens + WAF + Secrets Manager encryption ([details](docs/security_en.md)) |
 | **Lightweight upgrade** | When lark-cli releases a new version, bump the lark-cli version in Dockerfile → re-run `deploy.sh`, end users need no action |
+
+## Tool List
+
+### Tier 1 — High-Frequency Tools (28, registered directly)
+
+| Category | Tools |
+|----------|-------|
+| IM (5) | Send message, search messages, list groups, chat history, search groups |
+| Calendar (4) | Agenda overview, create event, check availability, find meeting rooms |
+| Docs (4) | Create, fetch, search, edit documents |
+| Base (4) | Get table, query records, batch create records, search records |
+| Drive (3) | Search, upload, download files |
+| Task (3) | Create task, my tasks, complete task |
+| Contact (2) | Search user, get user info |
+| Sheets (2) | Read, write cells |
+| Mail (1) | Send email |
+
+### Meta Tools (2)
+
+| Tool | Description |
+|------|-------------|
+| `lark_discover` | Search all remaining lark-cli commands by keyword or category; returns name + full parameter schema |
+| `lark_invoke` | Execute a tool found via discover (pass tool_name + args) |
+
+High-frequency tools are called directly; for everything else the AI automatically discovers then invokes — no extra configuration needed.
+
+<details>
+<summary>Tier 2 — Extended Tools (200+, via discover/invoke)</summary>
+
+| Category | Representative Features |
+|----------|------------------------|
+| Base | Advanced permissions, copy table, field/form/dashboard CRUD, record import/export |
+| Sheets | Append rows, batch styles, merge cells, conditional formatting, data validation |
+| Mail | Draft management, reply, forward, reply-all, templates, mail rules |
+| Task | Assign, comment, followers, reminders, subtasks, tasklist management |
+| Drive | Comments, permission requests, create folder, move/copy, export |
+| IM | Create group, update group info, reply to messages, bookmarks, download attachments |
+| OKR | Period list, objective details, progress records, upload images |
+| VC | Meeting search, join/leave, minutes, recording, event list |
+| Wiki | Space list, node create/copy/move, delete space |
+| Docs | Media download/insert/preview, batch operations |
+| Calendar | RSVP, smart time suggestions, update events |
+| Markdown | Create, fetch, overwrite Markdown files |
+| Minutes | Search minutes, download A/V, upload to generate minutes |
+| Slides | Create presentation, upload images, replace page elements |
+| Whiteboard | Export board, update board content |
+
+</details>
 
 ## Docs
 
