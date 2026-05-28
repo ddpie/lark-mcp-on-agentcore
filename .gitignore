@@ -1,6 +1,5 @@
 # AI dev tools
 .claude/
-!.claude/skills/
 .cursor/
 .windsurf/
 .aider/

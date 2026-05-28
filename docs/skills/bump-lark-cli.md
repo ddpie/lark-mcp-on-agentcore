@@ -30,26 +30,15 @@ Edit `docker/Dockerfile` line `ARG LARK_CLI_VERSION=...` to the new version.
 
 ```bash
 cd /tmp && git clone --depth=1 --branch v<VERSION> https://github.com/larksuite/cli.git lark-cli-<VERSION>
+python3 scripts/extract-shortcut-scopes.py /tmp/lark-cli-<VERSION> <VERSION>
 ```
 
-Run the extraction script below against the cloned source. The extraction uses a **UserScopes-first strategy**:
-
-- **Prefer `UserScopes`** (user OAuth scopes) when present
-- **Fallback to `Scopes`** (generic) when no UserScopes defined
-- **Include `ConditionalScopes`** (runtime-triggered scopes)
-- **Exclude `BotScopes`** (not relevant for user OAuth flow)
-
-The extraction must:
-1. Strip Go comments before parsing (avoid false positives from comment text)
-2. Resolve variable/constant references (e.g. `wbUpdateScopes`, `flagWriteLookupScopes`)
-3. Handle multiple `common.Shortcut{}` definitions per file
-4. Handle service name constants (e.g. `appsService` → `"apps"`)
-
-Apply **minimal diff** to the existing `docker/shortcut-scopes.json`:
-- Update `_meta.lark_cli_version` and `_meta.extracted_at`
-- Only modify entries whose scope **set** actually changed (preserve existing array order)
-- Append new scopes at end of existing arrays
-- Add new shortcuts, remove deleted ones
+The script (`scripts/extract-shortcut-scopes.py`) handles:
+- UserScopes-first strategy (prefer UserScopes → fallback Scopes → include ConditionalScopes → exclude BotScopes)
+- Variable/constant resolution (single strings, slices, and `append()` combos)
+- Multiple `common.Shortcut{}` definitions per file
+- Service name constants
+- Empty scope arrays (included as `[]`)
 
 ### 4. Regenerate scope-allowlist.ts
 
@@ -65,6 +54,33 @@ This regenerates `lambda/token-refresh-shim/scope-allowlist.ts` from `docker/sho
 scripts/check-lark-cli-version.sh   # Dockerfile ↔ shortcut-scopes.json version match
 ```
 
+### 5b. Update default OAuth scopes
+
+Compare tier1 tool scopes against `config/oauth-scopes.json`:
+
+```bash
+python3 -c "
+import json
+with open('docker/tier1.json') as f: tier1 = set(json.load(f))
+with open('docker/shortcut-scopes.json') as f: data = json.load(f)
+with open('config/oauth-scopes.json') as f: defaults = set(json.load(f))
+needed = set()
+for s in data['shortcuts']:
+    tool = f\"lark_{s['service']}_{s['command'].lstrip('+').replace('-','_')}\"
+    if tool in tier1:
+        needed.update(s['scopes'])
+missing = sorted(needed - defaults)
+if missing:
+    print('Add to config/oauth-scopes.json:')
+    for s in missing: print(f'  {s}')
+else:
+    print('OK: all tier1 scopes covered')
+"
+```
+
+If scopes are missing, add them to `config/oauth-scopes.json` (grouped near related entries),
+then re-run `scripts/build-scope-allowlist.sh`.
+
 ### 6. Update CDK snapshot
 
 ```bash
@@ -74,14 +90,20 @@ npx vitest run infra/test/snapshot.test.ts --update
 ### 7. Run full tests
 
 ```bash
-npm test   # All 12 test files / 243+ tests must pass
+npm test   # All 13 test files / 246+ tests must pass (includes scope-coverage)
 ```
+
+The `scope-coverage` test validates:
+- All tier1 tool scopes are in `config/oauth-scopes.json`
+- Every tier1 tool has a shortcut-scopes entry
+- Extraction covers all lark-cli runtime shortcuts (no gaps)
 
 ### 8. Commit
 
 Include all changed files:
 - `docker/Dockerfile`
 - `docker/shortcut-scopes.json`
+- `config/oauth-scopes.json` (if updated)
 - `lambda/token-refresh-shim/scope-allowlist.ts`
 - `infra/test/__snapshots__/snapshot.test.ts.snap`
 
@@ -89,8 +111,8 @@ Include all changed files:
 
 - [ ] No bot-only scopes in shortcut-scopes.json (e.g. `im:message:send_as_bot` should NOT appear)
 - [ ] `scripts/check-lark-cli-version.sh` passes
-- [ ] `npm test` passes
-- [ ] `git diff --stat` shows only the 4 expected files
+- [ ] `npm test` passes (scope-coverage test catches missing oauth-scopes)
+- [ ] `git diff --stat` shows only the expected files (4-5 depending on oauth-scopes changes)
 - [ ] No remaining references to old version (`grep -r "OLD_VERSION" --include="*.json" --include="Dockerfile*"`)
 
 ## Scope extraction strategy reference

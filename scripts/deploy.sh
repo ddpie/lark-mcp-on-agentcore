@@ -687,9 +687,8 @@ if [ -n "$ALARM_WEBHOOK_URL" ] && [ -t 0 ]; then
   if [ -z "${ALARM_WEBHOOK_KEYWORD+x}" ]; then
     ALARM_WEBHOOK_KEYWORD=$(grep '^ALARM_WEBHOOK_KEYWORD=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
   fi
-  if [ -z "$ALARM_WEBHOOK_SECRET" ] && [ -z "$ALARM_WEBHOOK_KEYWORD" ]; then
+  if [ -z "$ALARM_WEBHOOK_SECRET" ] && [ -z "$ALARM_WEBHOOK_KEYWORD" ] && [ "${_WEBHOOK_ACT:-}" != "${L[keep]}" ]; then
     echo ""
-    info "${L[webhook_hint]}"
     ask "${L[ask_webhook_secret]}" ALARM_WEBHOOK_SECRET
     ask "${L[ask_webhook_keyword]}" ALARM_WEBHOOK_KEYWORD
   fi
@@ -1216,6 +1215,8 @@ echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${YELLOW}  ${L[next_steps]}${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  ${YELLOW}${L[upgrade_hint]}${NC}"
 echo ""
 echo -e "${CYAN}  ${L[step1_title]}${NC}"
 echo ""

@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.40",
-    "extracted_at": "2026-05-26",
+    "lark_cli_version": "1.0.42",
+    "extracted_at": "2026-05-28",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -9,14 +9,14 @@
       "service": "apps",
       "command": "+access-scope-get",
       "scopes": [
-        "spark:app.access_scope:read"
+        "spark:app:read"
       ]
     },
     {
       "service": "apps",
       "command": "+access-scope-set",
       "scopes": [
-        "spark:app.access_scope:write"
+        "spark:app:write"
       ]
     },
     {
@@ -30,7 +30,7 @@
       "service": "apps",
       "command": "+html-publish",
       "scopes": [
-        "spark:app:publish"
+        "spark:app:write"
       ]
     },
     {
@@ -853,6 +853,20 @@
     },
     {
       "service": "drive",
+      "command": "+secure-label-list",
+      "scopes": [
+        "drive:file.meta.sec_label.read_only"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+secure-label-update",
+      "scopes": [
+        "docs:secure_label:write_only"
+      ]
+    },
+    {
+      "service": "drive",
       "command": "+status",
       "scopes": [
         "drive:drive.metadata:readonly",
@@ -933,9 +947,10 @@
       "service": "im",
       "command": "+chat-messages-list",
       "scopes": [
-        "contact:user.base:readonly",
         "im:message.group_msg:get_as_user",
-        "im:message.p2p_msg:get_as_user"
+        "im:message.p2p_msg:get_as_user",
+        "im:message.reactions:read",
+        "contact:user.base:readonly"
       ]
     },
     {
@@ -983,17 +998,18 @@
       "service": "im",
       "command": "+messages-mget",
       "scopes": [
-        "contact:user.basic_profile:readonly",
         "im:message.group_msg:get_as_user",
-        "im:message.p2p_msg:get_as_user"
+        "im:message.p2p_msg:get_as_user",
+        "im:message.reactions:read",
+        "contact:user.basic_profile:readonly"
       ]
     },
     {
       "service": "im",
       "command": "+messages-reply",
       "scopes": [
-        "im:message",
-        "im:message.send_as_user"
+        "im:message.send_as_user",
+        "im:message"
       ]
     },
     {
@@ -1008,6 +1024,7 @@
       "command": "+messages-search",
       "scopes": [
         "search:message",
+        "im:message.reactions:read",
         "contact:user.basic_profile:readonly"
       ]
     },
@@ -1015,17 +1032,18 @@
       "service": "im",
       "command": "+messages-send",
       "scopes": [
-        "im:message",
-        "im:message.send_as_user"
+        "im:message.send_as_user",
+        "im:message"
       ]
     },
     {
       "service": "im",
       "command": "+threads-messages-list",
       "scopes": [
-        "contact:user.basic_profile:readonly",
         "im:message.group_msg:get_as_user",
-        "im:message.p2p_msg:get_as_user"
+        "im:message.p2p_msg:get_as_user",
+        "im:message.reactions:read",
+        "contact:user.basic_profile:readonly"
       ]
     },
     {
@@ -1053,6 +1071,13 @@
         "mail:user_mailbox.message:modify",
         "mail:user_mailbox.message:readonly",
         "mail:user_mailbox:readonly"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+draft-send",
+      "scopes": [
+        "mail:user_mailbox.message:send"
       ]
     },
     {
@@ -1249,6 +1274,20 @@
       "command": "+search",
       "scopes": [
         "minutes:minutes.search:read"
+      ]
+    },
+    {
+      "service": "minutes",
+      "command": "+speaker-replace",
+      "scopes": [
+        "minutes:minutes:update"
+      ]
+    },
+    {
+      "service": "minutes",
+      "command": "+update",
+      "scopes": [
+        "minutes:minutes:update"
       ]
     },
     {
