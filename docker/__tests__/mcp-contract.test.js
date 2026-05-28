@@ -106,7 +106,7 @@ Module._load = function (request, parent, isMain) {
           kill: () => {},
           pid: 99999,
         };
-        setImmediate(() => cb(null, '{"ok":true,"data":{"message_id":"test123"}}', ''));
+        setTimeout(() => cb(null, '{"ok":true,"data":{"message_id":"test123"}}', ''), 0);
         return child;
       },
     };
@@ -545,6 +545,125 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       const inner = JSON.parse(data.result.content[0].text);
       expect(inner.tools.length).toBeGreaterThan(0);
       expect(inner.tools[0].category).toBe('wiki');
+    });
+  });
+
+  describe('meta tools are read-only', () => {
+    it('lark_discover is annotated as read-only', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 60);
+      const { data } = parseSSE(body);
+      const tool = data.result.tools.find(t => t.name === 'lark_discover');
+      expect(tool.annotations).toBeDefined();
+      expect(tool.annotations.readOnlyHint).toBe(true);
+      expect(tool.annotations.destructiveHint).toBe(false);
+    });
+
+    it('lark_invoke is annotated as read/write (not read-only)', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 67);
+      const { data } = parseSSE(body);
+      const tool = data.result.tools.find(t => t.name === 'lark_invoke');
+      expect(tool.annotations).toBeDefined();
+      expect(tool.annotations.readOnlyHint).toBe(false);
+      expect(tool.annotations.destructiveHint).toBe(false);
+    });
+
+    it('lark_list_skills is annotated as read-only', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 68);
+      const { data } = parseSSE(body);
+      const tool = data.result.tools.find(t => t.name === 'lark_list_skills');
+      expect(tool).toBeDefined();
+      expect(tool.annotations.readOnlyHint).toBe(true);
+      expect(tool.annotations.destructiveHint).toBe(false);
+    });
+
+    it('lark_get_skill is annotated as read-only', async () => {
+      const { body } = await sendMcpRequest('tools/list', {}, 69);
+      const { data } = parseSSE(body);
+      const tool = data.result.tools.find(t => t.name === 'lark_get_skill');
+      expect(tool).toBeDefined();
+      expect(tool.annotations.readOnlyHint).toBe(true);
+      expect(tool.annotations.destructiveHint).toBe(false);
+    });
+
+    it('lark_list_skills returns skills list without auth', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_list_skills',
+        arguments: {},
+      }, 61);
+      const { data } = parseSSE(body);
+
+      expect(data.result).toBeDefined();
+      expect(data.result.isError).toBeUndefined();
+      expect(Array.isArray(data.result.content)).toBe(true);
+      const inner = JSON.parse(data.result.content[0].text);
+      expect(Array.isArray(inner.skills)).toBe(true);
+      expect(inner.skills.length).toBeGreaterThan(0);
+      expect(inner.skills[0]).toHaveProperty('domain');
+      expect(inner.skills[0]).toHaveProperty('description');
+    });
+
+    it('lark_get_skill returns skill content for valid domain', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_get_skill',
+        arguments: { domain: 'calendar' },
+      }, 62);
+      const { data } = parseSSE(body);
+
+      expect(data.result).toBeDefined();
+      expect(data.result.isError).toBeUndefined();
+      const text = data.result.content[0].text;
+      expect(text.length).toBeGreaterThan(100);
+      expect(text).toContain('Available sections');
+    });
+
+    it('lark_get_skill returns error for invalid domain', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_get_skill',
+        arguments: { domain: 'nonexistent' },
+      }, 63);
+      const { data } = parseSSE(body);
+
+      expect(data.result.isError).toBe(true);
+      const inner = JSON.parse(data.result.content[0].text);
+      expect(inner.error).toBe('unknown_domain');
+      expect(Array.isArray(inner.available)).toBe(true);
+    });
+
+    it('lark_get_skill rejects path traversal in section', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_get_skill',
+        arguments: { domain: 'calendar', section: '../../etc/passwd' },
+      }, 64);
+      const { data } = parseSSE(body);
+
+      expect(data.result.isError).toBe(true);
+      const inner = JSON.parse(data.result.content[0].text);
+      expect(inner.error).toBe('invalid_section');
+    });
+
+    it('lark_get_skill returns section content when valid', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_get_skill',
+        arguments: { domain: 'calendar', section: 'create' },
+      }, 65);
+      const { data } = parseSSE(body);
+
+      expect(data.result).toBeDefined();
+      expect(data.result.isError).toBeUndefined();
+      expect(data.result.content[0].text.length).toBeGreaterThan(50);
+    });
+
+    it('lark_discover does not require auth token', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_discover',
+        arguments: { query: 'wiki' },
+      }, 66);
+      const { data } = parseSSE(body);
+
+      expect(data.result).toBeDefined();
+      expect(data.result.isError).toBeUndefined();
+      const inner = JSON.parse(data.result.content[0].text);
+      expect(Array.isArray(inner.tools)).toBe(true);
     });
   });
 });

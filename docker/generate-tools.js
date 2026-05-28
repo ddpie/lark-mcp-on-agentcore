@@ -59,8 +59,13 @@ function parseFlags(helpText) {
 
 function detectRisk(helpText, commandName) {
   const lower = helpText.toLowerCase();
-  if (lower.includes('[high-risk-write]') || lower.includes('destructive') || commandName.includes('delete') || commandName.includes('remove')) return 'high-risk-write';
-  if (lower.includes('[write]') || commandName.includes('create') || commandName.includes('send') || commandName.includes('update') || commandName.includes('patch')) return 'write';
+  // Prefer explicit "Risk:" line from lark-cli help output
+  if (lower.includes('risk: high-risk-write')) return 'high-risk-write';
+  if (lower.includes('risk: write')) return 'write';
+  if (lower.includes('risk: read')) return 'read';
+  // Fallback: heuristics from command name
+  if (lower.includes('destructive') || commandName.includes('delete') || commandName.includes('remove')) return 'high-risk-write';
+  if (commandName.includes('create') || commandName.includes('send') || commandName.includes('update') || commandName.includes('patch')) return 'write';
   return 'read';
 }
 
@@ -132,3 +137,4 @@ if (unmapped > 5) {
   console.warn(`    ARG LARK_CLI_VERSION=${scopeMapVersion}`);
   console.warn(`  Or contact: ddpie.flea@gmail.com for an updated scope map.\n`);
 }
+
