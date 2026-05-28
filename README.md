@@ -131,7 +131,7 @@ AI 的执行过程：
 ```mermaid
 sequenceDiagram
     participant U as 用户
-    participant AI
+    participant AI as AI Agent
     participant MCP as MCP Server
 
     U->>AI: 帮我约产品评审会，邀请研发组，需要会议室
@@ -357,7 +357,7 @@ The AI's execution:
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant AI
+    participant AI as AI Agent
     participant MCP as MCP Server
 
     U->>AI: Schedule product review, invite dev team, book room
