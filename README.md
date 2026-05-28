@@ -129,15 +129,15 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 AI 的执行过程：
 
 ```
-0. lark_get_skill(domain="calendar", section="schedule-meeting") → 读取预约会议编排指南
-1. lark_get_skill(domain="contact") → 读取通讯录指南
+1. lark_get_skill(domain="calendar", section="schedule-meeting") → 加载预约会议编排指南
+   lark_get_skill(domain="contact") → 加载通讯录指南
 2. contact 解析"研发组" → 获取 open_id 列表
 3. calendar +freebusy 查询参会人忙闲
 4. calendar +suggestion 推荐空闲时段 → 展示给用户确认
 5. calendar +room-find 基于确认时段查可用会议室
 6. 用户选择会议室 → calendar +create 创建日程（含参会人+会议室）
-7. lark_get_skill(domain="task") → 读取任务指南
-8. task +create 创建待办"评审 action items 跟进"
+7. lark_get_skill(domain="task") → 加载任务指南
+   task +create 创建待办"评审 action items 跟进"
 ```
 
 AI 按需加载多个域的编排指南，每步都由指南驱动——知道该调什么工具、传什么参数、什么时候该问用户。
@@ -332,15 +332,15 @@ Traditional MCP servers only expose tools — the AI guesses how to chain them, 
 The AI's execution:
 
 ```
-0. lark_get_skill(domain="calendar", section="schedule-meeting") → load scheduling guide
-1. lark_get_skill(domain="contact") → load contact guide
+1. lark_get_skill(domain="calendar", section="schedule-meeting") → load scheduling guide
+   lark_get_skill(domain="contact") → load contact guide
 2. contact resolve "dev team" → get open_id list
 3. calendar +freebusy check attendee availability
 4. calendar +suggestion recommend available slots → present to user
 5. User confirms → calendar +room-find for the confirmed slot
 6. User picks room → calendar +create event (with attendees + room)
 7. lark_get_skill(domain="task") → load task guide
-8. task +create "review action items follow-up"
+   task +create "review action items follow-up"
 ```
 
 The AI loads multiple domain guides on demand, and every step is driven by them — which tool to call, what parameters to pass, when to ask the user.
