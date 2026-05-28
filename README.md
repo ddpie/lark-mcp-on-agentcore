@@ -126,18 +126,21 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 **示例**："帮我明天下午约一个产品评审会，邀请研发组的人，需要会议室，会后创建待办跟踪"
 
-AI 读取 calendar 编排指南后，自动执行：
+AI 的执行过程：
 
 ```
-1. contact 解析"研发组" → 获取 open_id 列表
-2. calendar +freebusy 查询参会人忙闲
-3. calendar +suggestion 推荐空闲时段 → 展示给用户确认
-4. calendar +room-find 基于确认时段查可用会议室
-5. 用户选择会议室 → calendar +create 创建日程（含参会人+会议室）
-6. task +create 创建待办"评审 action items 跟进"
+0. lark_get_skill(domain="calendar", section="schedule-meeting") → 读取预约会议编排指南
+1. lark_get_skill(domain="contact") → 读取通讯录指南
+2. contact 解析"研发组" → 获取 open_id 列表
+3. calendar +freebusy 查询参会人忙闲
+4. calendar +suggestion 推荐空闲时段 → 展示给用户确认
+5. calendar +room-find 基于确认时段查可用会议室
+6. 用户选择会议室 → calendar +create 创建日程（含参会人+会议室）
+7. lark_get_skill(domain="task") → 读取任务指南
+8. task +create 创建待办"评审 action items 跟进"
 ```
 
-整个过程由编排指南驱动——AI 知道每一步该调什么工具、传什么参数、什么时候该问用户。
+AI 按需加载多个域的编排指南，每步都由指南驱动——知道该调什么工具、传什么参数、什么时候该问用户。
 
 Agent 通过 `lark_get_skill` 按需加载指南，不占用固定 context。
 
@@ -326,18 +329,21 @@ Traditional MCP servers only expose tools — the AI guesses how to chain them, 
 
 **Example**: "Schedule a product review tomorrow with the dev team, book a room, and create follow-up tasks"
 
-The AI reads the calendar orchestration guide and automatically executes:
+The AI's execution:
 
 ```
-1. contact resolve "dev team" → get open_id list
-2. calendar +freebusy check attendee availability
-3. calendar +suggestion recommend available slots → present to user
-4. User confirms → calendar +room-find for the confirmed slot
-5. User picks room → calendar +create event (with attendees + room)
-6. task +create "review action items follow-up"
+0. lark_get_skill(domain="calendar", section="schedule-meeting") → load scheduling guide
+1. lark_get_skill(domain="contact") → load contact guide
+2. contact resolve "dev team" → get open_id list
+3. calendar +freebusy check attendee availability
+4. calendar +suggestion recommend available slots → present to user
+5. User confirms → calendar +room-find for the confirmed slot
+6. User picks room → calendar +create event (with attendees + room)
+7. lark_get_skill(domain="task") → load task guide
+8. task +create "review action items follow-up"
 ```
 
-The entire flow is driven by the orchestration guide — the AI knows which tool to call at each step, what parameters to pass, and when to ask the user.
+The AI loads multiple domain guides on demand, and every step is driven by them — which tool to call, what parameters to pass, when to ask the user.
 
 The agent loads guides on demand via `lark_get_skill` — no fixed context cost.
 
