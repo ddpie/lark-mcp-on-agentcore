@@ -135,50 +135,33 @@ sequenceDiagram
     participant MCP as MCP Server
 
     U->>AI: 帮我约产品评审会，邀请研发组，需要会议室
-
-    rect rgb(240, 248, 255)
     Note over AI,MCP: 加载编排指南
     AI->>MCP: lark_get_skill("calendar", "schedule-meeting")
     AI->>MCP: lark_get_skill("contact")
-    end
-
-    rect rgb(240, 255, 240)
-    Note over AI,MCP: Tier1 直接调用
+    Note over AI,MCP: 解析参会人
     AI->>MCP: lark_contact_search_user("研发组")
     MCP-->>AI: open_id 列表
+    Note over AI,MCP: 查忙闲
     AI->>MCP: lark_calendar_freebusy(start, end)
     MCP-->>AI: 可用时段
-    end
-
-    rect rgb(255, 248, 240)
-    Note over AI,MCP: Tier2 discover + invoke
+    Note over AI,MCP: 发现并调用 Tier2 工具
     AI->>MCP: lark_discover("calendar suggestion")
-    MCP-->>AI: 工具 schema
     AI->>MCP: lark_invoke("lark_calendar_suggestion", args)
     MCP-->>AI: 候选时段
-    end
-
     AI->>U: 推荐这几个时段，选哪个？
     U->>AI: 第二个
-
-    rect rgb(240, 255, 240)
-    Note over AI,MCP: Tier1 直接调用
+    Note over AI,MCP: 查可用会议室
     AI->>MCP: lark_calendar_room_find(slot="确认时段")
     MCP-->>AI: 可用会议室
-    end
-
     AI->>U: 这些会议室可用，选哪个？
     U->>AI: 5F-大会议室
-
-    rect rgb(240, 255, 240)
-    Note over AI,MCP: Tier1 直接调用
+    Note over AI,MCP: 创建日程
     AI->>MCP: lark_calendar_create("产品评审", ...)
     MCP-->>AI: ✓ 日程已创建
+    Note over AI,MCP: 加载任务指南 + 创建待办
     AI->>MCP: lark_get_skill("task")
     AI->>MCP: lark_task_create("评审跟进", ...)
     MCP-->>AI: ✓ 待办已创建
-    end
-
     AI->>U: 已完成：日程+会议室+待办
 ```
 
@@ -378,56 +361,37 @@ sequenceDiagram
     participant MCP as MCP Server
 
     U->>AI: Schedule product review, invite dev team, book room
-
-    rect rgb(240, 248, 255)
-    Note over AI,MCP: Load orchestration guides
+    Note over AI,MCP: Load guides before acting
     AI->>MCP: lark_get_skill("calendar", "schedule-meeting")
     AI->>MCP: lark_get_skill("contact")
-    end
-
-    rect rgb(240, 255, 240)
-    Note over AI,MCP: Tier1 direct calls
+    Note over AI,MCP: Resolve attendees
     AI->>MCP: lark_contact_search_user("dev team")
     MCP-->>AI: open_id list
+    Note over AI,MCP: Check availability
     AI->>MCP: lark_calendar_freebusy(start, end)
     MCP-->>AI: available slots
-    end
-
-    rect rgb(255, 248, 240)
-    Note over AI,MCP: Tier2 discover + invoke
+    Note over AI,MCP: Discover + invoke Tier2 tool
     AI->>MCP: lark_discover("calendar suggestion")
-    MCP-->>AI: tool schema
     AI->>MCP: lark_invoke("lark_calendar_suggestion", args)
     MCP-->>AI: candidate slots
-    end
-
     AI->>U: Here are available slots, which one?
     U->>AI: The second one
-
-    rect rgb(240, 255, 240)
-    Note over AI,MCP: Tier1 direct calls
+    Note over AI,MCP: Find room for confirmed slot
     AI->>MCP: lark_calendar_room_find(slot="confirmed")
     MCP-->>AI: available rooms
-    end
-
     AI->>U: These rooms are available, which one?
     U->>AI: 5F-Main
-
-    rect rgb(240, 255, 240)
-    Note over AI,MCP: Tier1 direct calls
+    Note over AI,MCP: Create event
     AI->>MCP: lark_calendar_create("Product Review", ...)
     MCP-->>AI: ✓ event created
+    Note over AI,MCP: Load task guide + create follow-up
     AI->>MCP: lark_get_skill("task")
     AI->>MCP: lark_task_create("Review follow-up", ...)
     MCP-->>AI: ✓ task created
-    end
-
     AI->>U: Done: event + room + follow-up task
 ```
 
 Orchestration guides are loaded on demand via `lark_get_skill` — no fixed context cost.
-
-The agent loads guides on demand via `lark_get_skill` — no fixed context cost.
 
 <details>
 <summary>23 orchestration domains</summary>
