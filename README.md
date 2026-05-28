@@ -68,7 +68,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 | **渐进授权** | 调用低频工具触发飞书未授权时，自动生成 incremental-auth 链接，用户点击链接跳转到飞书授权页确认新增权限即可，飞书会累积已有权限 |
 | **低运维** | Token 自动刷新（30min）、异常自动告警到飞书群、日志按策略过期 |
 | **安全** | PKCE + HMAC token + WAF + Secrets Manager 加密存储（[详情](docs/security_zh.md)） |
-| **轻量升级** | lark-cli 新版本发布时，改 Dockerfile 中的 lark-cli 版本号 → 重新 `deploy.sh`，终端用户无需任何操作 |
+| **轻量升级** | lark-cli 新版本发布时，按 `docs/skills/bump-lark-cli.md` 流程操作（提取 scope + 适配 skill + deploy），终端用户无需任何操作 |
 
 ## 工具列表
 
@@ -126,13 +126,18 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 **示例**："帮我明天下午约一个产品评审会，邀请研发组的人，需要会议室，会后创建待办跟踪"
 
-| | 没有 Skill | 有 Skill |
-|---|---|---|
-| 参会人 | 直接传"研发组"→ API 需要 open_id | 先查通讯录解析成 open_id 列表 |
-| 时间 | 直接创建 → 可能冲突 | 查忙闲 → 推荐空闲时段 → 用户确认 |
-| 会议室 | 缺少时间参数 → 查询失败 | 基于确认时段查可用会议室 |
-| 创建 | 分多次调用，中间状态需自行处理 | 按编排顺序一次完成：日程+参会人+会议室 |
-| 后续 | 需用户额外指示 | 编排指南包含"创建待办跟踪"步骤 |
+AI 读取 calendar 编排指南后，自动执行：
+
+```
+1. contact 解析"研发组" → 获取 open_id 列表
+2. calendar +freebusy 查询参会人忙闲
+3. calendar +suggestion 推荐空闲时段 → 展示给用户确认
+4. calendar +room-find 基于确认时段查可用会议室
+5. 用户选择会议室 → calendar +create 创建日程（含参会人+会议室）
+6. task +create 创建待办"评审 action items 跟进"
+```
+
+整个过程由编排指南驱动——AI 知道每一步该调什么工具、传什么参数、什么时候该问用户。
 
 Agent 通过 `lark_get_skill` 按需加载指南，不占用固定 context。
 
@@ -263,7 +268,7 @@ User requests from Quick Desktop → CloudFront → API Gateway → Middleware L
 | **Incremental auth** | Low-frequency tools that hit "permission denied" auto-generate an incremental-auth link; the user clicks the link, lands on the Feishu authorization page to approve the new scope, and Feishu accumulates the existing scopes |
 | **Low-ops** | Auto token refresh (30min), alarms auto-push to Feishu group, logs expire by policy |
 | **Secure** | PKCE + HMAC tokens + WAF + Secrets Manager encryption ([details](docs/security_en.md)) |
-| **Lightweight upgrade** | When lark-cli releases a new version, bump the lark-cli version in Dockerfile → re-run `deploy.sh`, end users need no action |
+| **Lightweight upgrade** | When lark-cli releases a new version, follow `docs/skills/bump-lark-cli.md` (extract scopes + adapt skills + deploy), end users need no action |
 
 ## Tool List
 
@@ -321,13 +326,18 @@ Traditional MCP servers only expose tools — the AI guesses how to chain them, 
 
 **Example**: "Schedule a product review tomorrow with the dev team, book a room, and create follow-up tasks"
 
-| | Without Skills | With Skills |
-|---|---|---|
-| Attendees | Passes "dev team" directly → API requires open_id | Resolves via contact search → open_id list |
-| Time | Creates directly → possible conflict | Checks free/busy → suggests available slots → user confirms |
-| Room | Missing time parameter → query fails | Finds rooms for the confirmed slot |
-| Creation | Multiple calls with intermediate state to manage | Follows orchestrated sequence: event + attendees + room |
-| Follow-up | Requires additional user instruction | Guide includes "create follow-up task" step |
+The AI reads the calendar orchestration guide and automatically executes:
+
+```
+1. contact resolve "dev team" → get open_id list
+2. calendar +freebusy check attendee availability
+3. calendar +suggestion recommend available slots → present to user
+4. User confirms → calendar +room-find for the confirmed slot
+5. User picks room → calendar +create event (with attendees + room)
+6. task +create "review action items follow-up"
+```
+
+The entire flow is driven by the orchestration guide — the AI knows which tool to call at each step, what parameters to pass, and when to ask the user.
 
 The agent loads guides on demand via `lark_get_skill` — no fixed context cost.
 
