@@ -120,7 +120,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 </details>
 
-## 智能编排
+## 智能编排 (Skill)
 
 传统 MCP server 只暴露工具，AI 靠猜来编排多步操作——参数格式错、步骤顺序乱、前置条件漏。本项目内置 Skill，AI 在操作前主动读取，按最佳实践执行。
 
@@ -158,7 +158,7 @@ sequenceDiagram
     Note over AI,MCP: 创建日程
     AI->>MCP: lark_calendar_create("产品评审", ...)
     MCP-->>AI: ✓ 日程已创建
-    Note over AI,MCP: 加载任务指南 + 创建待办
+    Note over AI,MCP: 加载任务 Skill + 创建待办
     AI->>MCP: lark_get_skill("task")
     AI->>MCP: lark_task_create("评审跟进", ...)
     MCP-->>AI: ✓ 待办已创建
@@ -346,7 +346,7 @@ High-frequency tools are called directly; for complex orchestration (e.g., "sche
 
 </details>
 
-## Smart Orchestration
+## Smart Orchestration (Skill)
 
 Traditional MCP servers only expose tools — the AI guesses how to chain them, gets parameter formats wrong, misses preconditions, and calls things in the wrong order. This project ships built-in Skills that the AI reads before acting.
 
@@ -384,7 +384,7 @@ sequenceDiagram
     Note over AI,MCP: Create event
     AI->>MCP: lark_calendar_create("Product Review", ...)
     MCP-->>AI: ✓ event created
-    Note over AI,MCP: Load task guide + create follow-up
+    Note over AI,MCP: Load task Skill + create follow-up
     AI->>MCP: lark_get_skill("task")
     AI->>MCP: lark_task_create("Review follow-up", ...)
     MCP-->>AI: ✓ task created
