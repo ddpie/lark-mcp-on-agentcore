@@ -24,7 +24,7 @@ A: 检查两点：1) 飞书应用安全设置中是否添加了部署输出的 R
 
 **Q: 如何更新 lark-cli 版本？**
 
-A: 使用 Claude Code 执行升级（会自动调用 `.claude/skills/bump-lark-cli.md`），或手动操作：修改 `docker/Dockerfile` 中的 `LARK_CLI_VERSION`、从源码重新提取 scope 映射、运行 `./scripts/deploy.sh`。
+A: 按 `docs/skills/bump-lark-cli.md` 流程操作（提取 scope → 适配 Skill → deploy），或直接 `./scripts/deploy.sh --yes` 非交互部署。终端用户无需任何操作。
 
 **Q: 轮换 Client Secret 后，已有用户需要重新授权吗？**
 
