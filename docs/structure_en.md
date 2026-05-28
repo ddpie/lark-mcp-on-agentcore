@@ -13,8 +13,9 @@ docker/
   package.json        Container runtime deps (AWS SDK)
   generate-tools.js   Build-time tool catalog + scope mapping
   shortcut-scopes.json  lark-cli command → scope mapping (from source)
-  server.js           MCP server (tier1 + discover/invoke + semaphore + SIGTERM)
+  server.js           MCP server (tier1 + discover/invoke + skills + semaphore + SIGTERM)
   tier1.json          28 high-frequency tools
+  skills/             MCP-adapted orchestration guides (transformed from lark-cli skills, served by lark_get_skill)
 infra/
   lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront
   lib/runtime-stack.ts  Docker image + IAM (with SM read access)
