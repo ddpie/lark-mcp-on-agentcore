@@ -128,11 +128,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 | | 没有 Skill | 有 Skill |
 |---|---|---|
-| 参会人 | 直接传"研发组"→ API 报错 | 先查通讯录解析成 open_id 列表 |
-| 时间 | 随便选个时间 → 冲突 | 查忙闲 → 推荐空闲时段 → 用户确认 |
-| 会议室 | 不带时间查 → API 报错 | 基于确认时段查可用会议室 |
-| 创建 | 多次试错 | 一次成功：日程+参会人+会议室 |
-| 后续 | 忘了 | 自动创建待办任务跟踪 |
+| 参会人 | 直接传"研发组"→ API 需要 open_id | 先查通讯录解析成 open_id 列表 |
+| 时间 | 直接创建 → 可能冲突 | 查忙闲 → 推荐空闲时段 → 用户确认 |
+| 会议室 | 缺少时间参数 → 查询失败 | 基于确认时段查可用会议室 |
+| 创建 | 分多次调用，中间状态需自行处理 | 按编排顺序一次完成：日程+参会人+会议室 |
+| 后续 | 需用户额外指示 | 编排指南包含"创建待办跟踪"步骤 |
 
 Agent 通过 `lark_get_skill` 按需加载指南，不占用固定 context。
 
@@ -323,11 +323,11 @@ Traditional MCP servers only expose tools — the AI guesses how to chain them, 
 
 | | Without Skills | With Skills |
 |---|---|---|
-| Attendees | Passes "dev team" directly → API error | Resolves via contact search → open_id list |
-| Time | Picks random slot → conflict | Checks free/busy → suggests available slots → user confirms |
-| Room | Queries without time → API error | Finds rooms for the confirmed slot |
-| Creation | Multiple retries | One-shot success: event + attendees + room |
-| Follow-up | Forgets | Automatically creates task for tracking |
+| Attendees | Passes "dev team" directly → API requires open_id | Resolves via contact search → open_id list |
+| Time | Creates directly → possible conflict | Checks free/busy → suggests available slots → user confirms |
+| Room | Missing time parameter → query fails | Finds rooms for the confirmed slot |
+| Creation | Multiple calls with intermediate state to manage | Follows orchestrated sequence: event + attendees + room |
+| Follow-up | Requires additional user instruction | Guide includes "create follow-up task" step |
 
 The agent loads guides on demand via `lark_get_skill` — no fixed context cost.
 
