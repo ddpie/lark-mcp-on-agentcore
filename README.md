@@ -128,21 +128,61 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 AI 的执行过程：
 
-```
-1. lark_get_skill(domain="calendar", section="schedule-meeting") → 加载预约会议编排指南
-   lark_get_skill(domain="contact") → 加载通讯录指南
-2. contact 解析"研发组" → 获取 open_id 列表
-3. calendar +freebusy 查询参会人忙闲
-4. calendar +suggestion 推荐空闲时段 → 展示给用户确认
-5. calendar +room-find 基于确认时段查可用会议室
-6. 用户选择会议室 → calendar +create 创建日程（含参会人+会议室）
-7. lark_get_skill(domain="task") → 加载任务指南
-   task +create 创建待办"评审 action items 跟进"
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant AI
+    participant MCP as MCP Server
+
+    U->>AI: 帮我约产品评审会，邀请研发组，需要会议室
+
+    rect rgb(240, 248, 255)
+    Note over AI,MCP: 加载编排指南
+    AI->>MCP: lark_get_skill("calendar", "schedule-meeting")
+    AI->>MCP: lark_get_skill("contact")
+    end
+
+    rect rgb(240, 255, 240)
+    Note over AI,MCP: Tier1 直接调用
+    AI->>MCP: lark_contact_search_user("研发组")
+    MCP-->>AI: open_id 列表
+    AI->>MCP: lark_calendar_freebusy(start, end)
+    MCP-->>AI: 可用时段
+    end
+
+    rect rgb(255, 248, 240)
+    Note over AI,MCP: Tier2 discover + invoke
+    AI->>MCP: lark_discover("calendar suggestion")
+    MCP-->>AI: 工具 schema
+    AI->>MCP: lark_invoke("lark_calendar_suggestion", args)
+    MCP-->>AI: 候选时段
+    end
+
+    AI->>U: 推荐这几个时段，选哪个？
+    U->>AI: 第二个
+
+    rect rgb(240, 255, 240)
+    Note over AI,MCP: Tier1 直接调用
+    AI->>MCP: lark_calendar_room_find(slot="确认时段")
+    MCP-->>AI: 可用会议室
+    end
+
+    AI->>U: 这些会议室可用，选哪个？
+    U->>AI: 5F-大会议室
+
+    rect rgb(240, 255, 240)
+    Note over AI,MCP: Tier1 直接调用
+    AI->>MCP: lark_calendar_create("产品评审", ...)
+    MCP-->>AI: ✓ 日程已创建
+    AI->>MCP: lark_get_skill("task")
+    AI->>MCP: lark_task_create("评审跟进", ...)
+    MCP-->>AI: ✓ 待办已创建
+    end
+
+    AI->>U: 已完成：日程+会议室+待办
 ```
 
-AI 按需加载多个域的编排指南，每步都由指南驱动——知道该调什么工具、传什么参数、什么时候该问用户。
-
-Agent 通过 `lark_get_skill` 按需加载指南，不占用固定 context。
+编排指南通过 `lark_get_skill` 按需加载，不占用固定 context。
 
 <details>
 <summary>23 个编排域一览</summary>
@@ -331,19 +371,61 @@ Traditional MCP servers only expose tools — the AI guesses how to chain them, 
 
 The AI's execution:
 
-```
-1. lark_get_skill(domain="calendar", section="schedule-meeting") → load scheduling guide
-   lark_get_skill(domain="contact") → load contact guide
-2. contact resolve "dev team" → get open_id list
-3. calendar +freebusy check attendee availability
-4. calendar +suggestion recommend available slots → present to user
-5. User confirms → calendar +room-find for the confirmed slot
-6. User picks room → calendar +create event (with attendees + room)
-7. lark_get_skill(domain="task") → load task guide
-   task +create "review action items follow-up"
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant AI
+    participant MCP as MCP Server
+
+    U->>AI: Schedule product review, invite dev team, book room
+
+    rect rgb(240, 248, 255)
+    Note over AI,MCP: Load orchestration guides
+    AI->>MCP: lark_get_skill("calendar", "schedule-meeting")
+    AI->>MCP: lark_get_skill("contact")
+    end
+
+    rect rgb(240, 255, 240)
+    Note over AI,MCP: Tier1 direct calls
+    AI->>MCP: lark_contact_search_user("dev team")
+    MCP-->>AI: open_id list
+    AI->>MCP: lark_calendar_freebusy(start, end)
+    MCP-->>AI: available slots
+    end
+
+    rect rgb(255, 248, 240)
+    Note over AI,MCP: Tier2 discover + invoke
+    AI->>MCP: lark_discover("calendar suggestion")
+    MCP-->>AI: tool schema
+    AI->>MCP: lark_invoke("lark_calendar_suggestion", args)
+    MCP-->>AI: candidate slots
+    end
+
+    AI->>U: Here are available slots, which one?
+    U->>AI: The second one
+
+    rect rgb(240, 255, 240)
+    Note over AI,MCP: Tier1 direct calls
+    AI->>MCP: lark_calendar_room_find(slot="confirmed")
+    MCP-->>AI: available rooms
+    end
+
+    AI->>U: These rooms are available, which one?
+    U->>AI: 5F-Main
+
+    rect rgb(240, 255, 240)
+    Note over AI,MCP: Tier1 direct calls
+    AI->>MCP: lark_calendar_create("Product Review", ...)
+    MCP-->>AI: ✓ event created
+    AI->>MCP: lark_get_skill("task")
+    AI->>MCP: lark_task_create("Review follow-up", ...)
+    MCP-->>AI: ✓ task created
+    end
+
+    AI->>U: Done: event + room + follow-up task
 ```
 
-The AI loads multiple domain guides on demand, and every step is driven by them — which tool to call, what parameters to pass, when to ask the user.
+Orchestration guides are loaded on demand via `lark_get_skill` — no fixed context cost.
 
 The agent loads guides on demand via `lark_get_skill` — no fixed context cost.
 
