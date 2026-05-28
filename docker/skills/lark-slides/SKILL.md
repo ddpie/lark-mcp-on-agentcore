@@ -1,0 +1,120 @@
+# slides (v1)
+
+## Quick Reference
+
+| 用户需求 | 优先动作 | 关键文档 / 工具 |
+|----------|----------|-----------------|
+| 新建 PPT | 先规划 `slide_plan.json`，再按复杂度选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`lark_slides_create` |
+| 大幅改写页面 | 先回读现有 XML，写入新 plan，再替换或重建相关页面 | `lark_invoke(tool_name="lark_slides_xml_presentations_get")`、`lark_slides_replace_slide`、`lark-slides-edit-workflows.md` |
+| 编辑单个标题、文本块、图片或局部元素 | 优先块级替换/插入，不改页序 | `lark_slides_replace_slide` |
+| 读取或分析已有 PPT | 解析 slides/wiki token，回读全文或单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `lark_invoke(tool_name="lark_slides_xml_presentations_get")`、`lark_invoke(tool_name="lark_slides_xml_presentation_slide_get")` |
+| 上传或使用图片 | 先上传为 `file_token`，禁止直接写 http(s) 外链 | `lark_slides_media_upload`，或 `lark_slides_create` 的 `@./path` 占位符 |
+| 创建失败、空白页、3350001、布局异常 | 先回读状态，再按排障清单修复，不假设原操作原子成功 | `troubleshooting.md`、`validation-checklist.md` |
+
+**CRITICAL — 生成任何 XML 之前，MUST 先调用 `lark_get_skill(domain="slides", section="xml-schema-quick-ref")` 获取 XML 协议规则，禁止凭记忆猜测 XML 结构。**
+
+**CRITICAL — 新建演示文稿或大幅改写页面时，MUST 先生成 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`，再生成 XML。先创建对应目录，规划层规则和中间产物生命周期见 `lark_get_skill(domain="slides", section="planning-layer")`。仅替换一个标题、插入一个块等小型已有页编辑可豁免。**
+
+**CRITICAL — 新建演示文稿或大幅改写页面时，生成 XML 前 MUST 调用 `lark_get_skill(domain="slides", section="visual-planning")`，确保 `layout_type`、`visual_focus`、`text_density` 实际改变页面几何、主视觉和文本量。**
+
+**CRITICAL — 新建演示文稿或大幅改写页面时，规划 `asset_need` MUST 遵循 `lark_get_skill(domain="slides", section="asset-planning")`：只做元数据规划，必须有 `fallback_if_missing`，不得要求真实搜索、下载或上传素材。**
+
+**CRITICAL — 创建或大幅改写后，MUST 按 `lark_get_skill(domain="slides", section="validation-checklist")` 做显式验证：回读全文 XML、核对页数和关键元素、检查空白/破损页、明显溢出、布局风险。**
+
+**CRITICAL — 创建前自检或失败排障时，MUST 按 `lark_get_skill(domain="slides", section="troubleshooting")` 检查 XML 转义、结构、图片 token、3350001 和布局风险。**
+
+**编辑已有幻灯片页面**：优先用 `lark_slides_replace_slide`（块级替换/插入，不动页序）；选择 action 和完整读-改-写流程见 `lark_get_skill(domain="slides", section="edit-workflows")`。
+
+## 身份选择
+
+飞书幻灯片通常是用户自己的内容资源。MCP server 始终使用 **user identity**（authentication is handled automatically by the MCP server）。
+
+## 执行前必做
+
+> **重要**：`references/slides_xml_schema_definition.xml` 是此 skill 唯一正确的 XML 协议来源；其他 md 仅是对它的摘要。
+
+高频只读：
+
+- `lark_get_skill(domain="slides", section="xml-schema-quick-ref")`
+- `lark_get_skill(domain="slides", section="planning-layer")`（新建 / 大幅改写）
+- `lark_get_skill(domain="slides", section="visual-planning")`（新建 / 大幅改写）
+- `lark_get_skill(domain="slides", section="asset-planning")`（新建 / 大幅改写）
+- `lark_get_skill(domain="slides", section="validation-checklist")`（创建 / 大幅改写后）
+
+按需再读：
+
+- 创建：`lark_get_skill(domain="slides", section="create")`
+- 编辑：`lark_get_skill(domain="slides", section="edit-workflows")`、`lark_get_skill(domain="slides", section="replace-slide")`
+- 图片：`lark_get_skill(domain="slides", section="media-upload")`
+- 模板：`lark_get_skill(domain="slides", section="template-catalog")`
+- 排障：`lark_get_skill(domain="slides", section="troubleshooting")`
+
+## Workflow
+
+> **这是演示文稿，不是文档。** 每页 slide 是独立的视觉画面，信息密度要低，排版要留白。
+
+### 创建方式选择
+
+| 场景 | 推荐方式 |
+|------|----------|
+| 简单 XML（1-3 页、结构简单、几乎无复杂中文和特殊字符） | `lark_slides_create(title="...", slides='[...]')` 一步创建 |
+| 复杂 XML（多页、含中文、大段文本、复杂布局、嵌套引号、特殊字符较多） | **两步创建**：先 `lark_slides_create(title="...")` 创建空白 PPT，再用 `lark_invoke(tool_name="lark_slides_xml_presentation_slide_create", ...)` 逐页添加 |
+| 已有 PPT 继续追加或插入页面 | 使用 `lark_invoke(tool_name="lark_slides_xml_presentation_slide_create", ...)`，必要时配合 `before_slide_id` |
+
+### 核心概念
+
+#### URL 格式与 Token
+
+| URL 格式 | 示例 | Token 类型 | 处理方式 |
+|----------|------|-----------|----------|
+| `/slides/` | `https://example.larkoffice.com/slides/xxxxxxxxxxxxx` | `xml_presentation_id` | URL 路径中的 token 直接作为 `xml_presentation_id` 使用 |
+| `/wiki/` | `https://example.larkoffice.com/wiki/wikcnxxxxxxxxx` | `wiki_token` | 需要先查询获取真实的 `obj_token` |
+
+> `lark_slides_replace_slide` 和 `lark_slides_media_upload` 会自动解析以上两种 URL；直接调用原生 API 时仍需手动解析 wiki 链接。
+
+#### Wiki 链接特殊处理
+
+知识库链接（`/wiki/TOKEN`）不能直接当 `xml_presentation_id`。直接调用原生 API 前，先查询 wiki 节点，确认 `node.obj_type == "slides"`，再用 `node.obj_token` 作为真实 presentation ID。
+
+```
+lark_invoke(tool_name="lark_wiki_spaces_get_node", args={params: {"token": "wiki_token"}})
+```
+
+## Shortcuts 与 API
+
+| Shortcut | 说明 |
+|----------|------|
+| `lark_get_skill(domain="slides", section="create")` | 创建 PPT（可选 `slides` 一步添加页面，支持 `<img src="@./local.png">` 占位符自动上传） |
+| `lark_get_skill(domain="slides", section="media-upload")` | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
+| `lark_get_skill(domain="slides", section="replace-slide")` | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
+
+```
+lark_discover(query="slides.xml_presentations.get")   # 调用 API 前必须先查看参数结构
+lark_invoke(tool_name="lark_slides_xml_presentations_get", args={params: {"xml_presentation_id": "..."}})
+```
+
+原生 API 高频资源：`xml_presentations.get` 读取全文；`xml_presentation.slide.create/delete/get/replace` 管理单页。使用原生 API 时，必须先运行 `lark_discover` 查看参数结构，不要猜字段。
+
+## 核心规则
+
+1. **先规划再写 XML**：新建演示文稿或大幅改写页面时，必须先写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`
+2. **创建流程**：简单短 XML 可用 `lark_slides_create(title="...", slides='[...]')` 一步创建；复杂内容默认先创建空白 PPT，再逐页添加
+3. **`<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`**：文本和图形必须放在 `<data>` 内
+4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内
+5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
+6. **删除谨慎**：删除操作不可逆，且至少保留一页幻灯片
+7. **编辑已有页面优先块级替换**：修改单个 shape/img 用 `lark_slides_replace_slide`（`block_replace` / `block_insert`），不要整页重建
+8. **`<img src>` 只能用上传到飞书 drive 的 `file_token`，禁止使用 http(s) 外链 URL**
+
+## 权限速查
+
+| 方法 | 所需 scope |
+|------|-----------|
+| `lark_slides_create` | `slides:presentation:create`, `slides:presentation:write_only`（含 `@` 占位符时还需 `docs:document.media:upload`） |
+| `lark_slides_media_upload` | `docs:document.media:upload`（wiki URL 解析还需 `wiki:node:read`） |
+| `lark_slides_replace_slide` | `slides:presentation:update`（wiki URL 解析还需 `wiki:node:read`） |
+| `xml_presentations.get` | `slides:presentation:read` |
+| `xml_presentation.slide.create` | `slides:presentation:update` 或 `slides:presentation:write_only` |
+| `xml_presentation.slide.delete` | `slides:presentation:update` 或 `slides:presentation:write_only` |
+| `xml_presentation.slide.get` | `slides:presentation:read` |
+| `xml_presentation.slide.replace` | `slides:presentation:update` |

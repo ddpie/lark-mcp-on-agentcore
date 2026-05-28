@@ -29,6 +29,9 @@ COPY shortcut-scopes.json /app/shortcut-scopes.json
 COPY server.js /app/server.js
 COPY tier1.json /app/tier1.json
 
+# Pre-adapted skills (committed to repo, reviewed before merge)
+COPY skills /app/skills
+
 # Generate tool catalog at build time
 RUN LARKSUITE_CLI_APP_ID=build LARKSUITE_CLI_APP_SECRET=build LARKSUITE_CLI_BRAND=feishu \
     node /app/generate-tools.js

@@ -218,6 +218,43 @@ const INVOKE_TOOL = {
   },
 };
 
+// Skills — usage guides for multi-step orchestration of lark tools
+const SKILLS_DIR = '/app/skills';
+const skillIndex = [];
+if (fs.existsSync(SKILLS_DIR)) {
+  for (const dir of fs.readdirSync(SKILLS_DIR).sort()) {
+    const skillPath = `${SKILLS_DIR}/${dir}/SKILL.md`;
+    if (!fs.existsSync(skillPath)) continue;
+    const header = fs.readFileSync(skillPath, 'utf8').slice(0, 2000);
+    const descMatch = header.match(/description:\s*"([^"]+)"/);
+    skillIndex.push({
+      domain: dir.replace(/^lark-/, ''),
+      dir,
+      description: descMatch ? descMatch[1] : dir,
+    });
+  }
+  console.log(`Skills loaded: ${skillIndex.length} domains`);
+}
+
+const LIST_SKILLS_TOOL = {
+  name: 'lark_list_skills',
+  description: '[read] [REQUIRED FIRST STEP] You MUST call this tool at the start of every conversation before using any other Lark tool. Returns the list of domain guides — you must then call lark_get_skill for the relevant domain before proceeding. Do NOT skip this step. Do NOT guess how tools work without reading the guide first.',
+  inputSchema: { type: 'object', properties: {} },
+};
+
+const GET_SKILL_TOOL = {
+  name: 'lark_get_skill',
+  description: '[read] [REQUIRED BEFORE ANY LARK TOOL CALL] You MUST call this to read the domain guide BEFORE calling any lark_* tool. The guide contains mandatory rules for parameter formats, required call sequences, preconditions, and error handling. Calling Lark tools without reading the guide first will result in errors. Example: before any calendar operation, call lark_get_skill(domain="calendar") first.',
+  inputSchema: {
+    type: 'object',
+    required: ['domain'],
+    properties: {
+      domain: { type: 'string', description: 'Domain name (e.g. calendar, im, drive, base, sheets, task, doc, wiki, mail, vc, contact, slides, okr, minutes, whiteboard, markdown, approval, apps)' },
+      section: { type: 'string', description: 'Specific guide section for detailed workflows and parameter reference (e.g. "schedule-meeting", "create", "upload", "search"). Omit to get the main domain overview which lists all available sections.' },
+    },
+  },
+};
+
 function searchCatalog(query, category) {
   const tokens = query ? query.toLowerCase().split(/\s+/).filter(Boolean) : [];
   let candidates = catalogIndex.filter(e => !tier1Names.has(e.name));
@@ -426,8 +463,12 @@ async function handleRequest(req, res, body) {
         inputSchema: t.inputSchema,
         annotations: toolAnnotations(t._def),
       })),
-      DISCOVER_TOOL,
-      INVOKE_TOOL,
+      { ...DISCOVER_TOOL, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } },
+      { ...INVOKE_TOOL, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
+      ...(skillIndex.length > 0 ? [
+        { ...LIST_SKILLS_TOOL, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+        { ...GET_SKILL_TOOL, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
+      ] : []),
     ];
     sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { tools } });
     return;
@@ -441,6 +482,78 @@ async function handleRequest(req, res, body) {
     }
     const toolName = mcpReq.params?.name || '';
     const toolArgs = mcpReq.params?.arguments || {};
+
+    // lark_list_skills
+    if (toolName === 'lark_list_skills') {
+      const output = skillIndex.map(s => ({ domain: s.domain, description: s.description }));
+      sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ skills: output }) }] } });
+      return;
+    }
+
+    // lark_get_skill
+    if (toolName === 'lark_get_skill') {
+      const domain = toolArgs.domain || '';
+      const section = toolArgs.section || '';
+      const entry = skillIndex.find(s => s.domain === domain || s.dir === domain || s.dir === `lark-${domain}`);
+      if (!entry) {
+        sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_domain', domain, available: skillIndex.map(s => s.domain) }) }], isError: true } });
+        return;
+      }
+      const skillDir = `${SKILLS_DIR}/${entry.dir}`;
+      // Recursively list all .md files under a directory (relative paths without .md)
+      function listSections(dir, prefix = '') {
+        const results = [];
+        if (!fs.existsSync(dir)) return results;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (entry.isDirectory()) {
+            results.push(...listSections(`${dir}/${entry.name}`, `${prefix}${entry.name}/`));
+          } else if (entry.name.endsWith('.md')) {
+            results.push(`${prefix}${entry.name.replace('.md', '')}`);
+          }
+        }
+        return results;
+      }
+
+      let content;
+      if (section) {
+        if (/\\|\.\./.test(section)) {
+          sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'invalid_section', message: 'section must not contain .. or backslash' }) }], isError: true } });
+          return;
+        }
+        // Search order: direct match, prefixed match, then subdir path
+        const candidates = [
+          `${skillDir}/references/${section}.md`,
+          `${skillDir}/references/lark-${entry.domain}-${section}.md`,
+          `${skillDir}/${section}.md`,  // routes/dsl.md, scenes/flowchart.md
+        ];
+        let filePath = candidates.find(p => fs.existsSync(p)) || null;
+        if (!filePath) {
+          // List all available sections across all subdirs
+          const available = [];
+          for (const sub of fs.readdirSync(skillDir, { withFileTypes: true })) {
+            if (sub.isDirectory() && sub.name !== 'node_modules') {
+              available.push(...listSections(`${skillDir}/${sub.name}`, `${sub.name}/`));
+            }
+          }
+          sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_section', section, available }) }], isError: true } });
+          return;
+        }
+        content = fs.readFileSync(filePath, 'utf8');
+      } else {
+        content = fs.readFileSync(`${skillDir}/SKILL.md`, 'utf8');
+        const allSections = [];
+        for (const sub of fs.readdirSync(skillDir, { withFileTypes: true })) {
+          if (sub.isDirectory() && sub.name !== 'node_modules') {
+            allSections.push(...listSections(`${skillDir}/${sub.name}`, `${sub.name}/`));
+          }
+        }
+        if (allSections.length > 0) {
+          content += `\n\n---\nAvailable sections (use section parameter to fetch): ${allSections.join(', ')}`;
+        }
+      }
+      sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: content }] } });
+      return;
+    }
 
     // lark_discover
     if (toolName === 'lark_discover') {

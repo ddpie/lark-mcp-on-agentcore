@@ -1,0 +1,106 @@
+# wiki (v2)
+
+> **成员管理硬限制：**
+> - 如果目标是"部门"，先判断身份，再决定是否继续。
+> - bot identity 对应 `tenant_access_token`。官方限制：这种身份下不能使用部门 ID (`opendepartmentid`) 添加知识空间成员。
+> - 遇到"部门 + bot identity"时，禁止先调用 `lark_wiki_member_add` 试错；直接说明该路径不可行。
+> - ⚠️ bot identity 相关操作不可通过 MCP server 执行（MCP server 始终使用 user identity）。
+
+## 身份说明
+
+知识空间和节点都是用户的个人资源。MCP server 始终使用 user identity（authentication is handled automatically by the MCP server）。
+
+## 快速决策
+
+- 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark_invoke(tool_name="lark_wiki_spaces_get_node", args={params: {"token": "<wiki_token>"}})` 获取 `space_id`，后续成员接口统一使用 `space_id`。
+- 用户要**删除**知识空间（`lark_wiki_delete_space`）但只给了名称或 URL：**不能**把名称 / URL 原样传给 `space_id`，必须先解析出真实 `space_id`。解析方式：
+  - URL（`.../wiki/<token>`）：`lark_invoke(tool_name="lark_wiki_spaces_get_node", args={params: {"token": "<wiki_token>"}, format: "json"})`，读 `data.node.space_id`。
+  - 只知名称：`lark_wiki_space_list(format="json")`，边翻页边收集 items 并按 `name` 精确匹配；**一旦任一页累计到至少 1 条精确匹配就停止翻页**。只有当翻完所有页（`has_more=false`）仍无精确匹配时，才对已收集的全量 items 做宽松匹配（`name` trim 空格、大小写不敏感、子串包含）。
+  - **关键安全约束**：无论精确还是模糊，**无论命中 1 条还是多条，发起删除前都必须把候选（`name` + `space_id` + `description` + `space_type`）列给用户，由用户明确选定一个 `space_id` 再执行**。不要因为"只命中一条"就自动执行删除。
+  - 命中 0 条：停下来问用户是名称拼错了还是调用方无权限；**不要**自行改名字重试。
+  - 用户明确选定后再执行 `lark_wiki_delete_space(space_id="<ID>", _confirm=true)`（高风险写操作）。
+- 用户要在知识库中创建新节点，优先使用 `lark_wiki_node_create`。
+- 用户说"给知识库添加成员/管理员"：先把目标解析成"用户 / 群 / 部门"三类之一，再决定 `member_type`，不要先调 `lark_wiki_member_add` 再根据报错反推类型。
+- 用户说"部门 + bot"：这是已知不支持路径。⚠️ This operation requires bot identity and is not available via the MCP server.
+- 用户说"用户 / 群 + 添加成员"：先解析对应 ID，再执行 `lark_wiki_member_add`。
+- 用户说"查看 / 列出空间成员"：用 `lark_wiki_member_list`；该 shortcut 默认只取一页，多成员场景显式加 `page_all=true`。
+- 用户说"移除 / 删除空间成员"：用 `lark_wiki_member_remove`，必须传齐原始授予时的 `member_type` 和 `member_role`（不知道就先 `lark_wiki_member_list` 查一下）。
+
+## 成员添加流程
+
+- 调用 `lark_wiki_member_add` 前，先把自然语言里的"人 / 群 / 部门"解析成正确的 `member_id`，不要猜格式。
+- 用户场景默认优先 `member_type="openid"`：用 `lark_contact_search_user(query="<姓名/邮箱/手机号>")` 获取 `open_id`。
+- 群组场景使用 `member_type="openchat"`：用 `lark_im_chat_search(query="<群名关键词>")` 获取 `chat_id`。
+- `userid` / `unionid` 只在下游明确要求时才使用；先拿到 `open_id`，再调用 `lark_invoke(tool_name="lark_contact_users_get", args={params: {"user_id_type": "open_id"}})` 读取 `user_id` / `union_id`。
+- 部门场景使用 `member_type="opendepartmentid"`：调用 `lark_invoke(tool_name="lark_contact_departments_search", args={params: {"department_id_type": "open_department_id"}, data: {"query": "<部门名>"}})` 获取 `open_department_id`。
+- 只有在目标类型确认可行后，才调用 `lark_wiki_member_add`。
+
+## 目标语义约束
+
+- `我的文档库` / `My Document Library` / `我的知识库` / `个人知识库` / `my_library` 都应视为 **Wiki personal library**，不是 Drive 根目录
+- 处理这类目标时，先解析 `my_library` 对应的真实 `space_id`，再执行 `lark_wiki_move`、`lark_wiki_node_create` 或其他 Wiki 写操作
+- 不要因为缺少显式 `space_id` 就退化成 `lark_drive_move`
+- 如果用户明确说的是 Drive 文件夹、云空间（云盘/云存储）根目录、`我的空间`，才进入 Drive 域处理
+
+## Shortcuts（推荐优先使用）
+
+Shortcut 是对常用操作的高级封装。有 Shortcut 的操作优先使用。
+
+| Shortcut | 说明 |
+|----------|------|
+| `lark_wiki_move` | Move a wiki node, or move a Drive document into Wiki |
+| `lark_wiki_node_create` | Create a wiki node with automatic space resolution |
+| `lark_wiki_delete_space` | Delete a wiki space, polling the async delete task when needed |
+| `lark_wiki_space_list` | List all wiki spaces accessible to the caller |
+| `lark_wiki_space_create` | Create a wiki space (user identity only) |
+| `lark_wiki_node_list` | List wiki nodes in a space or under a parent node (supports pagination) |
+| `lark_wiki_node_copy` | Copy a wiki node to a target space or parent node |
+| `lark_wiki_node_get` | Get a wiki node's details by node_token / obj_token / Lark URL |
+| `lark_wiki_node_delete` | Delete a wiki node, polling the async delete task when needed |
+| `lark_wiki_member_add` | Add a member to a wiki space |
+| `lark_wiki_member_remove` | Remove a member from a wiki space |
+| `lark_wiki_member_list` | List members of a wiki space (supports pagination) |
+
+## API Resources
+
+```
+lark_discover(query="wiki.<resource>.<method>")   # 调用 API 前必须先查看参数结构
+lark_invoke(tool_name="lark_wiki_<resource>_<method>", args={...})  # 调用 API
+```
+
+> **重要**：使用原生 API 时，必须先运行 `lark_discover` 查看 `params` / `data` 参数结构，不要猜测字段格式。
+
+### spaces
+
+- `create` — 创建知识空间
+- `get` — 获取知识空间信息
+- `get_node` — 获取知识空间节点信息
+- `list` — 获取知识空间列表
+
+### members
+
+- `create` — 添加知识空间成员
+- `delete` — 删除知识空间成员
+- `list` — 获取知识空间成员列表
+
+### nodes
+
+- `copy` — 创建知识空间节点副本
+- `create` — 创建知识空间节点
+- `list` — 获取知识空间子节点列表
+
+## 权限表
+
+| 方法 | 所需 scope |
+|------|-----------|
+| `spaces.create` | `wiki:space:write_only` |
+| `spaces.get` | `wiki:space:read` |
+| `spaces.get_node` | `wiki:node:read` |
+| `spaces.list` | `wiki:space:retrieve` |
+| `members.create` | `wiki:member:create` |
+| `members.delete` | `wiki:member:update` |
+| `members.list` | `wiki:member:retrieve` |
+| `nodes.copy` | `wiki:node:copy` |
+| `nodes.move` | `wiki:node:move` |
+| `nodes.create` | `wiki:node:create` |
+| `nodes.list` | `wiki:node:retrieve` |

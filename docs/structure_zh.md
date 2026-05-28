@@ -13,8 +13,9 @@ docker/
   package.json        容器运行时依赖 (AWS SDK)
   generate-tools.js   Build 时生成工具目录 + scope 映射
   shortcut-scopes.json  lark-cli 命令 → scope 映射 (源码提取)
-  server.js           MCP server (tier1 + discover/invoke + semaphore + SIGTERM)
+  server.js           MCP server (tier1 + discover/invoke + skills + semaphore + SIGTERM)
   tier1.json          28 个高频工具
+  skills/             MCP 适配后的编排指南 (从 lark-cli skills 转换而来，由 lark_get_skill 提供)
 infra/
   lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront
   lib/runtime-stack.ts  Docker 镜像 + IAM (含 SM 读权限)

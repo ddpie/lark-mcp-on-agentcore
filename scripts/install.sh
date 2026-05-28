@@ -36,6 +36,12 @@ fi
 REPO="https://github.com/ddpie/lark-mcp-on-agentcore.git"
 DIR="lark-mcp-on-agentcore"
 
+# --yes / -y: non-interactive mode
+AUTO_YES=0
+for arg in "$@"; do
+  case "$arg" in --yes|-y) AUTO_YES=1 ;; esac
+done
+
 # Arrow-key picker (same as deploy.sh)
 pick() {
   local _var="$1"; shift
@@ -43,7 +49,7 @@ pick() {
   local _count=${#_items[@]}
   local _sel=${PICK_DEFAULT:-1}
   (( _sel < 1 || _sel > _count )) && _sel=1
-  if [ ! -t 0 ] || [ ! -t 1 ]; then
+  if [ "$AUTO_YES" = "1" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
     eval "$_var=\"\${_items[\$((_sel-1))]}\""
     unset PICK_DEFAULT; return
   fi
@@ -281,4 +287,9 @@ if ! confirm "${L[start_deploy]}"; then
   exit 0
 fi
 
-exec ./scripts/deploy.sh
+# Pass through --yes/-y if provided
+_deploy_args=()
+for arg in "$@"; do
+  case "$arg" in --yes|-y) _deploy_args+=("$arg") ;; esac
+done
+exec ./scripts/deploy.sh "${_deploy_args[@]+"${_deploy_args[@]}"}"

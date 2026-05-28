@@ -87,10 +87,15 @@ then re-run `scripts/build-scope-allowlist.sh`.
 npx vitest run infra/test/snapshot.test.ts --update
 ```
 
-### 7. Run full tests
+### 7. Re-adapt MCP skills
+
+Follow [`adapt-skill-for-mcp.md`](adapt-skill-for-mcp.md) to regenerate `docker/skills/`.
+Dispatch Agents per domain, review diff, verify quality checklist.
+
+### 8. Run full tests
 
 ```bash
-npm test   # All 13 test files / 246+ tests must pass (includes scope-coverage)
+npm test   # All tests must pass (includes scope-coverage)
 ```
 
 The `scope-coverage` test validates:
@@ -98,11 +103,12 @@ The `scope-coverage` test validates:
 - Every tier1 tool has a shortcut-scopes entry
 - Extraction covers all lark-cli runtime shortcuts (no gaps)
 
-### 8. Commit
+### 9. Commit
 
 Include all changed files:
 - `docker/Dockerfile`
 - `docker/shortcut-scopes.json`
+- `docker/skills/` (if re-adapted)
 - `config/oauth-scopes.json` (if updated)
 - `lambda/token-refresh-shim/scope-allowlist.ts`
 - `infra/test/__snapshots__/snapshot.test.ts.snap`
@@ -115,14 +121,42 @@ Include all changed files:
 - [ ] `git diff --stat` shows only the expected files (4-5 depending on oauth-scopes changes)
 - [ ] No remaining references to old version (`grep -r "OLD_VERSION" --include="*.json" --include="Dockerfile*"`)
 
+## MCP Skill Tools
+
+The MCP server exposes `lark_list_skills` and `lark_get_skill` tools that serve adapted
+versions of lark-cli's AI skills to downstream agents.
+
+### How it works
+
+Transformation rules and workflow are defined in [`docs/skills/adapt-skill-for-mcp.md`](adapt-skill-for-mcp.md).
+
+Use that skill to dispatch Agents that transform each raw skill. Output is committed to
+`docker/skills/` and reviewed before merge. Dockerfile does `COPY skills /app/skills`.
+
+### When upgrading lark-cli
+
+After bumping lark-cli and running `lark-cli update`:
+
+1. Follow [`adapt-skill-for-mcp.md`](adapt-skill-for-mcp.md) to re-adapt all skills
+2. Review the diff: `git diff docker/skills/`
+3. Verify: `grep -rc 'lark-cli' docker/skills/**/*.md | grep -v ':0$'` (should be 0 or near-zero)
+4. Commit `docker/skills/`
+
+### Files
+
+- `docs/skills/adapt-skill-for-mcp.md` — transformation rules (referenced by Agents)
+- `docker/skills/` — adapted output (committed, served at runtime)
+- `docker/server.js` — `lark_list_skills` / `lark_get_skill` handlers
+
 ## Scope extraction strategy reference
 
 ```
 Source field priority (per shortcut):
-  UserScopes  →  user OAuth scopes (preferred)
-  Scopes      →  generic/fallback (when no UserScopes)
-  ConditionalScopes → runtime-triggered (always included)
-  BotScopes   →  EXCLUDED (bot-only, not relevant)
+  UserScopes            →  user OAuth scopes (preferred)
+  Scopes                →  generic/fallback (when no UserScopes)
+  ConditionalUserScopes →  runtime-triggered user scopes (preferred)
+  ConditionalScopes     →  runtime-triggered fallback
+  BotScopes             →  EXCLUDED (bot-only, not relevant)
 ```
 
 Why: This project uses user OAuth (3-legged). The scope-allowlist limits incremental-auth

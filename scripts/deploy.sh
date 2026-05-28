@@ -35,6 +35,25 @@ LOCAL_DIR="${PROJECT_DIR}/.local"
 mkdir -p "$LOCAL_DIR"
 DEPLOY_CONFIG="${LOCAL_DIR}/deploy-config"
 
+# --yes / -y: non-interactive mode. Uses saved config from DEPLOY_CONFIG.
+AUTO_YES=0
+for arg in "$@"; do
+  case "$arg" in
+    --yes|-y) AUTO_YES=1 ;;
+  esac
+done
+if [ "$AUTO_YES" = "1" ]; then
+  if [ ! -f "$DEPLOY_CONFIG" ]; then
+    echo "  ERROR: --yes requires a previous deployment config (${DEPLOY_CONFIG})." >&2
+    echo "  Run once interactively first, then use --yes for subsequent deploys." >&2
+    exit 1
+  fi
+  # Load all saved config values as env vars
+  set -a
+  source "$DEPLOY_CONFIG"
+  set +a
+fi
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
@@ -51,7 +70,7 @@ pick() {
   (( _sel < 1 || _sel > _count )) && _sel=1
 
   # Non-interactive: auto-select default
-  if [ ! -t 0 ] || [ ! -t 1 ]; then
+  if [ "$AUTO_YES" = "1" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
     eval "$_var=\"\${_items[\$((_sel-1))]}\""
     unset PICK_DEFAULT
     return
@@ -154,8 +173,18 @@ drain_stdin() {
     while IFS= read -r -t 0.05 _discard </dev/tty 2>/dev/null; do :; done
   fi
 }
-prompt() { drain_stdin; read -rp "  $1" "$2" </dev/tty; }
-ask() { drain_stdin; read -rp "  $1: " "$2" </dev/tty; }
+prompt() {
+  if [ "$AUTO_YES" = "1" ]; then return; fi
+  drain_stdin; read -rp "  $1" "$2" </dev/tty;
+}
+ask() {
+  if [ "$AUTO_YES" = "1" ]; then
+    # In auto mode, keep the variable's current value (already loaded from config)
+    if [ -n "${!2:-}" ]; then return; fi
+    echo "  ERROR: --yes mode but no saved value for $2" >&2; exit 1
+  fi
+  drain_stdin; read -rp "  $1: " "$2" </dev/tty;
+}
 
 # Yes/No picker. Returns 0 for yes, 1 for no. Default is first option (yes).
 # Usage: if confirm "Question?"; then ... fi
