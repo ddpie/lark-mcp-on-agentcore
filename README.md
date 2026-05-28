@@ -134,7 +134,38 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 | 创建 | 多次试错 | 一次成功：日程+参会人+会议室 |
 | 后续 | 忘了 | 自动创建待办任务跟踪 |
 
-覆盖 23 个业务域（日历、消息、文档、多维表格、云盘、任务、邮件、会议、知识库、表格、幻灯片、OKR、审批、通讯录等），Agent 通过 `lark_get_skill` 按需加载，不占用固定 context。
+Agent 通过 `lark_get_skill` 按需加载指南，不占用固定 context。
+
+<details>
+<summary>23 个编排域一览</summary>
+
+| 域 | 覆盖场景 |
+|---|---|
+| calendar | 日程创建/编辑、忙闲查询、会议室预定、重复日程、时间推荐 |
+| im | 发消息/回复、群管理、消息搜索、文件下载、表情回复 |
+| doc | 文档创建/编辑、内容追加/替换、画板插入、XML 协议 |
+| base | 多维表格建表/字段/记录/视图/仪表盘/工作流、数据查询分析 |
+| drive | 文件上传/下载、搜索、导入导出、评论、权限、版本管理 |
+| task | 任务创建/更新/完成、清单管理、子任务、附件上传 |
+| mail | 收发邮件、草稿、转发、回复、规则、联系人 |
+| sheets | 读写单元格、公式、样式、下拉列表、筛选视图 |
+| wiki | 知识库空间/节点创建/移动/复制/删除、成员管理 |
+| vc | 历史会议搜索、会议纪要/逐字稿/录制产物获取 |
+| slides | 幻灯片创建/编辑、XML 协议、媒体上传 |
+| whiteboard | 画板查询/编辑、DSL/Mermaid/PlantUML 输入 |
+| okr | OKR 周期/目标/关键结果/进展管理 |
+| minutes | 妙记搜索/下载/上传/说话人替换 |
+| contact | 用户搜索/信息查询（姓名↔open_id） |
+| markdown | Markdown 文件创建/编辑/比较 |
+| approval | 审批实例/任务管理 |
+| apps | 妙搭应用部署/管理 |
+| attendance | 考勤打卡记录查询 |
+| vc-agent | 会议机器人入会/离会/会中事件 |
+| openapi-explorer | 原生飞书 OpenAPI 探索 |
+| workflow-meeting-summary | 会议纪要整理工作流 |
+| workflow-standup-report | 日程待办摘要工作流 |
+
+</details>
 
 ## 文档
 
@@ -298,7 +329,38 @@ Traditional MCP servers only expose tools — the AI guesses how to chain them, 
 | Creation | Multiple retries | One-shot success: event + attendees + room |
 | Follow-up | Forgets | Automatically creates task for tracking |
 
-Covers 23 domains (calendar, messaging, docs, bitable, drive, tasks, email, meetings, wiki, sheets, slides, OKR, approval, contacts, etc.). The agent loads guides on demand via `lark_get_skill` — no fixed context cost.
+The agent loads guides on demand via `lark_get_skill` — no fixed context cost.
+
+<details>
+<summary>23 orchestration domains</summary>
+
+| Domain | Coverage |
+|---|---|
+| calendar | Event create/edit, free/busy, room booking, recurring events, time suggestions |
+| im | Send/reply messages, group management, message search, file download, reactions |
+| doc | Document create/edit, content append/replace, whiteboard insert, XML protocol |
+| base | Table/field/record/view/dashboard/workflow CRUD, data query & analysis |
+| drive | Upload/download, search, import/export, comments, permissions, versioning |
+| task | Create/update/complete tasks, tasklists, subtasks, attachments |
+| mail | Send/receive, drafts, forward, reply, rules, contacts |
+| sheets | Read/write cells, formulas, styles, dropdowns, filter views |
+| wiki | Space/node create/move/copy/delete, member management |
+| vc | Meeting search, minutes/transcript/recording retrieval |
+| slides | Create/edit presentations, XML protocol, media upload |
+| whiteboard | Query/edit boards, DSL/Mermaid/PlantUML input |
+| okr | Cycles, objectives, key results, progress tracking |
+| minutes | Search/download/upload minutes, speaker replacement |
+| contact | User search, info lookup (name ↔ open_id) |
+| markdown | Create/edit/compare Markdown files |
+| approval | Approval instances and task management |
+| apps | Miaoda app deployment/management |
+| attendance | Clock-in record queries |
+| vc-agent | Meeting bot join/leave, in-meeting events |
+| openapi-explorer | Raw Feishu OpenAPI discovery |
+| workflow-meeting-summary | Meeting notes compilation workflow |
+| workflow-standup-report | Calendar + task daily summary |
+
+</details>
 
 ## Docs
 
