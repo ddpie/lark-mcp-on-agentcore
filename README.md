@@ -6,7 +6,7 @@
 
 [中文](#lark-mcp-on-agentcore) | [English](#english)
 
-为 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 提供飞书工具能力的远程 MCP 服务。200+ 工具覆盖飞书 2500+ API，内置 23 个业务域编排指南——AI 不仅能执行单个操作，还知道**怎么做**（例如"帮我约个产品评审会，邀请研发组，需要会议室"→ AI 自动按 解析参会人→查忙闲→推荐时段→找会议室→创建日程→通知参会人 的最佳实践执行，无需用户逐步指挥）。基于 AWS Bedrock AgentCore 托管，支持多用户 OAuth 身份隔离、自动弹性伸缩（空闲缩零）、可观测性（5 板块 Dashboard + 10 项告警 + 飞书群通知）。
+为 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 提供飞书工具能力的远程 MCP 服务。200+ 工具覆盖飞书 2500+ API，内置 23 个业务域 Skill——AI 不仅能执行单个操作，还知道**怎么做**（例如"帮我约个产品评审会，邀请研发组，需要会议室"→ AI 自动按 解析参会人→查忙闲→推荐时段→找会议室→创建日程→通知参会人 的最佳实践执行，无需用户逐步指挥）。基于 AWS Bedrock AgentCore 托管，支持多用户 OAuth 身份隔离、自动弹性伸缩（空闲缩零）、可观测性（5 板块 Dashboard + 10 项告警 + 飞书群通知）。
 
 ## 效果
 
@@ -62,7 +62,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 |---|---|
 | **零配置接入** | 管理员一次部署，团队成员直接在 Quick Desktop 连接即用——无需每人创建飞书应用、无需安装 lark-cli、无需配置环境变量，浏览器授权一次就能开始工作 |
 | **200+ 工具** | 28 个高频工具直接提供，4 个 meta 工具（discover/invoke/skills），其余 200+ 按需调用 |
-| **智能编排** | 内置 23 个业务域编排指南，AI 自动按最佳实践完成多步操作（查忙闲→订会议室→建日程） |
+| **智能编排** | 内置 23 个业务域 Skill，AI 自动按最佳实践完成多步操作（查忙闲→订会议室→建日程） |
 | **多用户** | 一份部署多人共用，每位用户以自己飞书身份调用，数据按用户隔离 |
 | **按需付费** | AgentCore Runtime 空闲缩零，按 vCPU-秒 + 内存-秒计费 |
 | **渐进授权** | 调用低频工具触发飞书未授权时，自动生成 incremental-auth 链接，用户点击链接跳转到飞书授权页确认新增权限即可，飞书会累积已有权限 |
@@ -92,8 +92,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 |------|------|------|
 | `lark_discover` | read | 按关键词或分类搜索其余所有 lark-cli 命令，返回名称 + 完整参数 schema |
 | `lark_invoke` | read/write | 执行 discover 找到的工具（传入 tool_name + args） |
-| `lark_list_skills` | read | 列出所有可用的编排指南（skill），包含各业务域的多步操作最佳实践 |
-| `lark_get_skill` | read | 获取某个业务域的完整编排指南（如日历预约流程、消息发送规范） |
+| `lark_list_skills` | read | 列出所有可用的 Skill，包含各业务域的多步操作最佳实践 |
+| `lark_get_skill` | read | 获取某个业务域的完整 Skill（如日历预约流程、消息发送规范） |
 
 高频操作直接调用即可；复杂编排（如"帮我约个会议"）先通过 `lark_get_skill` 获取操作指南，再按指南调用工具。
 
@@ -122,7 +122,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 ## 智能编排
 
-传统 MCP server 只暴露工具，AI 靠猜来编排多步操作——参数格式错、步骤顺序乱、前置条件漏。本项目内置编排指南（Skill），AI 在操作前主动读取指南，按最佳实践执行。
+传统 MCP server 只暴露工具，AI 靠猜来编排多步操作——参数格式错、步骤顺序乱、前置条件漏。本项目内置 Skill，AI 在操作前主动读取，按最佳实践执行。
 
 **示例**："帮我明天下午约一个产品评审会，邀请研发组的人，需要会议室，会后创建待办跟踪"
 
@@ -135,7 +135,7 @@ sequenceDiagram
     participant MCP as MCP Server
 
     U->>AI: 帮我约产品评审会，邀请研发组，需要会议室
-    Note over AI,MCP: 加载编排指南
+    Note over AI,MCP: 加载 Skill
     AI->>MCP: lark_get_skill("calendar", "schedule-meeting")
     AI->>MCP: lark_get_skill("contact")
     Note over AI,MCP: 解析参会人
@@ -165,7 +165,7 @@ sequenceDiagram
     AI->>U: 已完成：日程+会议室+待办
 ```
 
-编排指南通过 `lark_get_skill` 按需加载，不占用固定 context。
+Skill 通过 `lark_get_skill` 按需加载，不占用固定 context。
 
 <details>
 <summary>23 个编排域一览</summary>
@@ -232,7 +232,7 @@ MIT
 
 # English
 
-A remote Feishu MCP service for [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/). 200+ tools cover Feishu's 2500+ APIs, with 23 built-in domain orchestration guides — the AI doesn't just execute operations, it knows **how** to do them (e.g., "schedule a product review with the dev team, book a room" → AI automatically follows resolve attendees → check free/busy → suggest time slots → find room → create event → notify attendees, without step-by-step user guidance). Hosted on AWS Bedrock AgentCore with multi-user OAuth isolation, auto-scaling (scale-to-zero), and observability (5-section dashboard + 10 alarms + Feishu group notifications).
+A remote Feishu MCP service for [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/). 200+ tools cover Feishu's 2500+ APIs, with 23 built-in domain Skills — the AI doesn't just execute operations, it knows **how** to do them (e.g., "schedule a product review with the dev team, book a room" → AI automatically follows resolve attendees → check free/busy → suggest time slots → find room → create event → notify attendees, without step-by-step user guidance). Hosted on AWS Bedrock AgentCore with multi-user OAuth isolation, auto-scaling (scale-to-zero), and observability (5-section dashboard + 10 alarms + Feishu group notifications).
 
 ## What it looks like
 
@@ -318,8 +318,8 @@ User requests from Quick Desktop → CloudFront → API Gateway → Middleware L
 |------|-----|-------------|
 | `lark_discover` | read | Search all remaining lark-cli commands by keyword or category; returns name + full parameter schema |
 | `lark_invoke` | read/write | Execute a tool found via discover (pass tool_name + args) |
-| `lark_list_skills` | read | List available orchestration guides (skills) covering multi-step best practices per domain |
-| `lark_get_skill` | read | Get the full orchestration guide for a domain (e.g., calendar scheduling workflow, message sending rules) |
+| `lark_list_skills` | read | List all available Skills covering multi-step best practices per domain |
+| `lark_get_skill` | read | Get the full Skill for a domain (e.g., calendar scheduling workflow, message sending rules) |
 
 High-frequency tools are called directly; for complex orchestration (e.g., "schedule a meeting") the AI calls `lark_get_skill` first to get the workflow guide, then follows it.
 
@@ -348,7 +348,7 @@ High-frequency tools are called directly; for complex orchestration (e.g., "sche
 
 ## Smart Orchestration
 
-Traditional MCP servers only expose tools — the AI guesses how to chain them, gets parameter formats wrong, misses preconditions, and calls things in the wrong order. This project ships built-in orchestration guides (Skills) that the AI reads before acting.
+Traditional MCP servers only expose tools — the AI guesses how to chain them, gets parameter formats wrong, misses preconditions, and calls things in the wrong order. This project ships built-in Skills that the AI reads before acting.
 
 **Example**: "Schedule a product review tomorrow with the dev team, book a room, and create follow-up tasks"
 
