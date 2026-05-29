@@ -113,10 +113,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "refresh_cycle" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "OAuthFunctionLogRetention2C2C17E3",
-            "LogGroupName",
-          ],
+          "Ref": "OAuthLogGroupF9A7E869",
         },
         "MetricTransformations": [
           {
@@ -157,10 +154,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "agentcore_5xx" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "MiddlewareFunctionLogRetentionE264B832",
-            "LogGroupName",
-          ],
+          "Ref": "MiddlewareLogGroup77AF1D29",
         },
         "MetricTransformations": [
           {
@@ -176,10 +170,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "agentcore_slow" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "MiddlewareFunctionLogRetentionE264B832",
-            "LogGroupName",
-          ],
+          "Ref": "MiddlewareLogGroup77AF1D29",
         },
         "MetricTransformations": [
           {
@@ -239,10 +230,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "?"token_verify_failed" ?"auth_missing_or_invalid"",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "MiddlewareFunctionLogRetentionE264B832",
-            "LogGroupName",
-          ],
+          "Ref": "MiddlewareLogGroup77AF1D29",
         },
         "MetricTransformations": [
           {
@@ -283,10 +271,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "feishu_not_authorized" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "MiddlewareFunctionLogRetentionE264B832",
-            "LogGroupName",
-          ],
+          "Ref": "MiddlewareLogGroup77AF1D29",
         },
         "MetricTransformations": [
           {
@@ -302,10 +287,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "feishu_slow" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "OAuthFunctionLogRetention2C2C17E3",
-            "LogGroupName",
-          ],
+          "Ref": "OAuthLogGroupF9A7E869",
         },
         "MetricTransformations": [
           {
@@ -321,10 +303,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "feishu_slow" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "OAuthFunctionLogRetention2C2C17E3",
-            "LogGroupName",
-          ],
+          "Ref": "OAuthLogGroupF9A7E869",
         },
         "MetricTransformations": [
           {
@@ -335,95 +314,6 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         ],
       },
       "Type": "AWS::Logs::MetricFilter",
-    },
-    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A": {
-      "DependsOn": [
-        "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB",
-        "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB",
-      ],
-      "Properties": {
-        "Code": {
-          "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "2819175352ad1ce0dae768e83fc328fb70fb5f10b4a8ff0ccbcb791f02b0716d.zip",
-        },
-        "Handler": "index.handler",
-        "Role": {
-          "Fn::GetAtt": [
-            "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB",
-            "Arn",
-          ],
-        },
-        "Runtime": "nodejs22.x",
-        "Tags": [
-          {
-            "Key": "project",
-            "Value": "lark-mcp-on-agentcore",
-          },
-        ],
-        "Timeout": 900,
-      },
-      "Type": "AWS::Lambda::Function",
-    },
-    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB": {
-      "Properties": {
-        "AssumeRolePolicyDocument": {
-          "Statement": [
-            {
-              "Action": "sts:AssumeRole",
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "lambda.amazonaws.com",
-              },
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "ManagedPolicyArns": [
-          {
-            "Fn::Join": [
-              "",
-              [
-                "arn:",
-                {
-                  "Ref": "AWS::Partition",
-                },
-                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-              ],
-            ],
-          },
-        ],
-        "Tags": [
-          {
-            "Key": "project",
-            "Value": "lark-mcp-on-agentcore",
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Role",
-    },
-    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB": {
-      "Properties": {
-        "PolicyDocument": {
-          "Statement": [
-            {
-              "Action": [
-                "logs:PutRetentionPolicy",
-                "logs:DeleteRetentionPolicy",
-              ],
-              "Effect": "Allow",
-              "Resource": "*",
-            },
-          ],
-          "Version": "2012-10-17",
-        },
-        "PolicyName": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB",
-        "Roles": [
-          {
-            "Ref": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB",
-          },
-        ],
-      },
-      "Type": "AWS::IAM::Policy",
     },
     "McpLatencyAlarm256CD734": {
       "Properties": {
@@ -454,10 +344,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "mcp_request_ok" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "MiddlewareFunctionLogRetentionE264B832",
-            "LogGroupName",
-          ],
+          "Ref": "MiddlewareLogGroup77AF1D29",
         },
         "MetricTransformations": [
           {
@@ -473,10 +360,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "mcp_request_ok" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "MiddlewareFunctionLogRetentionE264B832",
-            "LogGroupName",
-          ],
+          "Ref": "MiddlewareLogGroup77AF1D29",
         },
         "MetricTransformations": [
           {
@@ -573,6 +457,11 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
           },
         },
         "Handler": "index.handler",
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "MiddlewareLogGroup77AF1D29",
+          },
+        },
         "MemorySize": 512,
         "Role": {
           "Fn::GetAtt": [
@@ -590,28 +479,6 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         "Timeout": 60,
       },
       "Type": "AWS::Lambda::Function",
-    },
-    "MiddlewareFunctionLogRetentionE264B832": {
-      "Properties": {
-        "LogGroupName": {
-          "Fn::Join": [
-            "",
-            [
-              "/aws/lambda/",
-              {
-                "Ref": "MiddlewareFunction32153138",
-              },
-            ],
-          ],
-        },
-        "ServiceToken": {
-          "Fn::GetAtt": [
-            "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A",
-            "Arn",
-          ],
-        },
-      },
-      "Type": "Custom::LogRetention",
     },
     "MiddlewareFunctionServiceRole1ED1018C": {
       "Properties": {
@@ -681,14 +548,24 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       },
       "Type": "AWS::IAM::Policy",
     },
+    "MiddlewareLogGroup77AF1D29": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Delete",
+    },
     "NewUserFilter8CC6FB64": {
       "Properties": {
         "FilterPattern": "{ $.event = "new_user_authorized" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "OAuthFunctionLogRetention2C2C17E3",
-            "LogGroupName",
-          ],
+          "Ref": "OAuthLogGroupF9A7E869",
         },
         "MetricTransformations": [
           {
@@ -1705,10 +1582,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "oauth_callback_success" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "OAuthFunctionLogRetention2C2C17E3",
-            "LogGroupName",
-          ],
+          "Ref": "OAuthLogGroupF9A7E869",
         },
         "MetricTransformations": [
           {
@@ -1815,6 +1689,11 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
           },
         },
         "Handler": "index.handler",
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "OAuthLogGroupF9A7E869",
+          },
+        },
         "MemorySize": 256,
         "Role": {
           "Fn::GetAtt": [
@@ -1832,28 +1711,6 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         "Timeout": 120,
       },
       "Type": "AWS::Lambda::Function",
-    },
-    "OAuthFunctionLogRetention2C2C17E3": {
-      "Properties": {
-        "LogGroupName": {
-          "Fn::Join": [
-            "",
-            [
-              "/aws/lambda/",
-              {
-                "Ref": "OAuthFunction814F9D6D",
-              },
-            ],
-          ],
-        },
-        "ServiceToken": {
-          "Fn::GetAtt": [
-            "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A",
-            "Arn",
-          ],
-        },
-      },
-      "Type": "Custom::LogRetention",
     },
     "OAuthFunctionServiceRole6ABBFC33": {
       "Properties": {
@@ -2023,14 +1880,24 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       },
       "Type": "AWS::IAM::Policy",
     },
+    "OAuthLogGroupF9A7E869": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Delete",
+    },
     "OAuthStartFilter03F29B92": {
       "Properties": {
         "FilterPattern": "{ $.event = "oauth_authorize_start" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "OAuthFunctionLogRetention2C2C17E3",
-            "LogGroupName",
-          ],
+          "Ref": "OAuthLogGroupF9A7E869",
         },
         "MetricTransformations": [
           {
@@ -2220,10 +2087,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ ($.event = "refresh_cycle") && ($.failed = "*") }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "OAuthFunctionLogRetention2C2C17E3",
-            "LogGroupName",
-          ],
+          "Ref": "OAuthLogGroupF9A7E869",
         },
         "MetricTransformations": [
           {
@@ -2297,10 +2161,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "FilterPattern": "{ $.event = "store_token_lost" }",
         "LogGroupName": {
-          "Fn::GetAtt": [
-            "OAuthFunctionLogRetention2C2C17E3",
-            "LogGroupName",
-          ],
+          "Ref": "OAuthLogGroupF9A7E869",
         },
         "MetricTransformations": [
           {

@@ -31,6 +31,13 @@ const LOG_RETENTION_MAP: Record<string, logs.RetentionDays> = {
   "365": logs.RetentionDays.ONE_YEAR,
 };
 
+function createLogGroup(scope: Construct, id: string, retention?: logs.RetentionDays): logs.LogGroup {
+  return new logs.LogGroup(scope, id, {
+    retention: retention ?? logs.RetentionDays.INFINITE,
+    removalPolicy: cdk.RemovalPolicy.DESTROY,
+  });
+}
+
 export class OAuthStack extends cdk.Stack {
   public readonly oauthEndpoint: string;
   public readonly secretPrefix: string;
@@ -84,6 +91,7 @@ export class OAuthStack extends cdk.Stack {
 
     const oauthClientId = "lark-mcp-on-agentcore";
 
+    const oauthLogGroup = createLogGroup(this, "OAuthLogGroup", logRetention);
     const oauthFn = new nodejs.NodejsFunction(this, "OAuthFunction", {
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, "../../lambda/token-refresh-shim/index.ts"),
@@ -92,7 +100,7 @@ export class OAuthStack extends cdk.Stack {
       handler: "handler",
       timeout: cdk.Duration.seconds(120),
       memorySize: 256,
-      ...(logRetention ? { logRetention } : {}),
+      logGroup: oauthLogGroup,
       environment: {
         CALLBACK_URL: "SET_AFTER_DEPLOY",
         SECRET_PREFIX: this.secretPrefix,
@@ -147,13 +155,14 @@ export class OAuthStack extends cdk.Stack {
       partitionKey: { name: "openId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     openidTable.grantReadWriteData(oauthFn);
     oauthFn.addEnvironment("OPENID_TABLE", openidTable.tableName);
 
     // Middleware Lambda (MCP proxy: token verify → SM → AgentCore)
+    const middlewareLogGroup = createLogGroup(this, "MiddlewareLogGroup", logRetention);
     const middlewareFn = new nodejs.NodejsFunction(this, "MiddlewareFunction", {
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, "../../lambda/mcp-middleware/index.ts"),
@@ -162,7 +171,7 @@ export class OAuthStack extends cdk.Stack {
       handler: "handler",
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,
-      ...(logRetention ? { logRetention } : {}),
+      logGroup: middlewareLogGroup,
       environment: {
         RUNTIME_ARN: props.runtimeArn || "",
         SECRET_PREFIX: this.secretPrefix,
@@ -453,6 +462,7 @@ export class OAuthStack extends cdk.Stack {
     // Feishu webhook relay: SNS → Lambda (format to card) → Feishu bot webhook
     const alarmWebhook = process.env.ALARM_WEBHOOK_URL || "";
     if (alarmWebhook) {
+      const webhookLogGroup = createLogGroup(this, "WebhookLogGroup", logRetention);
       const webhookFn = new nodejs.NodejsFunction(this, "AlarmWebhookFunction", {
         runtime: lambda.Runtime.NODEJS_20_X,
         entry: path.join(__dirname, "../../lambda/alarm-webhook/index.ts"),
@@ -461,7 +471,7 @@ export class OAuthStack extends cdk.Stack {
         handler: "handler",
         timeout: cdk.Duration.seconds(10),
         memorySize: 128,
-        ...(logRetention ? { logRetention } : {}),
+        logGroup: webhookLogGroup,
         environment: {
           FEISHU_WEBHOOK_URL: alarmWebhook,
           FEISHU_WEBHOOK_SECRET: process.env.ALARM_WEBHOOK_SECRET || "",
