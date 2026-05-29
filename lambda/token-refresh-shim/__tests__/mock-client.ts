@@ -20,8 +20,15 @@ let failPutMatch: { idMatch: string; err: { name: string; message: string } } | 
 interface CodeRow { code: string; userId: string; codeChallenge: string; redirectUri: string; expiresAt: number }
 let codeStore: Map<string, CodeRow> = new Map();
 
+// DDB openid-map store
+let openidStore: Map<string, string> = new Map();
+
 // SSM store
 let ssmStore: { [name: string]: string } = { '/lark-mcp-on-agentcore/state-secret': 'test-state-secret-value' };
+
+// Openid DDB failure triggers
+let failOpenidGet: { name: string; message: string } | null = null;
+let failOpenidPut: { name: string; message: string } | null = null;
 
 const reset = () => {
   store = {};
@@ -34,6 +41,9 @@ const reset = () => {
   failCreateMatch = null;
   failPutMatch = null;
   codeStore = new Map();
+  openidStore = new Map();
+  failOpenidGet = null;
+  failOpenidPut = null;
   ssmStore = { '/lark-mcp-on-agentcore/state-secret': 'test-state-secret-value' };
 };
 
@@ -142,9 +152,31 @@ export const mockClient = {
       from: () => ({
         send: (cmd: any) => {
           const cmdName = cmd.constructor.name;
+          const table = cmd.input?.TableName || '';
           if (cmdName === 'PutCommand') {
+            if (table.includes('openid-map')) {
+              if (failOpenidPut) {
+                const err: any = new Error(failOpenidPut.message);
+                err.name = failOpenidPut.name;
+                return Promise.reject(err);
+              }
+              openidStore.set(cmd.input.Item.openId, cmd.input.Item.userId);
+              return Promise.resolve({});
+            }
             const it = cmd.input.Item;
             codeStore.set(it.code, { code: it.code, userId: it.userId, codeChallenge: it.codeChallenge, redirectUri: it.redirectUri, expiresAt: it.expiresAt });
+            return Promise.resolve({});
+          }
+          if (cmdName === 'GetCommand') {
+            if (table.includes('openid-map')) {
+              if (failOpenidGet) {
+                const err: any = new Error(failOpenidGet.message);
+                err.name = failOpenidGet.name;
+                return Promise.reject(err);
+              }
+              const userId = openidStore.get(cmd.input.Key.openId);
+              return Promise.resolve(userId ? { Item: { openId: cmd.input.Key.openId, userId } } : {});
+            }
             return Promise.resolve({});
           }
           if (cmdName === 'DeleteCommand') {
@@ -157,8 +189,13 @@ export const mockClient = {
       }),
     },
     PutCommand: class { constructor(public input: any) {} },
+    GetCommand: class { constructor(public input: any) {} },
     DeleteCommand: class { constructor(public input: any) {} },
     __seedCode: (row: CodeRow) => { codeStore.set(row.code, row); },
     __hasCode: (code: string) => codeStore.has(code),
+    __setOpenId: (openId: string, userId: string) => { openidStore.set(openId, userId); },
+    __getOpenId: (openId: string) => openidStore.get(openId),
+    __failOpenidGet: (err: { name: string; message: string }) => { failOpenidGet = err; },
+    __failOpenidPut: (err: { name: string; message: string }) => { failOpenidPut = err; },
   },
 };

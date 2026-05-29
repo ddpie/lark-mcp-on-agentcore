@@ -981,13 +981,13 @@ import json, os
 vars = {
   "CALLBACK_URL": os.environ["CALLBACK_URL"],
   "SECRET_PREFIX": "lark-mcp-on-agentcore/users",
-  "OPENID_PREFIX": "lark-mcp-on-agentcore/openid-map",
   "APP_SECRET_ID": "lark-mcp-on-agentcore/feishu-app",
   "STATE_SECRET_PARAM": "/lark-mcp-on-agentcore/state-secret",
   "OAUTH_CLIENT_ID": "lark-mcp-on-agentcore",
   "OAUTH_CLIENT_SECRET": os.environ["OAUTH_SECRET_VAL"],
   "FEISHU_SCOPES": os.environ.get("FEISHU_SCOPES", ""),
   "CODE_TABLE": "lark-mcp-on-agentcore-oauth-codes",
+  "OPENID_TABLE": "lark-mcp-on-agentcore-openid-map",
 }
 if os.environ.get("CUSTOM_DOMAIN"):
   vars["ALLOWED_DOMAINS"] = os.environ["CUSTOM_DOMAIN"]
@@ -999,6 +999,42 @@ print(json.dumps({"Variables": vars}))
     --region "$REGION" >/dev/null 2>&1
   rm -f "$ENV_FILE"
   info "OAuth Lambda configured ✓"
+fi
+
+# Migrate openid-map from Secrets Manager to DynamoDB (one-time, idempotent).
+# Safe ordering: CDK already created the DDB table, and the Lambda env update above
+# set OPENID_TABLE — so new OAuth callbacks already write to DDB. This migration
+# only backfills pre-existing SM entries. SM entries use the default 30-day recovery
+# window (no ForceDeleteWithoutRecovery) to allow rollback if needed.
+OPENID_SM_PREFIX="lark-mcp-on-agentcore/openid-map"
+OPENID_DDB_TABLE="lark-mcp-on-agentcore-openid-map"
+OPENID_COUNT=$(aws secretsmanager list-secrets --region "$REGION" \
+  --filters "Key=name,Values=${OPENID_SM_PREFIX}" \
+  --query 'SecretList | length(@)' --output text 2>/dev/null || echo "0")
+if [ "${OPENID_COUNT:-0}" -gt 0 ]; then
+  info "Migrating ${OPENID_COUNT} openid-map entries from Secrets Manager to DynamoDB..."
+  python3 -c "
+import boto3, json
+region = '$REGION'
+sm = boto3.client('secretsmanager', region_name=region)
+ddb = boto3.resource('dynamodb', region_name=region).Table('$OPENID_DDB_TABLE')
+paginator = sm.get_paginator('list_secrets')
+migrated = 0
+for page in paginator.paginate(Filters=[{'Key': 'name', 'Values': ['$OPENID_SM_PREFIX']}]):
+    for s in page.get('SecretList', []):
+        name = s['Name']
+        open_id = name.replace('$OPENID_SM_PREFIX/', '')
+        try:
+            val = sm.get_secret_value(SecretId=name)
+            user_id = json.loads(val['SecretString'])['userId']
+            ddb.put_item(Item={'openId': open_id, 'userId': user_id})
+            sm.delete_secret(SecretId=name)
+            migrated += 1
+        except Exception as e:
+            print(f'  WARN: skip {name}: {e}')
+print(f'  Migrated {migrated}/{$OPENID_COUNT} entries')
+"
+  info "OpenID mapping migration complete ✓"
 fi
 
 # AgentCore Runtime

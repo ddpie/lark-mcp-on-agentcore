@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual, createHash } from 'crypto';
 import { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand, CreateSecretCommand, ListSecretsCommand } from '@aws-sdk/client-secrets-manager';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { storeCode, retrieveAndDeleteCode } from './dynamodb-codes';
+import { storeOpenIdMapping, getOpenIdMapping } from './dynamodb-openid';
 import { log, hashUserId } from '../shared/log';
 import { SCOPE_ALLOWLIST } from './scope-allowlist';
 import i18n from '../../config/i18n.json';
@@ -10,7 +11,6 @@ const FEISHU_TOKEN_URL = "https://open.feishu.cn/open-apis/authen/v1/oidc/access
 const FEISHU_REFRESH_URL = "https://open.feishu.cn/open-apis/authen/v1/oidc/refresh_access_token";
 const CALLBACK_URL_ENV = process.env.CALLBACK_URL || '';
 const SECRET_PREFIX = process.env.SECRET_PREFIX || "lark-mcp-on-agentcore/users";
-const OPENID_PREFIX = process.env.OPENID_PREFIX || "lark-mcp-on-agentcore/openid-map";
 const APP_SECRET_ID = process.env.APP_SECRET_ID || "lark-mcp-on-agentcore/feishu-app";
 const STATE_SECRET_PARAM = process.env.STATE_SECRET_PARAM || '/lark-mcp-on-agentcore/state-secret';
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
@@ -217,36 +217,6 @@ async function preflightWritable(secretId: string, userId: string): Promise<bool
   }
 }
 
-async function storeOpenIdMapping(openId: string, userId: string) {
-  const secretId = `${OPENID_PREFIX}/${openId}`;
-  const value = JSON.stringify({ userId });
-  try {
-    await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value }));
-  } catch (e: any) {
-    if (e.name === "ResourceNotFoundException") {
-      try {
-        await sm.send(new CreateSecretCommand({ Name: secretId, SecretString: value, Tags: PROJECT_TAGS }));
-      } catch (createErr: any) {
-        log('ERROR', 'openid_create_failed', { openIdHash: hashUserId(openId), error: createErr.message, name: createErr.name });
-      }
-    } else {
-      log('ERROR', 'openid_put_failed', { openIdHash: hashUserId(openId), error: e.message, name: e.name });
-    }
-  }
-}
-
-async function getOpenIdMapping(openId: string): Promise<string | null> {
-  try {
-    const resp = await sm.send(new GetSecretValueCommand({ SecretId: `${OPENID_PREFIX}/${openId}` }));
-    return JSON.parse(resp.SecretString!).userId;
-  } catch (e: any) {
-    if (e.name === 'ResourceNotFoundException') return null;
-    // Treating SM throttle / AccessDenied as "no mapping" would silently fork
-    // the user into a new identity and orphan their existing tokens.
-    log('ERROR', 'get_openid_mapping_failed', { openIdHash: hashUserId(openId), error: e.message, name: e.name });
-    throw e;
-  }
-}
 
 async function listAllUserSecrets(): Promise<string[]> {
   const names: string[] = [];

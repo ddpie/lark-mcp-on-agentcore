@@ -91,17 +91,18 @@ if [ "${USER_COUNT:-0}" -gt 0 ]; then
   fi
 fi
 
-# 4. App secret + state secret + openid mappings (kept by default).
+# 4. App secret + state secret + openid table (kept by default).
 echo ""
 echo "  Remaining (preserved by default):"
 echo "    - secret  lark-mcp-on-agentcore/feishu-app"
 echo "    - ssm     /lark-mcp-on-agentcore/state-secret"
 echo "    - ssm     /lark-mcp-on-agentcore/oauth-client-secret"
-echo "    - secrets lark-mcp-on-agentcore/openid-map/*"
+echo "    - dynamodb lark-mcp-on-agentcore-openid-map"
 echo ""
 echo "  To purge them too:"
 echo "    aws secretsmanager delete-secret --secret-id lark-mcp-on-agentcore/feishu-app --force-delete-without-recovery --region $REGION"
 echo "    aws ssm delete-parameter --name /lark-mcp-on-agentcore/state-secret --region $REGION"
 echo "    aws ssm delete-parameter --name /lark-mcp-on-agentcore/oauth-client-secret --region $REGION"
+echo "    aws dynamodb delete-table --table-name lark-mcp-on-agentcore-openid-map --region $REGION"
 echo ""
 echo -e "${GREEN}Teardown complete.${NC}"

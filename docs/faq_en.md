@@ -83,8 +83,8 @@ A: This is a Feishu app permission issue, not a client issue. Fix:
 A: This is the most severe alarm. It means a user's refresh_token was consumed but the new token failed to write to Secrets Manager (after 5 retries). The user must re-authorize. Steps:
 
 1. Locate `userIdHash` (sha256 first-16 hex) in the alarm card or logs. **All logs (including `oauth_callback_success`) record only the hash, never the raw user_id** (intentionally redacted). To run `revoke`, list all user secrets (`aws secretsmanager list-secrets --filters Key=name,Values=lark-mcp-on-agentcore/users/`), take the trailing path segment of each as the user_id, and hash each one to find the match for the alarm's `userIdHash`
-2. Ask them to reconnect in Quick Desktop: Settings → Capabilities → Connections → find feishu → Sign in. The OAuth callback reuses the same stable userId via the openid-map mapping (if one exists) or by falling back to the same Feishu `open_id`, then recreates the user secret via `CreateSecret`
-3. (Optional) To proactively clean up the stale secret: `./scripts/ops.sh revoke <user_id>`. Note that `revoke` deletes only the user secret and intentionally preserves the openid-map mapping, so the user keeps the same stable userId after re-auth
+2. Ask them to reconnect in Quick Desktop: Settings → Capabilities → Connections → find feishu → Sign in. The OAuth callback reuses the same stable userId via the DynamoDB openid mapping (if one exists) or by falling back to the same Feishu `open_id`, then recreates the user secret via `CreateSecret`
+3. (Optional) To proactively clean up the stale secret: `./scripts/ops.sh revoke <user_id>`. Note that `revoke` deletes only the user secret and preserves the DynamoDB openid mapping, so the user keeps the same stable userId after re-auth
 4. Inspect CloudWatch Logs around `event=store_token_lost` for root cause. Common culprits: Secrets Manager throttling, IAM permission changes, KMS key unavailable
 
 ```

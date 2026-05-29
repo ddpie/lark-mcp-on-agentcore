@@ -1795,7 +1795,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "0ec3f36cade1cf0ecfb1a92dcd5698ef3edd14ebdee8846d86025331747ca623.zip",
+          "S3Key": "f55dab15de8efacc22bc24be0b32d42836e6bcaf8dafec9800c68378f248135d.zip",
         },
         "Environment": {
           "Variables": {
@@ -1807,7 +1807,9 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             },
             "OAUTH_CLIENT_ID": "lark-mcp-on-agentcore",
             "OAUTH_CLIENT_SECRET": "SET_AFTER_DEPLOY",
-            "OPENID_PREFIX": "lark-mcp-on-agentcore/openid-map",
+            "OPENID_TABLE": {
+              "Ref": "OpenIdMapA93FD804",
+            },
             "SECRET_PREFIX": "lark-mcp-on-agentcore/users",
             "STATE_SECRET_PARAM": "/lark-mcp-on-agentcore/state-secret",
           },
@@ -1923,7 +1925,6 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
                 "secretsmanager:GetSecretValue",
                 "secretsmanager:PutSecretValue",
                 "secretsmanager:CreateSecret",
-                "secretsmanager:DeleteSecret",
                 "secretsmanager:TagResource",
               ],
               "Effect": "Allow",
@@ -1967,6 +1968,44 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
                 {
                   "Fn::GetAtt": [
                     "OAuthCodesFF09132A",
+                    "Arn",
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:BatchGetItem",
+                "dynamodb:Query",
+                "dynamodb:GetItem",
+                "dynamodb:Scan",
+                "dynamodb:ConditionCheckItem",
+                "dynamodb:BatchWriteItem",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem",
+                "dynamodb:DescribeTable",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "OpenIdMapA93FD804",
+                    "Arn",
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": [
+                "dynamodb:GetRecords",
+                "dynamodb:GetShardIterator",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "OpenIdMapA93FD804",
                     "Arn",
                   ],
                 },
@@ -2118,6 +2157,39 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         ],
       },
       "Type": "AWS::CloudWatch::Dashboard",
+    },
+    "OpenIdMapA93FD804": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "openId",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "openId",
+            "KeyType": "HASH",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": "lark-mcp-on-agentcore-openid-map",
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
     },
     "RefreshFailedAlarmB973F059": {
       "Properties": {
