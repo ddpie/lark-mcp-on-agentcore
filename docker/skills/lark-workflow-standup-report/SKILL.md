@@ -1,3 +1,8 @@
+---
+name: lark-workflow-standup-report
+description: "日程待办摘要：编排 lark_calendar_agenda 和 lark_task_get_my_tasks，生成指定日期的日程与未完成任务摘要。适用于了解今天/明天/本周的安排。"
+---
+
 # 日程待办摘要工作流
 
 (authentication is handled automatically by the MCP server)

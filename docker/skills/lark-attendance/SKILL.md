@@ -1,3 +1,8 @@
+---
+name: lark-attendance
+description: "飞书考勤打卡：查询自己的考勤打卡记录。"
+---
+
 # attendance (v1)
 
 ## 默认参数自动填充规则

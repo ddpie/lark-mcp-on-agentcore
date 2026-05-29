@@ -1,15 +1,8 @@
 import { describe, it, expect } from 'vitest';
-
-// Copy of detectRisk from generate-tools.js (can't require it directly as it runs top-level code)
-function detectRisk(helpText, commandName) {
-  const lower = helpText.toLowerCase();
-  if (lower.includes('risk: high-risk-write')) return 'high-risk-write';
-  if (lower.includes('risk: write')) return 'write';
-  if (lower.includes('risk: read')) return 'read';
-  if (lower.includes('destructive') || commandName.includes('delete') || commandName.includes('remove')) return 'high-risk-write';
-  if (commandName.includes('create') || commandName.includes('send') || commandName.includes('update') || commandName.includes('patch')) return 'write';
-  return 'read';
-}
+// Import the REAL helpers (generate-tools.js itself runs top-level code on
+// require — spawns lark-cli, writes files — so the pure functions live in
+// generate-tools-lib.js and the generator requires them. Single source of truth.)
+import { detectRisk, parseFlags } from '../generate-tools-lib.js';
 
 describe('detectRisk', () => {
   it('detects "Risk: write" from help text', () => {
@@ -72,5 +65,56 @@ describe('detectRisk', () => {
   it('correctly detects write for task +complete', () => {
     const help = 'Mark a task as complete\n\nRisk: write';
     expect(detectRisk(help, '+complete')).toBe('write');
+  });
+});
+
+describe('parseFlags', () => {
+  it('parses a required string flag', () => {
+    const { flags, supportsYes } = parseFlags('Flags:\n      --chat-id string   Target chat ID (required)');
+    expect(supportsYes).toBe(false);
+    expect(flags).toHaveLength(1);
+    expect(flags[0]).toMatchObject({ name: 'chat-id', type: 'string', required: true });
+    // Characterization: lark-cli help puts the type token before the description, and the
+    // parser keeps it in the description text. Locking in current shipped behavior.
+    expect(flags[0].description).toBe('string   Target chat ID');
+    expect(flags[0].enum).toBeUndefined();
+  });
+
+  it('detects a boolean flag from (default: false/true)', () => {
+    const { flags } = parseFlags('Flags:\n      --page-all   Fetch all pages (default: false)');
+    expect(flags[0]).toEqual({ name: 'page-all', type: 'boolean', description: 'Fetch all pages', required: false });
+  });
+
+  it('extracts enum values and strips the (enum: ...) annotation from the description', () => {
+    const { flags } = parseFlags('Flags:\n      --format string   Output format (enum: json,csv,yaml)');
+    expect(flags[0].enum).toEqual(['json', 'csv', 'yaml']);
+    expect(flags[0].description).toBe('string   Output format');
+  });
+
+  it('treats --yes as supportsYes and excludes it from flags', () => {
+    const { flags, supportsYes } = parseFlags('Flags:\n      --yes   Skip confirmation\n      --summary string   Title');
+    expect(supportsYes).toBe(true);
+    expect(flags.map(f => f.name)).toEqual(['summary']);
+  });
+
+  it('drops hidden flags (dry-run, jq) but keeps others', () => {
+    const { flags } = parseFlags('Flags:\n      --dry-run   preview\n      --jq string   filter\n      --keep string   z');
+    expect(flags.map(f => f.name)).toEqual(['keep']);
+  });
+
+  it('strips (required), (default:), and (enum:) annotations together', () => {
+    const { flags } = parseFlags('Flags:\n      --mode string   The mode (required) (default: a) (enum: a,b)');
+    expect(flags[0]).toMatchObject({ name: 'mode', required: true, enum: ['a', 'b'] });
+    expect(flags[0].description).toBe('string   The mode');
+  });
+
+  it('returns no flags when there is no flag section', () => {
+    expect(parseFlags('Just a description, no flags here')).toEqual({ flags: [], supportsYes: false });
+  });
+
+  it('ignores lines that are not indented flag definitions', () => {
+    // Usage lines / prose mentioning --foo without the leading-whitespace + "-- " shape
+    const { flags } = parseFlags('Usage:\n  lark-cli im +send --chat-id <id>\n\nSend a message');
+    expect(flags).toEqual([]);
   });
 });

@@ -6,24 +6,35 @@
 
 [中文](#lark-mcp-on-agentcore) | [English](#english)
 
-为 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 提供飞书工具能力的远程 MCP 服务。200+ 工具覆盖飞书 2500+ API，内置 23 个业务域 Skill——AI 不仅能执行单个操作，还知道**怎么做**（例如"帮我约个产品评审会，邀请研发组，需要会议室"→ AI 自动按 解析参会人→查忙闲→推荐时段→找会议室→创建日程→通知参会人 的最佳实践执行，无需用户逐步指挥）。基于 AWS Bedrock AgentCore 托管，支持多用户 OAuth 身份隔离、自动弹性伸缩（空闲缩零）、可观测性（5 板块 Dashboard + 10 项告警 + 飞书群通知）。
+**在 [lark-cli](https://github.com/larksuite/cli) 之上构建的托管远程 MCP 服务——让支持远程 MCP 的客户端（如 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/)）能通过 200+ 工具调用飞书 2500+ API，并以正确的参数、顺序、前置条件完成多步操作。**
 
-## 效果
+[lark-cli](https://github.com/larksuite/cli) 是飞书官方命令行工具，封装了 2500+ API 为 200+ 工具，并附带 23 个业务域 Skill 沉淀多步编排的最佳实践（参数格式、调用顺序、前置条件）。本项目由容器内的 lark-cli 执行所有 API 调用，继承其全部能力（其中 Skill 已适配为 MCP 形态，按需加载）。在此基础上，补齐 lark-cli 在团队场景下的不足：
 
-在 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) 中连接后，用自然语言操作飞书：
+- **业务用户零门槛。** 成员浏览器授权一次即用，无需本地安装或配置——非技术用户也能直接上手；每人以自己飞书身份调用，数据按用户隔离。
+- **IT 集中管控。** 只创建一个飞书应用、管理员部署一次，全员共用。飞书应用与凭证集中管理，IT 可统一审计权限范围、应用可见性；token 服务端加密存储并自动刷新。
 
-<p align="center">
-  <img src="docs/images/quick-desktop-demo.png" alt="Demo" width="720">
-</p>
+底座 AWS Bedrock AgentCore：空闲缩零、按量计费，内置可观测性。
 
-```
-> 帮我查一下今天的飞书日程
-> 发一条消息给产品研发群：明天下午3点对齐需求
-> 把上周的会议纪要整理成文档发给我
-> 在多维表格里新增一条 Bug 记录
-```
+## 一个复杂编排的例子
 
-所有操作以用户自己的飞书身份执行，数据按用户隔离。
+简单操作（查日程、发消息、建记录）AI 一步就能调对。真正体现价值的是**多步编排**——一句话背后有依赖、有顺序、有前置条件。比如：
+
+> **「帮我明天下午约个产品评审会，邀请研发组，需要会议室，会后建个跟进待办」**
+
+支持远程 MCP 的客户端连上本服务后，AI 会先通过 `lark_get_skill` 加载 calendar 与 task 两个 Skill，按其指引依次执行：
+
+| # | AI 调用 | 为什么是这一步 |
+|---|---------|---------------|
+| 1 | `lark_contact_search_user("研发组")` | 把"研发组"解析成 open_id——发邀请前的前置条件 |
+| 2 | `lark_calendar_freebusy(...)` | 查参会人忙闲，避开冲突 |
+| 3 | `lark_calendar_suggestion(...)` | 时间模糊时先推荐候选时段，等用户确认 |
+| 4 | `lark_calendar_room_find(slot=已确认)` | 仅对确定的时间块找会议室（Skill 强制：无明确时间不得直接找会议室） |
+| 5 | `lark_calendar_create(...)` | 落地日程，带上参会人与会议室 |
+| 6 | `lark_task_create("评审跟进", ...)` | 创建会后跟进待办 |
+
+参数格式、调用顺序、"先查忙闲再订会议室"这类前置约束，都来自 lark-cli 官方 Skill——本项目改写为 MCP 形态后按需加载。所有操作以用户自己的飞书身份执行，数据按用户隔离。
+
+→ 完整时序图与 23 个编排域清单见 [智能编排详解](docs/skills_zh.md)。
 
 ## 部署
 
@@ -37,7 +48,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 ## 架构
 
-用户通过 Quick Desktop 发起请求 → CloudFront → API Gateway → Middleware Lambda（验证 MCP Token + SigV4 签名）→ AgentCore Runtime（MCP 服务容器处理飞书 API 调用）。OAuth Lambda 负责用户授权和 Token 自动刷新（每 30 分钟），EventBridge 定时触发。所有 Token 加密存储在 Secrets Manager 中。
+支持远程 MCP 的客户端（如 Quick Desktop）发起请求 → CloudFront → API Gateway → Middleware Lambda（验证 MCP Token + SigV4 签名）→ AgentCore Runtime（MCP 服务容器处理飞书 API 调用）。OAuth Lambda 负责用户授权和 Token 自动刷新（每 30 分钟），EventBridge 定时触发。所有 Token 加密存储在 Secrets Manager 中。
 
 <p align="center">
   <img src="docs/images/architecture.svg" alt="Architecture" width="720">
@@ -56,19 +67,25 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 </details>
 
-## 特点
+## 为什么不一样
 
-| 特点 | 说明 |
+| 差异化 | 说明 |
 |---|---|
-| **零配置接入** | 管理员一次部署，团队成员直接在 Quick Desktop 连接即用——无需每人创建飞书应用、无需安装 lark-cli、无需配置环境变量，浏览器授权一次就能开始工作 |
-| **200+ 工具** | 28 个高频工具直接提供，4 个 meta 工具（discover/invoke/skills），其余 200+ 按需调用 |
-| **智能编排** | 内置 23 个业务域 Skill，AI 自动按最佳实践完成多步操作（查忙闲→订会议室→建日程） |
-| **多用户** | 一份部署多人共用，每位用户以自己飞书身份调用，数据按用户隔离 |
+| **智能编排** | 把 lark-cli 官方 23 个业务域 Skill 改写为纯 MCP 形态、按需加载——让支持远程 MCP 的客户端也能在操作前读到这些最佳实践 |
+| **业务用户零门槛、IT 集中管控** | 只创建一个飞书应用、管理员部署一次，全员共用——非技术成员浏览器授权一次即用；飞书应用集中管理，IT 可统一审计权限与可见性；每位用户以自己飞书身份调用，数据按用户隔离 |
+
+<details>
+<summary>运维 / 安全 / 成本特性</summary>
+
+| 特性 | 说明 |
+|---|---|
 | **按需付费** | AgentCore Runtime 空闲缩零，按 vCPU-秒 + 内存-秒计费 |
-| **渐进授权** | 调用低频工具触发飞书未授权时，自动生成 incremental-auth 链接，用户点击链接跳转到飞书授权页确认新增权限即可，飞书会累积已有权限 |
+| **渐进授权** | 默认只申请常用权限；首次用到某个低频功能时，自动生成 incremental-auth 链接，用户点击在飞书授权页确认即可，已有权限会累积 |
 | **低运维** | Token 自动刷新（30min）、异常自动告警到飞书群、日志按策略过期 |
 | **安全** | PKCE + HMAC token + WAF + Secrets Manager 加密存储（[详情](docs/security_zh.md)） |
 | **轻量升级** | lark-cli 新版本发布时，按 `docs/skills/bump-lark-cli.md` 流程操作（提取 scope + 适配 skill + deploy），终端用户无需任何操作 |
+
+</details>
 
 ## 工具列表
 
@@ -122,86 +139,17 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 ## 智能编排 (Skill)
 
-传统 MCP server 只暴露工具，AI 靠猜来编排多步操作——参数格式错、步骤顺序乱、前置条件漏。本项目内置 Skill，AI 在操作前主动读取，按最佳实践执行。
+lark-cli 官方 23 个业务域 Skill 沉淀了多步操作的最佳实践——参数格式、调用顺序、前置条件。但这些 Skill 原本依赖客户端 shell 执行 lark-cli + 读取本地 md 文件，支持远程 MCP 的客户端用不上。本项目把它们改写成纯 MCP 形态，通过 `lark_get_skill` 按需加载——例如"约个产品评审会"自动走 解析参会人→查忙闲→推荐时段→订会议室→建日程→创建待办。按需加载，不占用固定 context。
 
-**示例**："帮我明天下午约一个产品评审会，邀请研发组的人，需要会议室，会后创建待办跟踪"
+覆盖日历、IM、多维表格、邮件、文档、视频会议、任务、知识库、电子表格、OKR、妙记、画板…… 等 23 个业务域。
 
-AI 的执行过程：
-
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant AI as AI Agent
-    participant MCP as MCP Server
-
-    U->>AI: 帮我约产品评审会，邀请研发组，需要会议室
-    Note over AI,MCP: 加载 Skill
-    AI->>MCP: lark_get_skill("calendar", "schedule-meeting")
-    AI->>MCP: lark_get_skill("contact")
-    Note over AI,MCP: 解析参会人
-    AI->>MCP: lark_contact_search_user("研发组")
-    MCP-->>AI: open_id 列表
-    Note over AI,MCP: 查忙闲
-    AI->>MCP: lark_calendar_freebusy(start, end)
-    MCP-->>AI: 可用时段
-    Note over AI,MCP: 发现并调用 Tier2 工具
-    AI->>MCP: lark_discover("calendar suggestion")
-    AI->>MCP: lark_invoke("lark_calendar_suggestion", args)
-    MCP-->>AI: 候选时段
-    AI->>U: 推荐这几个时段，选哪个？
-    U->>AI: 第二个
-    Note over AI,MCP: 查可用会议室
-    AI->>MCP: lark_calendar_room_find(slot="确认时段")
-    MCP-->>AI: 可用会议室
-    AI->>U: 这些会议室可用，选哪个？
-    U->>AI: 5F-大会议室
-    Note over AI,MCP: 创建日程
-    AI->>MCP: lark_calendar_create("产品评审", ...)
-    MCP-->>AI: ✓ 日程已创建
-    Note over AI,MCP: 加载任务 Skill + 创建待办
-    AI->>MCP: lark_get_skill("task")
-    AI->>MCP: lark_task_create("评审跟进", ...)
-    MCP-->>AI: ✓ 待办已创建
-    AI->>U: 已完成：日程+会议室+待办
-```
-
-Skill 通过 `lark_get_skill` 按需加载，不占用固定 context。
-
-<details>
-<summary>23 个编排域一览</summary>
-
-| 域 | 覆盖场景 |
-|---|---|
-| calendar | 日程创建/编辑、忙闲查询、会议室预定、重复日程、时间推荐 |
-| im | 发消息/回复、群管理、消息搜索、文件下载、表情回复 |
-| doc | 文档创建/编辑、内容追加/替换、画板插入、XML 协议 |
-| base | 多维表格建表/字段/记录/视图/仪表盘/工作流、数据查询分析 |
-| drive | 文件上传/下载、搜索、导入导出、评论、权限、版本管理 |
-| task | 任务创建/更新/完成、清单管理、子任务、附件上传 |
-| mail | 收发邮件、草稿、转发、回复、规则、联系人 |
-| sheets | 读写单元格、公式、样式、下拉列表、筛选视图 |
-| wiki | 知识库空间/节点创建/移动/复制/删除、成员管理 |
-| vc | 历史会议搜索、会议纪要/逐字稿/录制产物获取 |
-| slides | 幻灯片创建/编辑、XML 协议、媒体上传 |
-| whiteboard | 画板查询/编辑、DSL/Mermaid/PlantUML 输入 |
-| okr | OKR 周期/目标/关键结果/进展管理 |
-| minutes | 妙记搜索/下载/上传/说话人替换 |
-| contact | 用户搜索/信息查询（姓名↔open_id） |
-| markdown | Markdown 文件创建/编辑/比较 |
-| approval | 审批实例/任务管理 |
-| apps | 妙搭应用部署/管理 |
-| attendance | 考勤打卡记录查询 |
-| vc-agent | 会议机器人入会/离会/会中事件 |
-| openapi-explorer | 原生飞书 OpenAPI 探索 |
-| workflow-meeting-summary | 会议纪要整理工作流 |
-| workflow-standup-report | 日程待办摘要工作流 |
-
-</details>
+→ 详见 [智能编排详解（含时序图 + 23 域清单）](docs/skills_zh.md)
 
 ## 文档
 
 | 主题 | 链接 |
 |------|------|
+| 智能编排（Skill） | [docs/skills_zh.md](docs/skills_zh.md) |
 | Quick Desktop 配置（图文 6 步） | [docs/quick-desktop-setup_zh.md](docs/quick-desktop-setup_zh.md) |
 | 安全设计 | [docs/security_zh.md](docs/security_zh.md) |
 | 可观测性 & 告警 | [docs/observability_zh.md](docs/observability_zh.md) |
@@ -232,24 +180,35 @@ MIT
 
 # English
 
-A remote Feishu MCP service for [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/). 200+ tools cover Feishu's 2500+ APIs, with 23 built-in domain Skills — the AI doesn't just execute operations, it knows **how** to do them (e.g., "schedule a product review with the dev team, book a room" → AI automatically follows resolve attendees → check free/busy → suggest time slots → find room → create event → notify attendees, without step-by-step user guidance). Hosted on AWS Bedrock AgentCore with multi-user OAuth isolation, auto-scaling (scale-to-zero), and observability (5-section dashboard + 10 alarms + Feishu group notifications).
+**A hosted remote MCP service built on top of [lark-cli](https://github.com/larksuite/cli) — so remote MCP clients (e.g. [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/)) can call Feishu's 2500+ APIs via 200+ tools, and complete multi-step operations with the right parameters, order, and preconditions.**
 
-## What it looks like
+[lark-cli](https://github.com/larksuite/cli) is Feishu's official command-line tool that wraps the 2500+ APIs into 200+ tools and ships 23 domain Skills capturing multi-step orchestration best practices (parameter formats, call order, preconditions). This project executes all API calls via lark-cli inside the container, inheriting its full capabilities (Skills included, adapted into MCP form and loaded on demand). On top of that, it fills the gaps lark-cli has as a team service:
 
-Connect in [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/) and interact with Feishu using natural language:
+- **Zero-friction for end users.** Members authorize once in the browser — no local install, no config, no technical skill required. Every call runs under each user's own Feishu identity, data isolated per user.
+- **Centrally managed for IT.** One Feishu app, one admin deploy, shared by everyone. The Feishu app and its credentials are managed centrally, so IT can audit scopes and app visibility in one place; tokens are encrypted server-side and auto-refreshed.
 
-<p align="center">
-  <img src="docs/images/quick-desktop-demo-en.png" alt="Demo" width="720">
-</p>
+Hosted on AWS Bedrock AgentCore: scales to zero when idle, pay-per-use, with built-in observability.
 
-```
-> Check my Feishu calendar for today
-> Send a message to the product dev group: sync requirements tomorrow at 3pm
-> Summarize last week's meeting notes into a doc
-> Add a bug record to the Bitable
-```
+## A complex orchestration example
 
-Every action runs under the user's own Feishu identity — data is isolated per user.
+Simple operations (check the calendar, send a message, create a record) are one correct call away for an AI. The real value shows in **multi-step orchestration** — where one sentence hides dependencies, ordering, and preconditions. For example:
+
+> **"Schedule a product review tomorrow afternoon, invite the dev team, book a room, and create a follow-up task afterward."**
+
+Once a remote MCP client connects to this service, the AI first loads the calendar and task Skills via `lark_get_skill`, then executes in order following their guidance:
+
+| # | AI call | Why this step |
+|---|---------|---------------|
+| 1 | `lark_contact_search_user("dev team")` | Resolve "dev team" to open_ids — a precondition for inviting them |
+| 2 | `lark_calendar_freebusy(...)` | Check attendees' availability to avoid conflicts |
+| 3 | `lark_calendar_suggestion(...)` | When the time is vague, propose candidate slots and wait for confirmation |
+| 4 | `lark_calendar_room_find(slot=confirmed)` | Find a room only for a concrete time block (Skill rule: no room lookup without an explicit time) |
+| 5 | `lark_calendar_create(...)` | Create the event with attendees and room |
+| 6 | `lark_task_create("review follow-up", ...)` | Create the post-meeting follow-up task |
+
+Parameter formats, call order, and preconditions like "check free/busy before booking a room" all come from lark-cli's official Skills — this project rewrites them into MCP form and loads them on demand. Every action runs under the user's own Feishu identity, data isolated per user.
+
+→ Full sequence diagram and the list of 23 orchestration domains: [Smart Orchestration details](docs/skills_en.md).
 
 ## Deploy
 
@@ -263,7 +222,7 @@ Check deps → Feishu credentials → Region / WAF / Log retention / Alarm prese
 
 ## Architecture
 
-User requests from Quick Desktop → CloudFront → API Gateway → Middleware Lambda (MCP token verification + SigV4 signing) → AgentCore Runtime (MCP service container handles Feishu API calls). OAuth Lambda manages user authorization and auto-refreshes tokens every 30 minutes via EventBridge. All tokens encrypted in Secrets Manager.
+Requests from a remote MCP client (e.g., Quick Desktop) → CloudFront → API Gateway → Middleware Lambda (MCP token verification + SigV4 signing) → AgentCore Runtime (MCP service container handles Feishu API calls). OAuth Lambda manages user authorization and auto-refreshes tokens every 30 minutes via EventBridge. All tokens encrypted in Secrets Manager.
 
 <p align="center">
   <img src="docs/images/architecture-en.svg" alt="Architecture" width="720">
@@ -282,19 +241,25 @@ User requests from Quick Desktop → CloudFront → API Gateway → Middleware L
 
 </details>
 
-## Highlights
+## Why it's different
 
-| Highlight | Description |
+| Differentiator | Description |
 |---|---|
-| **Zero-config for users** | Admin deploys once, team members just connect in Quick Desktop — no per-user Feishu app creation, no lark-cli installation, no env setup, just browser-based OAuth and start working |
-| **200+ tools** | 28 high-frequency tools exposed directly, 4 meta tools (discover/invoke/skills), 200+ extended tools on demand |
-| **Smart orchestration** | 23 built-in domain guides let the AI complete multi-step workflows autonomously (free/busy → book room → create event) |
-| **Multi-user** | One deployment shared across users; each request runs under the user's own Feishu identity, data isolated per user |
+| **Smart orchestration** | lark-cli's official 23 domain Skills, rewritten into pure-MCP form and loaded on demand — so remote MCP clients can also read these best practices before acting |
+| **Zero-friction for users, centrally managed for IT** | One Feishu app, one admin deploy, shared by everyone — non-technical members authorize once in the browser; the Feishu app is managed centrally, so IT can audit scopes and visibility in one place; each user acts under their own Feishu identity, data isolated per user |
+
+<details>
+<summary>Operational / security / cost features</summary>
+
+| Feature | Description |
+|---|---|
 | **Pay-per-use** | AgentCore Runtime scales to zero when idle, billed by vCPU-seconds + memory-seconds |
-| **Incremental auth** | Low-frequency tools that hit "permission denied" auto-generate an incremental-auth link; the user clicks the link, lands on the Feishu authorization page to approve the new scope, and Feishu accumulates the existing scopes |
+| **Incremental auth** | Only common scopes are requested up front; the first time a low-frequency tool is used, an incremental-auth link is generated — the user clicks it, approves the new scope on the Feishu authorization page, and Feishu accumulates the existing scopes |
 | **Low-ops** | Auto token refresh (30min), alarms auto-push to Feishu group, logs expire by policy |
 | **Secure** | PKCE + HMAC tokens + WAF + Secrets Manager encryption ([details](docs/security_en.md)) |
 | **Lightweight upgrade** | When lark-cli releases a new version, follow `docs/skills/bump-lark-cli.md` (extract scopes + adapt skills + deploy), end users need no action |
+
+</details>
 
 ## Tool List
 
@@ -348,86 +313,17 @@ High-frequency tools are called directly; for complex orchestration (e.g., "sche
 
 ## Smart Orchestration (Skill)
 
-Traditional MCP servers only expose tools — the AI guesses how to chain them, gets parameter formats wrong, misses preconditions, and calls things in the wrong order. This project ships built-in Skills that the AI reads before acting.
+lark-cli's official 23 domain Skills capture multi-step best practices — parameter formats, call order, preconditions. But those Skills originally relied on the client shell-executing lark-cli and reading local md files, so remote MCP clients couldn't use them. This project rewrites them into pure-MCP form and loads them on demand via `lark_get_skill` — e.g., "schedule a product review" follows resolve attendees → check free/busy → suggest slots → book room → create event → create follow-up. Loaded on demand, no fixed context cost.
 
-**Example**: "Schedule a product review tomorrow with the dev team, book a room, and create follow-up tasks"
+Spanning 23 domains: Calendar, IM, Bitable, Mail, Docs, VC, Task, Wiki, Sheets, OKR, Minutes, Whiteboard, and more.
 
-The AI's execution:
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant AI as AI Agent
-    participant MCP as MCP Server
-
-    U->>AI: Schedule product review, invite dev team, book room
-    Note over AI,MCP: Load guides before acting
-    AI->>MCP: lark_get_skill("calendar", "schedule-meeting")
-    AI->>MCP: lark_get_skill("contact")
-    Note over AI,MCP: Resolve attendees
-    AI->>MCP: lark_contact_search_user("dev team")
-    MCP-->>AI: open_id list
-    Note over AI,MCP: Check availability
-    AI->>MCP: lark_calendar_freebusy(start, end)
-    MCP-->>AI: available slots
-    Note over AI,MCP: Discover + invoke Tier2 tool
-    AI->>MCP: lark_discover("calendar suggestion")
-    AI->>MCP: lark_invoke("lark_calendar_suggestion", args)
-    MCP-->>AI: candidate slots
-    AI->>U: Here are available slots, which one?
-    U->>AI: The second one
-    Note over AI,MCP: Find room for confirmed slot
-    AI->>MCP: lark_calendar_room_find(slot="confirmed")
-    MCP-->>AI: available rooms
-    AI->>U: These rooms are available, which one?
-    U->>AI: 5F-Main
-    Note over AI,MCP: Create event
-    AI->>MCP: lark_calendar_create("Product Review", ...)
-    MCP-->>AI: ✓ event created
-    Note over AI,MCP: Load task Skill + create follow-up
-    AI->>MCP: lark_get_skill("task")
-    AI->>MCP: lark_task_create("Review follow-up", ...)
-    MCP-->>AI: ✓ task created
-    AI->>U: Done: event + room + follow-up task
-```
-
-Orchestration guides are loaded on demand via `lark_get_skill` — no fixed context cost.
-
-<details>
-<summary>23 orchestration domains</summary>
-
-| Domain | Coverage |
-|---|---|
-| calendar | Event create/edit, free/busy, room booking, recurring events, time suggestions |
-| im | Send/reply messages, group management, message search, file download, reactions |
-| doc | Document create/edit, content append/replace, whiteboard insert, XML protocol |
-| base | Table/field/record/view/dashboard/workflow CRUD, data query & analysis |
-| drive | Upload/download, search, import/export, comments, permissions, versioning |
-| task | Create/update/complete tasks, tasklists, subtasks, attachments |
-| mail | Send/receive, drafts, forward, reply, rules, contacts |
-| sheets | Read/write cells, formulas, styles, dropdowns, filter views |
-| wiki | Space/node create/move/copy/delete, member management |
-| vc | Meeting search, minutes/transcript/recording retrieval |
-| slides | Create/edit presentations, XML protocol, media upload |
-| whiteboard | Query/edit boards, DSL/Mermaid/PlantUML input |
-| okr | Cycles, objectives, key results, progress tracking |
-| minutes | Search/download/upload minutes, speaker replacement |
-| contact | User search, info lookup (name ↔ open_id) |
-| markdown | Create/edit/compare Markdown files |
-| approval | Approval instances and task management |
-| apps | Miaoda app deployment/management |
-| attendance | Clock-in record queries |
-| vc-agent | Meeting bot join/leave, in-meeting events |
-| openapi-explorer | Raw Feishu OpenAPI discovery |
-| workflow-meeting-summary | Meeting notes compilation workflow |
-| workflow-standup-report | Calendar + task daily summary |
-
-</details>
+→ See [Smart Orchestration details (sequence diagram + 23-domain list)](docs/skills_en.md)
 
 ## Docs
 
 | Topic | Link |
 |-------|------|
+| Smart Orchestration (Skill) | [docs/skills_en.md](docs/skills_en.md) |
 | Quick Desktop Setup (6 steps, screenshots) | [docs/quick-desktop-setup_en.md](docs/quick-desktop-setup_en.md) |
 | Security | [docs/security_en.md](docs/security_en.md) |
 | Observability & Alarms | [docs/observability_en.md](docs/observability_en.md) |

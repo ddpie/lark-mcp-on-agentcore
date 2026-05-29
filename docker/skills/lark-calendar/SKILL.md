@@ -1,3 +1,8 @@
+---
+name: lark-calendar
+description: "飞书日历（calendar）：提供日历与日程（会议）的全面管理能力。核心场景包括：查看/搜索日程、创建/更新日程、管理参会人、查询忙闲状态及推荐空闲时段、查询/搜索与预定会议室。注意：涉及【预约日程/会议】或【查询/预定会议室】时，必须先调用 lark_get_skill(domain=\"calendar\", section=\"schedule-meeting\") 读取工作流！高频操作请优先使用 lark_calendar_agenda（快速概览今日/近期行程）、lark_calendar_create（创建日程并按需邀请参会人及预定会议室）、lark_calendar_update（更新既有日程字段，或独立增删参会人/会议室）、lark_calendar_freebusy（查询用户主日历的忙闲信息和rsvp的状态）、lark_calendar_rsvp（回复日程邀请）。"
+---
+
 # calendar (v4)
 
 **CRITICAL — 认证由 MCP server 自动处理，无需手动配置。**

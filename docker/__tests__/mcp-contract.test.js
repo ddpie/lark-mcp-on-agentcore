@@ -608,8 +608,13 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       const inner = JSON.parse(data.result.content[0].text);
       expect(Array.isArray(inner.skills)).toBe(true);
       expect(inner.skills.length).toBeGreaterThan(0);
-      expect(inner.skills[0]).toHaveProperty('domain');
-      expect(inner.skills[0]).toHaveProperty('description');
+      const cal = inner.skills.find(s => s.domain === 'calendar');
+      expect(cal).toBeDefined();
+      expect(cal).toHaveProperty('description');
+      // The description must come from the frontmatter (extractSkillDescription), NOT the
+      // bare directory name — this is the whole point of progressive disclosure level 1.
+      expect(cal.description).toBe('Calendar orchestration guide');
+      expect(cal.description).not.toBe('lark-calendar');
     });
 
     it.skipIf(!skillsAvailable)('lark_get_skill returns skill content for valid domain', async () => {
