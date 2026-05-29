@@ -858,6 +858,8 @@ describe('openid mapping (DynamoDB)', () => {
     // token stored under the open_id as userId
     const stored = mockClient.secretsManager.__get('lark-mcp-on-agentcore/users/ou_new');
     expect(stored).toBeDefined();
+    // stableUserId === open_id → no DDB write (guard in index.ts)
+    expect(mockClient.dynamodb.__getOpenId('ou_new')).toBeUndefined();
   });
 
   it('storeOpenIdMapping writes to DDB when stableUserId differs from open_id', async () => {

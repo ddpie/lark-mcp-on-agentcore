@@ -13,6 +13,7 @@ export async function storeOpenIdMapping(openId: string, userId: string): Promis
     }));
   } catch (e: any) {
     log('ERROR', 'openid_put_failed', { openIdHash: hashUserId(openId), error: e.message, name: e.name });
+    throw e;
   }
 }
 

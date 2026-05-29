@@ -147,6 +147,7 @@ export class OAuthStack extends cdk.Stack {
       partitionKey: { name: "openId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      pointInTimeRecovery: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     openidTable.grantReadWriteData(oauthFn);

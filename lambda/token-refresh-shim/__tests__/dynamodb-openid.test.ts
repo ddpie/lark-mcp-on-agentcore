@@ -22,10 +22,10 @@ describe('storeOpenIdMapping', () => {
     expect(mockClient.dynamodb.__getOpenId('ou_abc')).toBe('new-id');
   });
 
-  it('does not throw on DDB PutCommand error (non-fatal, logs only)', async () => {
+  it('throws on DDB PutCommand error (prevents silent identity fork)', async () => {
     mockClient.dynamodb.__failOpenidPut({ name: 'ProvisionedThroughputExceededException', message: 'throughput exceeded' });
     const { storeOpenIdMapping } = await import('../dynamodb-openid');
-    await expect(storeOpenIdMapping('ou_x', 'u1')).resolves.toBeUndefined();
+    await expect(storeOpenIdMapping('ou_x', 'u1')).rejects.toThrow('throughput exceeded');
   });
 
   it('handles empty string userId gracefully', async () => {

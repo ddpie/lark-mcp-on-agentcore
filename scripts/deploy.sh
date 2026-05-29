@@ -1001,7 +1001,11 @@ print(json.dumps({"Variables": vars}))
   info "OAuth Lambda configured ✓"
 fi
 
-# Migrate openid-map from Secrets Manager to DynamoDB (one-time, idempotent)
+# Migrate openid-map from Secrets Manager to DynamoDB (one-time, idempotent).
+# Safe ordering: CDK already created the DDB table, and the Lambda env update above
+# set OPENID_TABLE — so new OAuth callbacks already write to DDB. This migration
+# only backfills pre-existing SM entries. SM entries use the default 30-day recovery
+# window (no ForceDeleteWithoutRecovery) to allow rollback if needed.
 OPENID_SM_PREFIX="lark-mcp-on-agentcore/openid-map"
 OPENID_DDB_TABLE="lark-mcp-on-agentcore-openid-map"
 OPENID_COUNT=$(aws secretsmanager list-secrets --region "$REGION" \
@@ -1024,7 +1028,7 @@ for page in paginator.paginate(Filters=[{'Key': 'name', 'Values': ['$OPENID_SM_P
             val = sm.get_secret_value(SecretId=name)
             user_id = json.loads(val['SecretString'])['userId']
             ddb.put_item(Item={'openId': open_id, 'userId': user_id})
-            sm.delete_secret(SecretId=name, ForceDeleteWithoutRecovery=True)
+            sm.delete_secret(SecretId=name)
             migrated += 1
         except Exception as e:
             print(f'  WARN: skip {name}: {e}')

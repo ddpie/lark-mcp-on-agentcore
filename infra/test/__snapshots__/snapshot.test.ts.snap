@@ -1795,7 +1795,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "71cfe2c7bce2f46197e76823e736a851052520b3fefb2dd0b1b3f3091dcc3405.zip",
+          "S3Key": "f55dab15de8efacc22bc24be0b32d42836e6bcaf8dafec9800c68378f248135d.zip",
         },
         "Environment": {
           "Variables": {
@@ -2174,6 +2174,9 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "KeyType": "HASH",
           },
         ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
         "SSESpecification": {
           "SSEEnabled": true,
         },

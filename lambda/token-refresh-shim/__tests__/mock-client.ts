@@ -168,13 +168,16 @@ export const mockClient = {
             return Promise.resolve({});
           }
           if (cmdName === 'GetCommand') {
-            if (failOpenidGet) {
-              const err: any = new Error(failOpenidGet.message);
-              err.name = failOpenidGet.name;
-              return Promise.reject(err);
+            if (table.includes('openid-map')) {
+              if (failOpenidGet) {
+                const err: any = new Error(failOpenidGet.message);
+                err.name = failOpenidGet.name;
+                return Promise.reject(err);
+              }
+              const userId = openidStore.get(cmd.input.Key.openId);
+              return Promise.resolve(userId ? { Item: { openId: cmd.input.Key.openId, userId } } : {});
             }
-            const userId = openidStore.get(cmd.input.Key.openId);
-            return Promise.resolve(userId ? { Item: { openId: cmd.input.Key.openId, userId } } : {});
+            return Promise.resolve({});
           }
           if (cmdName === 'DeleteCommand') {
             const row = codeStore.get(cmd.input.Key.code);
