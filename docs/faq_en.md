@@ -10,6 +10,32 @@ A: Verify the Redirect URL from deploy output is added to your Feishu app's Secu
 
 A: Next connection automatically triggers Feishu re-authorization.
 
+**Q: What AWS IAM permissions are needed to deploy?**
+
+A: The deploy script uses AWS CDK to create IAM Roles, Lambda, API Gateway, CloudFront, DynamoDB, Secrets Manager, SSM, ECR, CloudWatch, SNS, EventBridge, and more. It also uses boto3 to directly manage AgentCore Runtime. The deploying user should have **AdministratorAccess** (or equivalent).
+
+If your organization cannot grant AdministratorAccess, the minimum permissions must cover:
+
+| Service | Required Actions |
+|---------|-----------------|
+| CloudFormation | Full CRUD (CDK backbone) |
+| IAM | CreateRole / AttachRolePolicy / PutRolePolicy (creates roles for Lambda and Runtime) |
+| Lambda | Create / Update / GetFunction |
+| API Gateway | Full CRUD |
+| CloudFront | CreateDistribution / UpdateDistribution |
+| Secrets Manager | Create / Put / Get / Delete / Describe / TagResource |
+| SSM | PutParameter / GetParameter / DeleteParameter |
+| DynamoDB | CreateTable / DeleteTable |
+| ECR | Image push (handled by CDK) |
+| CloudWatch | PutMetricAlarm / PutDashboard |
+| SNS | CreateTopic / Subscribe |
+| EventBridge | PutRule / PutTargets |
+| Bedrock AgentCore | CreateAgentRuntime / UpdateAgentRuntime / GetAgentRuntime |
+| WAFv2 (optional) | CreateWebACL / DeleteWebACL (must be in us-east-1) |
+| STS | GetCallerIdentity (CDK bootstrap check) |
+
+> For production environments requiring precise permission boundaries, see the [CDK minimum-privilege deployment guide](https://docs.aws.amazon.com/cdk/v2/guide/security-iam.html) and combine it with the service list above.
+
 **Q: Deployment failed?**
 
 A: The script is idempotent — just re-run. For a clean start: `cd infra && npx cdk destroy --all`.

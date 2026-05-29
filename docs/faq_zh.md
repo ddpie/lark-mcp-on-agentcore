@@ -10,6 +10,32 @@ A: 检查飞书应用安全设置中的重定向 URL 是否包含部署输出的
 
 A: 下次连接时会自动重新触发飞书授权。
 
+**Q: 部署需要哪些 AWS IAM 权限？**
+
+A: 部署脚本使用 AWS CDK 创建 IAM Role、Lambda、API Gateway、CloudFront、DynamoDB、Secrets Manager、SSM、ECR、CloudWatch、SNS、EventBridge 等十余种资源，并通过 boto3 直接操作 AgentCore Runtime。建议部署用户具备 **AdministratorAccess**（或等效权限）。
+
+如果组织不允许使用 AdministratorAccess，最小权限需覆盖：
+
+| 服务 | 所需动作 |
+|------|---------|
+| CloudFormation | 完整 CRUD（CDK 底层） |
+| IAM | CreateRole / AttachRolePolicy / PutRolePolicy（为 Lambda 和 Runtime 创建角色） |
+| Lambda | Create / Update / GetFunction |
+| API Gateway | 完整 CRUD |
+| CloudFront | CreateDistribution / UpdateDistribution |
+| Secrets Manager | Create / Put / Get / Delete / Describe / TagResource |
+| SSM | PutParameter / GetParameter / DeleteParameter |
+| DynamoDB | CreateTable / DeleteTable |
+| ECR | 镜像推送（CDK 自动处理） |
+| CloudWatch | PutMetricAlarm / PutDashboard |
+| SNS | CreateTopic / Subscribe |
+| EventBridge | PutRule / PutTargets |
+| Bedrock AgentCore | CreateAgentRuntime / UpdateAgentRuntime / GetAgentRuntime |
+| WAFv2（可选） | CreateWebACL / DeleteWebACL（需在 us-east-1） |
+| STS | GetCallerIdentity（CDK bootstrap 检查） |
+
+> 生产环境如需精确权限边界，可参考 [CDK 最小权限部署文档](https://docs.aws.amazon.com/cdk/v2/guide/security-iam.html) 并结合上述服务列表配置。
+
 **Q: 部署失败了？**
 
 A: 脚本支持重跑（幂等）。如需彻底重来：`cd infra && npx cdk destroy --all`。
