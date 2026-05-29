@@ -5,8 +5,8 @@ description: "Transform a raw lark-cli skill into MCP-adapted format. Use when u
 
 # Adapt lark-cli Skill for Remote MCP
 
-Transform a raw lark-cli skill (designed for Claude Code local terminal) into a format
-suitable for downstream agents calling our Remote MCP tools.
+Transform a raw lark-cli skill (designed for clients that can shell-exec lark-cli and read
+local files) into a format suitable for downstream agents calling our Remote MCP tools.
 
 ## Quick reference
 

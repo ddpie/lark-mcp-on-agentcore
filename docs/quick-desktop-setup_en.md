@@ -74,7 +74,7 @@ Once connected, Feishu tools are available in conversations.
 
 ## Result
 
-Once connected, interact with Feishu through natural language in Quick Desktop:
+Once connected, ask Quick Desktop's built-in AI to operate Feishu — it calls this service to reach the Feishu APIs (the natural-language understanding and orchestration are handled by Quick Desktop's own model):
 
 <p align="center">
   <img src="images/quick-desktop-demo-en.png" alt="Demo" width="720">
