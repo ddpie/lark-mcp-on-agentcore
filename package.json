@@ -3,8 +3,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint lambda/ docker/server.js docker/generate-tools.js",
-    "lint:fix": "eslint lambda/ docker/server.js docker/generate-tools.js --fix",
+    "lint": "eslint lambda/ docker/server.js docker/generate-tools.js docker/skill-description.js",
+    "lint:fix": "eslint lambda/ docker/server.js docker/generate-tools.js docker/skill-description.js --fix",
     "knip": "knip"
   },
   "dependencies": {

@@ -1,3 +1,8 @@
+---
+name: lark-openapi-explorer
+description: "飞书/Lark 原生 OpenAPI 探索：从官方文档库中挖掘未经封装的原生 OpenAPI 接口。当用户的需求无法被现有 lark-* skill 或已注册命令满足，需要查找并调用原生飞书 OpenAPI 时使用。"
+---
+
 # OpenAPI Explorer
 
 (authentication is handled automatically by the MCP server)

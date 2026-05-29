@@ -7,6 +7,7 @@ const http = require('http');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
+const { extractSkillDescription } = require('./skill-description');
 
 process.on('uncaughtException', (err) => {
   console.error(JSON.stringify({ level: 'FATAL', event: 'uncaughtException', error: err.message, stack: err.stack }));
@@ -220,17 +221,17 @@ const INVOKE_TOOL = {
 
 // Skills — usage guides for multi-step orchestration of lark tools
 const SKILLS_DIR = '/app/skills';
+
 const skillIndex = [];
 if (fs.existsSync(SKILLS_DIR)) {
   for (const dir of fs.readdirSync(SKILLS_DIR).sort()) {
     const skillPath = `${SKILLS_DIR}/${dir}/SKILL.md`;
     if (!fs.existsSync(skillPath)) continue;
-    const header = fs.readFileSync(skillPath, 'utf8').slice(0, 2000);
-    const descMatch = header.match(/description:\s*"([^"]+)"/);
+    const content = fs.readFileSync(skillPath, 'utf8');
     skillIndex.push({
       domain: dir.replace(/^lark-/, ''),
       dir,
-      description: descMatch ? descMatch[1] : dir,
+      description: extractSkillDescription(content, dir),
     });
   }
   console.log(`Skills loaded: ${skillIndex.length} domains`);

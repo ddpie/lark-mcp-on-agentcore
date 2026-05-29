@@ -1,3 +1,8 @@
+---
+name: lark-approval
+description: "飞书审批：审批实例、审批任务管理。"
+---
+
 # approval (v4)
 
 ## API Resources

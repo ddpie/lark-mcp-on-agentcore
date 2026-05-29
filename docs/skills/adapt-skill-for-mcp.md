@@ -12,7 +12,7 @@ suitable for downstream agents calling our Remote MCP tools.
 
 | Rule | One-liner |
 |------|-----------|
-| 1 | Strip YAML frontmatter |
+| 1 | Keep `name` + `description` frontmatter; adapt CLI notation inside it; drop the rest |
 | 2 | `lark-cli ... +cmd --flags` → `lark_<svc>_<cmd>(flag="val")` |
 | 3 | Remove `--as`, auth, identity setup |
 | 4 | Cross-file links → `lark_get_skill(domain, section)` |
@@ -51,9 +51,61 @@ Key implications for adapted skills:
 
 ## Transformation Rules
 
-### 1. Strip YAML frontmatter
+### 1. Keep and adapt the `description` frontmatter
 
-Remove the `---...---` block at the top (contains `bins`, `cliHelp` metadata irrelevant to MCP).
+The raw skill starts with a `---...---` YAML block. **Keep `name` and `description`; drop
+everything else** (`version`, `metadata`, `bins`, `cliHelp`, `user-invocable`, `source`,
+`type` — all irrelevant to MCP).
+
+**Why this matters**: `lark_list_skills` returns each domain's `description` as the one-line
+summary an agent uses to decide which skill to load. If you strip it, the server falls back to
+the bare directory name (`lark-calendar`), and the first level of progressive disclosure is
+dead — the agent can't tell what a domain does without fetching its full SKILL.md. So the
+`description` is load-bearing, not metadata noise.
+
+**Adapt CLI notation inside the description** with the same rules as the body:
+
+| In the raw description | Adapted |
+|------------------------|---------|
+| `lark-cli` (e.g. "用 lark-cli 操作飞书多维表格") | drop the word or rephrase ("操作飞书多维表格") |
+| `+create` / `+agenda` **shortcut** notation | direct tool `lark_<svc>_<cmd>` (`lark_calendar_create`, `lark_calendar_agenda`) |
+| `references/lark-calendar-schedule-meeting.md` | `lark_get_skill(domain="calendar", section="schedule-meeting")` |
+| `vc meeting get --with-participants` (**raw API**, no `+`) | prose ref `通过 lark_invoke 调用 lark_vc_meeting_get 并带上 with_participants 参数` — NOT a direct call `lark_vc_meeting_get(...)` |
+| `calendar +agenda 和 task +get-my-tasks` | `lark_calendar_agenda 和 lark_task_get_my_tasks` |
+| `drive +search` | `lark_drive_search` |
+
+**CRITICAL — shortcut vs raw API**: only `+cmd` shortcuts become direct calls
+`lark_<svc>_<cmd>(...)`. A raw API written as `<svc> <resource> <method>` (no `+`, e.g.
+`vc meeting get`) is NOT a registered tool — it is only reachable via
+`lark_invoke(tool_name="lark_<svc>_<resource>_<method>", ...)`. Writing it as a direct call in
+the description invents a tool name that does not exist. In a one-line description, prefer a
+short prose reference (mention `lark_invoke` + the tool name) over inlining the full nested-JSON
+`lark_invoke(...)` call, which would force escaping many inner quotes. When unsure whether a
+name is a shortcut, check it against the generated tool catalog (the body already shows the
+right form — match it).
+
+Keep the description's language (Chinese stays Chinese), routing hints (when-to-use vs
+when-NOT-to-use, cross-domain pointers like "走 lark-doc"), and length. Do not invent a new
+summary — adapt the upstream one. The result must contain zero `lark-cli`, zero `+cmd`, zero
+`references/*.md` paths, and zero direct-call tokens for raw-API names (the same bans the body has).
+
+**Output shape** (top of every adapted SKILL.md):
+
+```
+---
+name: lark-calendar
+description: "飞书日历：... 高频操作优先使用 lark_calendar_agenda、lark_calendar_create ... 涉及预约会议时先调用 lark_get_skill(domain=\"calendar\", section=\"schedule-meeting\")"
+---
+
+# calendar (v4)
+...
+```
+
+**Always emit a single double-quoted line** for the value, and escape inner double quotes as
+`\"` (YAML-safe). If the upstream used a `>` or `|` block scalar (e.g. whiteboard), collapse it
+to one quoted line. (The server's `extractSkillDescription` does parse block scalars as a
+fallback, but a single quoted line is what the CI quality test and every existing skill use —
+keep it uniform.)
 
 ### 2. Replace CLI commands with MCP tool calls
 
@@ -208,7 +260,7 @@ Dispatch as many agents in parallel as possible — there are no dependencies be
 Each agent, per skill:
 
 1. Read raw SKILL.md from `~/.agents/skills/lark-<domain>/SKILL.md`
-2. Apply transformation rules (respect conditional guards)
+2. Apply transformation rules (respect conditional guards) — including Rule 1: keep & adapt the `name`/`description` frontmatter
 3. Write result to `docker/skills/lark-<domain>/SKILL.md`
 4. For each `.md` file in the skill directory (references/, routes/, scenes/, style/, etc.):
    - Read, apply same rules, write to same relative path under `docker/skills/lark-<domain>/`
@@ -224,6 +276,11 @@ find docker/skills -name "*.md" -exec grep -l "lark-cli" {} \;         # must be
 find docker/skills -name "*.md" -exec grep -ln "\.\./lark-" {} \;      # no dead cross-links
 find docker/skills -name "*.md" -exec grep -ln "\-\-as " {} \;         # no --as leaks
 find docker/skills -name "*.md" -exec grep -ln "Read 工具\|Read tool" {} \;  # no Read tool refs
+
+# Every SKILL.md must keep a non-empty, single-quoted description frontmatter that itself
+# contains no CLI leaks. The authoritative gate is the vitest skill-quality test (it parses
+# the value exactly as server.js does); run it rather than relying on a weak grep:
+cd docker && npx vitest run __tests__/skill-quality.test.js && cd ..
 ```
 
 ### Phase 3: Review
@@ -241,6 +298,9 @@ re-review the affected files only.
 
 ## Quality checklist (per skill)
 
+- [ ] SKILL.md keeps `name` + non-empty `description` frontmatter as a **single double-quoted line** (no `>`/`|` block scalar — the server/CI parse it as a quoted scalar)
+- [ ] Description's CLI notation is adapted: no `lark-cli`, no `+cmd` (incl. after CJK punctuation like `：+agenda`、`、+create`), no `references/*.md`, and **no raw-API direct-call token** (e.g. `lark_vc_meeting_get(...)` — raw APIs go through `lark_invoke` or a prose reference)
+- [ ] Description's inner double quotes are escaped `\"`; the line parses as valid YAML
 - [ ] Zero `lark-cli` in code blocks and inline backticks
 - [ ] All `--flag value` converted to `flag="value"` inside tool call parens
 - [ ] `--params`/`--data` as readable JSON objects: `args={params: {"key":"val"}, data: {...}}` (not orphaned multi-line blobs)

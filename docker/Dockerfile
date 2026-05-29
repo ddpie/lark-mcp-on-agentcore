@@ -27,6 +27,7 @@ RUN npm install --omit=dev --no-audit --no-fund
 COPY generate-tools.js /app/generate-tools.js
 COPY shortcut-scopes.json /app/shortcut-scopes.json
 COPY server.js /app/server.js
+COPY skill-description.js /app/skill-description.js
 COPY tier1.json /app/tier1.json
 
 # Pre-adapted skills (committed to repo, reviewed before merge)

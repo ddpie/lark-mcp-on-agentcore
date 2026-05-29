@@ -31,6 +31,53 @@ describe.skipIf(skipIfNoSkills)('skill quality', () => {
     expect(allFiles.length).toBeGreaterThan(0);
   });
 
+  it('every skill directory has a SKILL.md (else it vanishes from lark_list_skills)', () => {
+    const missing = [];
+    for (const skillName of readdirSync(SKILLS_DIR, { withFileTypes: true })) {
+      if (!skillName.isDirectory()) continue;
+      if (!existsSync(join(SKILLS_DIR, skillName.name, 'SKILL.md'))) missing.push(skillName.name);
+    }
+    expect(missing, `skill dirs without SKILL.md:\n${missing.map(m => `  ${m}`).join('\n')}`).toEqual([]);
+  });
+
+  it('every SKILL.md has a non-empty, single-quoted description frontmatter (feeds lark_list_skills)', () => {
+    const violations = [];
+    for (const skillName of readdirSync(SKILLS_DIR)) {
+      const skillPath = join(SKILLS_DIR, skillName, 'SKILL.md');
+      if (!existsSync(skillPath)) continue;
+      const content = readFileSync(skillPath, 'utf8');
+      const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!fm) { violations.push({ skill: skillName, reason: 'no frontmatter block' }); continue; }
+      // Locate the description line. The adapt-skill rule mandates ONE double-quoted line —
+      // reject block scalars (`>`/`|`) and plain unquoted values, which the server would
+      // parse inconsistently or surface vacuously (e.g. a bare ">").
+      const descLine = fm[1].split(/\r?\n/).find(l => /^description:/.test(l));
+      if (!descLine) { violations.push({ skill: skillName, reason: 'no description key' }); continue; }
+      const rawVal = descLine.replace(/^description:[ \t]*/, '').trim();
+      if (/^[>|]/.test(rawVal)) { violations.push({ skill: skillName, reason: 'block scalar (>/|) — use a single double-quoted line' }); continue; }
+      if (!rawVal.startsWith('"')) { violations.push({ skill: skillName, reason: 'description must be a double-quoted scalar' }); continue; }
+      // Parse exactly as server.js does (JSON string semantics) so test == runtime.
+      let desc;
+      try { desc = JSON.parse(rawVal); } catch { desc = rawVal.replace(/^"|"$/g, '').replace(/\\"/g, '"'); }
+      desc = (desc || '').trim();
+      if (!desc) { violations.push({ skill: skillName, reason: 'empty description' }); continue; }
+      // The description feeds an agent's skill-selection decision; CLI notation must be adapted.
+      const leaks = [];
+      if (/lark-cli/.test(desc)) leaks.push('lark-cli');
+      // +cmd shortcut: a `+` not preceded by an alphanumeric (so C++/a+b don't trip) and
+      // followed by a lowercase letter. Catches CJK-punctuation prefixes like `：+agenda`、`、+create`.
+      if (/(?<![A-Za-z0-9])\+[a-z]/.test(desc)) leaks.push('+cmd shortcut');
+      if (/references\/[^\s]+\.md/.test(desc)) leaks.push('references/*.md path');
+      // Raw-API direct call: a lark_<svc>_<resource>_<method>(...) token for a name that is NOT
+      // a registered shortcut must go through lark_invoke. We can't load the catalog here, so we
+      // flag any direct-call token that is NOT immediately preceded by `tool_name="` and warn —
+      // the known raw-API name lark_vc_meeting_get is the canonical offender.
+      if (/(?<!tool_name=")\blark_vc_meeting_get\s*\(/.test(desc)) leaks.push('raw-API direct call (use lark_invoke)');
+      if (leaks.length) violations.push({ skill: skillName, reason: `unadapted CLI notation: ${leaks.join(', ')}` });
+    }
+    expect(violations, `description frontmatter issues:\n${violations.map(v => `  ${v.skill}: ${v.reason}`).join('\n')}`).toEqual([]);
+  });
+
   it('no lark-cli references in any file', () => {
     const violations = [];
     for (const file of allFiles) {
