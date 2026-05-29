@@ -456,6 +456,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "STATE_SECRET_PARAM": "/lark-mcp-on-agentcore/state-secret",
           },
         },
+        "FunctionName": "TestOAuthStack-middleware",
         "Handler": "index.handler",
         "LoggingConfig": {
           "LogGroup": {
@@ -551,6 +552,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
     "MiddlewareLogGroup77AF1D29": {
       "DeletionPolicy": "Delete",
       "Properties": {
+        "LogGroupName": "/aws/lambda/TestOAuthStack-middleware",
         "Tags": [
           {
             "Key": "project",
@@ -644,7 +646,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Type": "AWS::IAM::Role",
       "UpdateReplacePolicy": "Retain",
     },
-    "OAuthApiDeploymentAC5F88DBd540f4ebb69edc30d0aa41145fa72e83": {
+    "OAuthApiDeploymentAC5F88DB500949945a094bf8473011b52a767c79": {
       "DependsOn": [
         "OAuthApiwellknownoauthauthorizationserverGET561B1766",
         "OAuthApiwellknownoauthauthorizationserverA70044CC",
@@ -677,7 +679,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       ],
       "Properties": {
         "DeploymentId": {
-          "Ref": "OAuthApiDeploymentAC5F88DBd540f4ebb69edc30d0aa41145fa72e83",
+          "Ref": "OAuthApiDeploymentAC5F88DB500949945a094bf8473011b52a767c79",
         },
         "RestApiId": {
           "Ref": "OAuthApi8AB10ACC",
@@ -1688,6 +1690,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "STATE_SECRET_PARAM": "/lark-mcp-on-agentcore/state-secret",
           },
         },
+        "FunctionName": "TestOAuthStack-oauth",
         "Handler": "index.handler",
         "LoggingConfig": {
           "LogGroup": {
@@ -1883,6 +1886,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
     "OAuthLogGroupF9A7E869": {
       "DeletionPolicy": "Delete",
       "Properties": {
+        "LogGroupName": "/aws/lambda/TestOAuthStack-oauth",
         "Tags": [
           {
             "Key": "project",

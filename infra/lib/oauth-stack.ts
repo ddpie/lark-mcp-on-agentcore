@@ -31,8 +31,9 @@ const LOG_RETENTION_MAP: Record<string, logs.RetentionDays> = {
   "365": logs.RetentionDays.ONE_YEAR,
 };
 
-function createLogGroup(scope: Construct, id: string, retention?: logs.RetentionDays): logs.LogGroup {
+function createLogGroup(scope: Construct, id: string, fnName: string, retention?: logs.RetentionDays): logs.LogGroup {
   return new logs.LogGroup(scope, id, {
+    logGroupName: `/aws/lambda/${fnName}`,
     retention: retention ?? logs.RetentionDays.INFINITE,
     removalPolicy: cdk.RemovalPolicy.DESTROY,
   });
@@ -91,8 +92,10 @@ export class OAuthStack extends cdk.Stack {
 
     const oauthClientId = "lark-mcp-on-agentcore";
 
-    const oauthLogGroup = createLogGroup(this, "OAuthLogGroup", logRetention);
+    const oauthFnName = `${this.stackName}-oauth`;
+    const oauthLogGroup = createLogGroup(this, "OAuthLogGroup", oauthFnName, logRetention);
     const oauthFn = new nodejs.NodejsFunction(this, "OAuthFunction", {
+      functionName: oauthFnName,
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, "../../lambda/token-refresh-shim/index.ts"),
       projectRoot: path.join(__dirname, "../.."),
@@ -162,8 +165,10 @@ export class OAuthStack extends cdk.Stack {
     oauthFn.addEnvironment("OPENID_TABLE", openidTable.tableName);
 
     // Middleware Lambda (MCP proxy: token verify → SM → AgentCore)
-    const middlewareLogGroup = createLogGroup(this, "MiddlewareLogGroup", logRetention);
+    const middlewareFnName = `${this.stackName}-middleware`;
+    const middlewareLogGroup = createLogGroup(this, "MiddlewareLogGroup", middlewareFnName, logRetention);
     const middlewareFn = new nodejs.NodejsFunction(this, "MiddlewareFunction", {
+      functionName: middlewareFnName,
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, "../../lambda/mcp-middleware/index.ts"),
       projectRoot: path.join(__dirname, "../.."),
@@ -462,8 +467,10 @@ export class OAuthStack extends cdk.Stack {
     // Feishu webhook relay: SNS → Lambda (format to card) → Feishu bot webhook
     const alarmWebhook = process.env.ALARM_WEBHOOK_URL || "";
     if (alarmWebhook) {
-      const webhookLogGroup = createLogGroup(this, "WebhookLogGroup", logRetention);
+      const webhookFnName = `${this.stackName}-alarm-webhook`;
+      const webhookLogGroup = createLogGroup(this, "WebhookLogGroup", webhookFnName, logRetention);
       const webhookFn = new nodejs.NodejsFunction(this, "AlarmWebhookFunction", {
+        functionName: webhookFnName,
         runtime: lambda.Runtime.NODEJS_20_X,
         entry: path.join(__dirname, "../../lambda/alarm-webhook/index.ts"),
         projectRoot: path.join(__dirname, "../.."),

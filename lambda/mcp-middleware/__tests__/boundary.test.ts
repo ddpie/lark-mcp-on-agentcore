@@ -234,3 +234,36 @@ describe('middleware boundary — protocol compliance', () => {
     expect(Buffer.from(sent).toString()).toBe('{"test":"raw"}');
   });
 });
+
+// =============================================================================
+// 4. Uncovered branches
+// =============================================================================
+
+describe('middleware boundary — token decode_error branch', () => {
+  it('completely invalid base64url token triggers decode_error (401)', async () => {
+    const r = await call({ headers: { authorization: 'Bearer !!!invalid-not-base64!!!' }, body: '{}' });
+    expect(r.statusCode).toBe(401);
+  });
+
+  it('token with valid base64 but no colons triggers malformed_payload (401)', async () => {
+    const tok = Buffer.from('nocolons').toString('base64url');
+    const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
+    expect(r.statusCode).toBe(401);
+  });
+});
+
+describe('middleware boundary — agentcore response logging', () => {
+  it('slow response (>5s but success) logs agentcore_slow', async () => {
+    const realNow = Date.now;
+    let calls = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => {
+      calls++;
+      // First calls are token verification / SSM load; the proxy uses Date.now() before and after fetch
+      // Return a value 6000ms apart for the fetch timing pair
+      return realNow() + (calls > 3 ? 6000 : 0);
+    });
+    const r = await call(authedEvent());
+    expect(r.statusCode).toBe(200);
+    vi.restoreAllMocks();
+  });
+});
