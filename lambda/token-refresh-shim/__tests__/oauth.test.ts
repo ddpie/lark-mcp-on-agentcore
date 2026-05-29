@@ -7,7 +7,7 @@ process.env.OAUTH_CLIENT_SECRET = 'test-client-secret';
 process.env.CODE_TABLE = 'test-table';
 process.env.CALLBACK_URL = 'https://test.cloudfront.net/callback';
 process.env.SECRET_PREFIX = 'lark-mcp-on-agentcore/users';
-process.env.OPENID_PREFIX = 'lark-mcp-on-agentcore/openid-map';
+process.env.OPENID_TABLE = 'lark-mcp-on-agentcore-openid-map';
 process.env.APP_SECRET_ID = 'lark-mcp-on-agentcore/feishu-app';
 process.env.STATE_SECRET_PARAM = '/lark-mcp-on-agentcore/state-secret';
 process.env.OAUTH_CLIENT_ID = 'lark-mcp-on-agentcore';
@@ -465,8 +465,8 @@ describe('/callback — full Feishu exchange path', () => {
     const state1 = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'c1' });
     await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'c1', state: state1 } });
 
-    // Simulate: the mapping was stored — seed it explicitly
-    mockClient.secretsManager.__set('lark-mcp-on-agentcore/openid-map/ou_real_user', JSON.stringify({ userId: 'stable-id-from-first-login' }));
+    // Simulate: the mapping was stored — seed it explicitly in DDB
+    mockClient.dynamodb.__setOpenId('ou_real_user', 'stable-id-from-first-login');
 
     // Second login with same open_id: should reuse stable-id-from-first-login
     mockFeishu();
@@ -479,9 +479,9 @@ describe('/callback — full Feishu exchange path', () => {
     expect(stored).toBeDefined();
   });
 
-  it('throws when getOpenIdMapping hits SM throttle (not 404) — prevents identity fork', async () => {
+  it('throws when getOpenIdMapping hits DDB error — prevents identity fork', async () => {
     mockFeishu();
-    mockClient.secretsManager.__failGetMatching('openid-map', { name: 'ThrottlingException', message: 'rate exceeded' });
+    mockClient.dynamodb.__failOpenidGet({ name: 'ThrottlingException', message: 'rate exceeded' });
     const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'c' });
     await expect(call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } }))
       .rejects.toThrow('rate exceeded');
@@ -840,12 +840,11 @@ describe('verifyState — catch branch', () => {
 });
 
 // =============================================================================
-// storeOpenIdMapping — CreateSecret branch
+// openid mapping (DynamoDB)
 // =============================================================================
 
-describe('storeOpenIdMapping — error branches', () => {
-  it('getOpenIdMapping returns null → stableUserId = open_id (mapping not stored since equal)', async () => {
-    mockClient.secretsManager.__failGetMatching('openid-map', { name: 'ResourceNotFoundException', message: 'not found' });
+describe('openid mapping (DynamoDB)', () => {
+  it('getOpenIdMapping returns null for new user → stableUserId = open_id', async () => {
     vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
       if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app' }));
@@ -856,11 +855,12 @@ describe('storeOpenIdMapping — error branches', () => {
     const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'cc' });
     const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
     expect(r.statusCode).toBe(302);
+    // token stored under the open_id as userId
+    const stored = mockClient.secretsManager.__get('lark-mcp-on-agentcore/users/ou_new');
+    expect(stored).toBeDefined();
   });
 
-  it('storeOpenIdMapping logs error when Put fails with non-ResourceNotFound', async () => {
-    mockClient.secretsManager.__set('lark-mcp-on-agentcore/openid-map/ou_mapped', JSON.stringify({ userId: 'stable-mapped-id' }));
-    mockClient.secretsManager.__failPutMatching('openid-map', { name: 'AccessDeniedException', message: 'access denied' });
+  it('storeOpenIdMapping writes to DDB when stableUserId differs from open_id', async () => {
     vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
       const url = typeof input === 'string' ? input : input.url;
       if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app' }));
@@ -868,28 +868,16 @@ describe('storeOpenIdMapping — error branches', () => {
       if (url.includes('user_info')) return new Response(JSON.stringify({ code: 0, data: { name: 'Alice' } }));
       return new Response('{}');
     });
+    // Seed: mapping already exists pointing to a different stable id
+    mockClient.dynamodb.__setOpenId('ou_mapped', 'stable-mapped-id');
     const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'cc' });
     const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
     expect(r.statusCode).toBe(302);
-  });
-
-  it('storeOpenIdMapping logs error when Put throws ResourceNotFound and CreateSecret also fails', async () => {
-    // Put → ResourceNotFound, then Create → also fails
-    mockClient.secretsManager.__failPutMatching('openid-map', { name: 'ResourceNotFoundException', message: 'not found' });
-    mockClient.secretsManager.__failCreateMatching('openid-map', { name: 'LimitExceededException', message: 'too many secrets' });
-    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
-      const url = typeof input === 'string' ? input : input.url;
-      if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app' }));
-      if (url.includes('oidc/access_token')) return new Response(JSON.stringify({ code: 0, msg: 'ok', data: { access_token: 'tok', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_create_fail' } }));
-      if (url.includes('user_info')) return new Response(JSON.stringify({ code: 0, data: { name: 'Eve' } }));
-      return new Response('{}');
-    });
-    // getOpenIdMapping returns null → stableUserId = open_id. storeOpenIdMapping called but open_id === stableUserId so skipped (line 503).
-    // Need stableUserId !== open_id to trigger storeOpenIdMapping. Use the incremental-auth path.
-    const state = buildState({ u: 'different-user-id' });
-    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
-    // storeOpenIdMapping fails but is non-fatal
-    expect(r.statusCode).toBe(200);
+    // Token stored under the stable mapped id
+    const stored = mockClient.secretsManager.__get('lark-mcp-on-agentcore/users/stable-mapped-id');
+    expect(stored).toBeDefined();
+    // Mapping updated in DDB
+    expect(mockClient.dynamodb.__getOpenId('ou_mapped')).toBe('stable-mapped-id');
   });
 });
 

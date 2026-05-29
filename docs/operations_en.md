@@ -78,7 +78,7 @@ Completely destroys all deployed resources in dependency-safe order:
    - `lark-mcp-on-agentcore/feishu-app` Secret
    - `/lark-mcp-on-agentcore/state-secret` SSM
    - `/lark-mcp-on-agentcore/oauth-client-secret` SSM
-   - `lark-mcp-on-agentcore/openid-map/*` Secrets
+   - `lark-mcp-on-agentcore-openid-map` DynamoDB table
 
 Use `TEARDOWN_YES=1` to skip top-level confirmation (CI/CD scenarios).
 

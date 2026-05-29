@@ -96,7 +96,6 @@ export class OAuthStack extends cdk.Stack {
       environment: {
         CALLBACK_URL: "SET_AFTER_DEPLOY",
         SECRET_PREFIX: this.secretPrefix,
-        OPENID_PREFIX: "lark-mcp-on-agentcore/openid-map",
         APP_SECRET_ID: this.appSecretId,
         STATE_SECRET_PARAM: stateSecretParam,
         OAUTH_CLIENT_ID: oauthClientId,
@@ -117,7 +116,6 @@ export class OAuthStack extends cdk.Stack {
         "secretsmanager:GetSecretValue",
         "secretsmanager:PutSecretValue",
         "secretsmanager:CreateSecret",
-        "secretsmanager:DeleteSecret",
         // Required when CreateSecret is called with embedded Tags. Without this,
         // strict orgs with explicit Deny on TagResource block first-time
         // authorization for new users.
@@ -142,6 +140,17 @@ export class OAuthStack extends cdk.Stack {
     });
     codeTable.grantReadWriteData(oauthFn);
     oauthFn.addEnvironment("CODE_TABLE", codeTable.tableName);
+
+    // OpenID → stable userId mapping (migrated from Secrets Manager to DDB for cost)
+    const openidTable = new dynamodb.Table(this, "OpenIdMap", {
+      tableName: "lark-mcp-on-agentcore-openid-map",
+      partitionKey: { name: "openId", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    openidTable.grantReadWriteData(oauthFn);
+    oauthFn.addEnvironment("OPENID_TABLE", openidTable.tableName);
 
     // Middleware Lambda (MCP proxy: token verify → SM → AgentCore)
     const middlewareFn = new nodejs.NodejsFunction(this, "MiddlewareFunction", {

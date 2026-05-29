@@ -24,6 +24,7 @@ lambda/
   token-refresh-shim/ OAuth 流程 + Token 自动刷新 (preflight+retry)
                       __tests__/        单元测试 (vitest)
                       dynamodb-codes.ts OAuth code 临时存储
+                      dynamodb-openid.ts OpenID→userId 映射 (DynamoDB)
   mcp-middleware/     Token 验证 + SigV4 代理 + 25s timeout
   alarm-webhook/      SNS → 飞书群 Webhook (消息卡片格式转换)
 scripts/

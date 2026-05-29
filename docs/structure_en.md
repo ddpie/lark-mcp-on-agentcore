@@ -24,6 +24,7 @@ lambda/
   token-refresh-shim/ OAuth flow + token refresh (preflight + retry)
                       __tests__/        Unit tests (vitest)
                       dynamodb-codes.ts OAuth code temp store
+                      dynamodb-openid.ts OpenID→userId mapping (DynamoDB)
   mcp-middleware/     Token verification + SigV4 proxy + 25s timeout
   alarm-webhook/      SNS → Feishu webhook (message card formatting)
 scripts/
