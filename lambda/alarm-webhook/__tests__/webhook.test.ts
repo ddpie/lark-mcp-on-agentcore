@@ -185,4 +185,29 @@ describe('alarm-webhook Lambda', () => {
     expect(body.card.header.title.content).not.toContain('[');
     process.env.FEISHU_WEBHOOK_KEYWORD = orig;
   });
+
+  it('falls back to English when DEPLOY_LANG is unknown', async () => {
+    const orig = process.env.DEPLOY_LANG;
+    process.env.DEPLOY_LANG = 'xx';
+    vi.resetModules();
+    const { handler } = await import('../index');
+    await handler(snsEvent({ AlarmName: 'test', NewStateValue: 'ALARM', Region: 'us-west-2' }) as any);
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.card.header.title.content).toContain('ALARM');
+    expect(body.card.header.title.content).not.toContain('告警');
+    process.env.DEPLOY_LANG = orig;
+  });
+
+  it('uses AWS_REGION fallback when alarm has no Region field', async () => {
+    const origRegion = process.env.AWS_REGION;
+    process.env.AWS_REGION = 'ap-northeast-1';
+    vi.resetModules();
+    const { handler } = await import('../index');
+    await handler(snsEvent({ AlarmName: 'no-region', NewStateValue: 'ALARM' }) as any);
+    const body = JSON.parse(fetchCalls[0].init.body);
+    const fields = body.card.elements[0].fields;
+    const regionField = fields.find((f: any) => f.text.content.includes('ap-northeast-1'));
+    expect(regionField).toBeDefined();
+    process.env.AWS_REGION = origRegion;
+  });
 });

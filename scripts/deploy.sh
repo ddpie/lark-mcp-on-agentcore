@@ -744,10 +744,10 @@ if [ -z "$REGION_SELECTED" ]; then
   echo "  ${L[select_region]}"
   echo ""
   pick _REGION_PICK \
+    "ap-northeast-1   Tokyo" \
     "us-west-2        Oregon" \
     "us-east-1        Virginia" \
     "ap-southeast-1   Singapore" \
-    "ap-northeast-1   Tokyo" \
     "ap-southeast-2   Sydney" \
     "ap-south-1       Mumbai" \
     "eu-west-1        Ireland" \
