@@ -59,7 +59,8 @@ scope defaults), `docker/` (MCP server + container), `infra/` (CDK stacks),
 ## Testing
 
 `./scripts/test.sh` is the single entry point. Tests are vitest under
-`**/__tests__/`. Pre-push runs the offline suite automatically. After CDK changes
+`lambda/**/__tests__/`, `docker/__tests__/`, and `infra/test/`. Pre-push runs the
+offline suite automatically. After CDK changes
 run `cd infra && npm run test:update` to refresh the snapshot. The unit tier
 includes cdk-nag compliance (`infra/test/compliance.test.ts` — a new CDK resource
 tripping an AWS-Solutions rule fails until you add a `NagSuppressions` entry with

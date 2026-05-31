@@ -9,7 +9,7 @@ same change. Where an automated check exists, it is named; `scripts/check-invari
 | Source of truth | Generated / derived (do not edit) | Regenerate with |
 |---|---|---|
 | `docker/Dockerfile` (`ARG LARK_CLI_VERSION`) | `docker/shortcut-scopes.json._meta.lark_cli_version` | `scripts/extract-shortcut-scopes.py` (via bump runbook) |
-| `docker/shortcut-scopes.json` | `lambda/token-refresh-shim/scope-allowlist.ts` | `scripts/build-scope-allowlist.sh` |
+| `docker/shortcut-scopes.json` + `config/oauth-scopes.json` | `lambda/token-refresh-shim/scope-allowlist.ts` | `scripts/build-scope-allowlist.sh` |
 | `docker/shortcut-scopes.json` | container `generated-tools.json` | container build (`docker/generate-tools.js`) |
 | upstream lark-cli skills | `docker/skills/**` | re-adapt per `docs/skills/adapt-skill-for-mcp.md` |
 | CDK source (`infra/lib/*.ts`) | `infra/cdk.out/**`, CDK snapshot | `cd infra && npm run test:update` |
