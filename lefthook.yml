@@ -22,3 +22,5 @@ pre-push:
   jobs:
     - name: test
       run: ./scripts/test.sh
+    - name: docs-llm-check
+      run: ./scripts/check-docs-llm.sh
