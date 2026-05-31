@@ -176,9 +176,25 @@ function createSemaphore(maxConcurrent, maxQueueDepth) {
   };
 }
 
+// Single-flight: wrap an async fn so concurrent calls share ONE in-flight
+// invocation; once it settles (resolve or reject), the next call starts fresh.
+// Used to dedup loadAppSecret at the cache-TTL boundary, where a burst of
+// requests would otherwise each hit Secrets Manager (thundering herd).
+function createSingleFlight(fn) {
+  let inflight = null;
+  return function (...args) {
+    if (inflight) return inflight;
+    inflight = Promise.resolve()
+      .then(() => fn(...args))
+      .finally(() => { inflight = null; });
+    return inflight;
+  };
+}
+
 module.exports = {
   PERMISSION_ERROR_CODE,
   ServerBusyError,
+  createSingleFlight,
   toToolName,
   toSchemaKey,
   buildInputSchema,

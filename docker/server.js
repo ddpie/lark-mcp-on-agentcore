@@ -21,6 +21,7 @@ const {
   findByName: findByNameLib,
   patchPermissionError: patchPermissionErrorLib,
   createSemaphore,
+  createSingleFlight,
 } = require('./server-lib');
 
 process.on('uncaughtException', (err) => {
@@ -72,8 +73,11 @@ let appSecretExpiry = 0;
 const SECRET_CACHE_TTL = 30 * 60 * 1000; // 30 min
 const sm = new SecretsManagerClient({ region: REGION });
 
-async function loadAppSecret(maxRetries = 5) {
-  if (appSecretLoaded && Date.now() < appSecretExpiry) return;
+// The actual fetch+retry, deduped via single-flight: at the 30-min TTL boundary
+// a burst of in-flight requests would each call Secrets Manager (thundering
+// herd, risking ThrottlingException). createSingleFlight collapses concurrent
+// callers onto one fetch; the next call after it settles starts fresh.
+const loadAppSecretOnce = createSingleFlight(async (maxRetries) => {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const resp = await sm.send(new GetSecretValueCommand({ SecretId: APP_SECRET_ID }));
@@ -89,6 +93,13 @@ async function loadAppSecret(maxRetries = 5) {
       else throw e;
     }
   }
+});
+
+async function loadAppSecret(maxRetries = 5) {
+  // Cache hit short-circuits before single-flight, so steady-state requests pay
+  // nothing. Only a cache miss enters the deduped loader.
+  if (appSecretLoaded && Date.now() < appSecretExpiry) return;
+  return loadAppSecretOnce(maxRetries);
 }
 
 // Load tool catalog and tier1

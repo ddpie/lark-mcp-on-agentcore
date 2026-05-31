@@ -17,6 +17,7 @@ import {
   findByName,
   patchPermissionError,
   createSemaphore,
+  createSingleFlight,
 } from '../server-lib.js';
 
 const FAKE_CATALOG = {
@@ -304,5 +305,41 @@ describe('ServerBusyError', () => {
     expect(err.name).toBe('ServerBusyError');
     expect(err.message).toBe('server_busy');
     expect(err instanceof Error).toBe(true);
+  });
+});
+
+describe('createSingleFlight', () => {
+  it('collapses concurrent calls into ONE underlying invocation', async () => {
+    // Guards the loadAppSecret thundering-herd: at the TTL boundary, up to ~30
+    // in-flight requests must NOT each fire a Secrets Manager call.
+    let calls = 0;
+    let release;
+    const gate = new Promise(r => { release = r; });
+    const sf = createSingleFlight(async () => { calls++; await gate; return calls; });
+
+    const a = sf(); const b = sf(); const c = sf(); // three concurrent callers
+    release();
+    const [ra, rb, rc] = await Promise.all([a, b, c]);
+    expect(calls).toBe(1);          // one underlying call
+    expect([ra, rb, rc]).toEqual([1, 1, 1]); // all share the same result
+  });
+
+  it('allows a fresh call AFTER the in-flight one settles', async () => {
+    let calls = 0;
+    const sf = createSingleFlight(async () => { calls++; return calls; });
+    expect(await sf()).toBe(1);
+    expect(await sf()).toBe(2); // not deduped once the first settled
+    expect(calls).toBe(2);
+  });
+
+  it('propagates rejection to all in-flight callers and clears for retry', async () => {
+    let attempt = 0;
+    const sf = createSingleFlight(async () => { attempt++; if (attempt === 1) throw new Error('boom'); return 'ok'; });
+    const a = sf(); const b = sf();
+    await expect(a).rejects.toThrow('boom');
+    await expect(b).rejects.toThrow('boom'); // same failure shared
+    // After the failed flight clears, a retry can succeed.
+    expect(await sf()).toBe('ok');
+    expect(attempt).toBe(2);
   });
 });
