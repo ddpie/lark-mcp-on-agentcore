@@ -8,6 +8,7 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 const { extractSkillDescription } = require('./skill-description');
+const { isUnsafeSection, listAllSections, resolveSection } = require('./skill-sections');
 
 process.on('uncaughtException', (err) => {
   console.error(JSON.stringify({ level: 'FATAL', event: 'uncaughtException', error: err.message, stack: err.stack }));
@@ -501,53 +502,24 @@ async function handleRequest(req, res, body) {
         return;
       }
       const skillDir = `${SKILLS_DIR}/${entry.dir}`;
-      // Recursively list all .md files under a directory (relative paths without .md)
-      function listSections(dir, prefix = '') {
-        const results = [];
-        if (!fs.existsSync(dir)) return results;
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-          if (entry.isDirectory()) {
-            results.push(...listSections(`${dir}/${entry.name}`, `${prefix}${entry.name}/`));
-          } else if (entry.name.endsWith('.md')) {
-            results.push(`${prefix}${entry.name.replace('.md', '')}`);
-          }
-        }
-        return results;
-      }
 
       let content;
       if (section) {
-        if (/\\|\.\./.test(section)) {
+        if (isUnsafeSection(section)) {
           sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'invalid_section', message: 'section must not contain .. or backslash' }) }], isError: true } });
           return;
         }
-        // Search order: direct match, prefixed match, then subdir path
-        const candidates = [
-          `${skillDir}/references/${section}.md`,
-          `${skillDir}/references/lark-${entry.domain}-${section}.md`,
-          `${skillDir}/${section}.md`,  // routes/dsl.md, scenes/flowchart.md
-        ];
-        let filePath = candidates.find(p => fs.existsSync(p)) || null;
+        // Resolve markdown (no extension) or a text asset (.html/.txt/.csv, with
+        // extension + relative path). See skill-sections.js for the search order.
+        const filePath = resolveSection(skillDir, entry.domain, section);
         if (!filePath) {
-          // List all available sections across all subdirs
-          const available = [];
-          for (const sub of fs.readdirSync(skillDir, { withFileTypes: true })) {
-            if (sub.isDirectory() && sub.name !== 'node_modules') {
-              available.push(...listSections(`${skillDir}/${sub.name}`, `${sub.name}/`));
-            }
-          }
-          sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_section', section, available }) }], isError: true } });
+          sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_section', section, available: listAllSections(skillDir) }) }], isError: true } });
           return;
         }
         content = fs.readFileSync(filePath, 'utf8');
       } else {
         content = fs.readFileSync(`${skillDir}/SKILL.md`, 'utf8');
-        const allSections = [];
-        for (const sub of fs.readdirSync(skillDir, { withFileTypes: true })) {
-          if (sub.isDirectory() && sub.name !== 'node_modules') {
-            allSections.push(...listSections(`${skillDir}/${sub.name}`, `${sub.name}/`));
-          }
-        }
+        const allSections = listAllSections(skillDir);
         if (allSections.length > 0) {
           content += `\n\n---\nAvailable sections (use section parameter to fetch): ${allSections.join(', ')}`;
         }
@@ -608,15 +580,18 @@ async function handleRequest(req, res, body) {
   sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, error: { code: -32601, message: 'Method not found' } });
 }
 
+let shuttingDown = false;
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`lark-mcp-on-agentcore listening on :${PORT} (${tier1Tools.length} tier1 + ${allToolDefs.length} discoverable)`);
   loadAppSecret().catch(e => {
+    // If a graceful shutdown is already in progress, don't let the secret-load
+    // give-up race it and exit(1) — the shutdown handler owns the exit code.
+    if (shuttingDown) return;
     console.error(JSON.stringify({ level: 'CRITICAL', event: 'app_secret_load_giveup', error: e.message }));
     process.exit(1);
   });
 });
-
-let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;

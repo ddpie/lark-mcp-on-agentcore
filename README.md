@@ -8,7 +8,7 @@
 
 **在 [lark-cli](https://github.com/larksuite/cli) 之上构建的托管远程 MCP 服务——让支持远程 MCP 的客户端（如 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/)）能通过 200+ 工具调用飞书 2500+ API，并以正确的参数、顺序、前置条件完成多步操作。**
 
-[lark-cli](https://github.com/larksuite/cli) 是飞书官方命令行工具，封装了 2500+ API 为 200+ 工具，并附带 23 个业务域 Skill 沉淀多步编排的最佳实践（参数格式、调用顺序、前置条件）。本项目由容器内的 lark-cli 执行所有 API 调用，继承其全部能力（其中 Skill 已适配为 MCP 形态，按需加载）。在此基础上，补齐 lark-cli 在团队场景下的不足：
+[lark-cli](https://github.com/larksuite/cli) 是飞书官方命令行工具，封装了 2500+ API 为 200+ 工具，并附带 20+ 个业务域 Skill 沉淀多步编排的最佳实践（参数格式、调用顺序、前置条件）。本项目由容器内的 lark-cli 执行所有 API 调用，继承其全部能力（其中 Skill 已适配为 MCP 形态，按需加载）。在此基础上，补齐 lark-cli 在团队场景下的不足：
 
 - **业务用户零门槛。** 成员浏览器授权一次即用，无需本地安装或配置——非技术用户也能直接上手；每人以自己飞书身份调用，数据按用户隔离。
 - **IT 集中管控。** 只创建一个飞书应用、管理员部署一次，全员共用。飞书应用与凭证集中管理，IT 可统一审计权限范围、应用可见性；token 服务端加密存储并自动刷新。
@@ -34,7 +34,7 @@
 
 参数格式、调用顺序、"先查忙闲再订会议室"这类前置约束，都来自 lark-cli 官方 Skill——本项目改写为 MCP 形态后按需加载。所有操作以用户自己的飞书身份执行，数据按用户隔离。
 
-→ 完整时序图与 23 个编排域清单见 [智能编排详解](docs/skills_zh.md)。
+→ 完整时序图与编排域清单见 [智能编排详解](docs/skills_zh.md)。
 
 ## 部署
 
@@ -71,7 +71,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 | 差异化 | 说明 |
 |---|---|
-| **智能编排** | 把 lark-cli 官方 23 个业务域 Skill 改写为纯 MCP 形态、按需加载——让支持远程 MCP 的客户端也能在操作前读到这些最佳实践 |
+| **智能编排** | 把 lark-cli 官方 20+ 个业务域 Skill 改写为纯 MCP 形态、按需加载——让支持远程 MCP 的客户端也能在操作前读到这些最佳实践 |
 | **业务用户零门槛、IT 集中管控** | 只创建一个飞书应用、管理员部署一次，全员共用——非技术成员浏览器授权一次即用；飞书应用集中管理，IT 可统一审计权限与可见性；每位用户以自己飞书身份调用，数据按用户隔离 |
 
 <details>
@@ -139,11 +139,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 ## 智能编排 (Skill)
 
-lark-cli 官方 23 个业务域 Skill 沉淀了多步操作的最佳实践——参数格式、调用顺序、前置条件。但这些 Skill 原本依赖客户端 shell 执行 lark-cli + 读取本地 md 文件，支持远程 MCP 的客户端用不上。本项目把它们改写成纯 MCP 形态，通过 `lark_get_skill` 按需加载——例如"约个产品评审会"自动走 解析参会人→查忙闲→推荐时段→订会议室→建日程→创建待办。按需加载，不占用固定 context。
+lark-cli 官方 20+ 个业务域 Skill 沉淀了多步操作的最佳实践——参数格式、调用顺序、前置条件。但这些 Skill 原本依赖客户端 shell 执行 lark-cli + 读取本地 md 文件，支持远程 MCP 的客户端用不上。本项目把它们改写成纯 MCP 形态，通过 `lark_get_skill` 按需加载——例如"约个产品评审会"自动走 解析参会人→查忙闲→推荐时段→订会议室→建日程→创建待办。按需加载，不占用固定 context。
 
-覆盖日历、IM、多维表格、邮件、文档、视频会议、任务、知识库、电子表格、OKR、妙记、画板…… 等 23 个业务域。
+覆盖日历、IM、多维表格、邮件、文档、视频会议、任务、知识库、电子表格、OKR、妙记、画板…… 等 20+ 个业务域。
 
-→ 详见 [智能编排详解（含时序图 + 23 域清单）](docs/skills_zh.md)
+→ 详见 [智能编排详解（含时序图 + 完整域清单）](docs/skills_zh.md)
 
 ## 文档
 
@@ -182,7 +182,7 @@ MIT
 
 **A hosted remote MCP service built on top of [lark-cli](https://github.com/larksuite/cli) — so remote MCP clients (e.g. [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/)) can call Feishu's 2500+ APIs via 200+ tools, and complete multi-step operations with the right parameters, order, and preconditions.**
 
-[lark-cli](https://github.com/larksuite/cli) is Feishu's official command-line tool that wraps the 2500+ APIs into 200+ tools and ships 23 domain Skills capturing multi-step orchestration best practices (parameter formats, call order, preconditions). This project executes all API calls via lark-cli inside the container, inheriting its full capabilities (Skills included, adapted into MCP form and loaded on demand). On top of that, it fills the gaps lark-cli has as a team service:
+[lark-cli](https://github.com/larksuite/cli) is Feishu's official command-line tool that wraps the 2500+ APIs into 200+ tools and ships 20+ domain Skills capturing multi-step orchestration best practices (parameter formats, call order, preconditions). This project executes all API calls via lark-cli inside the container, inheriting its full capabilities (Skills included, adapted into MCP form and loaded on demand). On top of that, it fills the gaps lark-cli has as a team service:
 
 - **Zero-friction for end users.** Members authorize once in the browser — no local install, no config, no technical skill required. Every call runs under each user's own Feishu identity, data isolated per user.
 - **Centrally managed for IT.** One Feishu app, one admin deploy, shared by everyone. The Feishu app and its credentials are managed centrally, so IT can audit scopes and app visibility in one place; tokens are encrypted server-side and auto-refreshed.
@@ -208,7 +208,7 @@ Once a remote MCP client connects to this service, the AI first loads the calend
 
 Parameter formats, call order, and preconditions like "check free/busy before booking a room" all come from lark-cli's official Skills — this project rewrites them into MCP form and loads them on demand. Every action runs under the user's own Feishu identity, data isolated per user.
 
-→ Full sequence diagram and the list of 23 orchestration domains: [Smart Orchestration details](docs/skills_en.md).
+→ Full sequence diagram and the list of orchestration domains: [Smart Orchestration details](docs/skills_en.md).
 
 ## Deploy
 
@@ -245,7 +245,7 @@ Requests from a remote MCP client (e.g., Quick Desktop) → CloudFront → API G
 
 | Differentiator | Description |
 |---|---|
-| **Smart orchestration** | lark-cli's official 23 domain Skills, rewritten into pure-MCP form and loaded on demand — so remote MCP clients can also read these best practices before acting |
+| **Smart orchestration** | lark-cli's official 20+ domain Skills, rewritten into pure-MCP form and loaded on demand — so remote MCP clients can also read these best practices before acting |
 | **Zero-friction for users, centrally managed for IT** | One Feishu app, one admin deploy, shared by everyone — non-technical members authorize once in the browser; the Feishu app is managed centrally, so IT can audit scopes and visibility in one place; each user acts under their own Feishu identity, data isolated per user |
 
 <details>
@@ -313,11 +313,11 @@ High-frequency tools are called directly; for complex orchestration (e.g., "sche
 
 ## Smart Orchestration (Skill)
 
-lark-cli's official 23 domain Skills capture multi-step best practices — parameter formats, call order, preconditions. But those Skills originally relied on the client shell-executing lark-cli and reading local md files, so remote MCP clients couldn't use them. This project rewrites them into pure-MCP form and loads them on demand via `lark_get_skill` — e.g., "schedule a product review" follows resolve attendees → check free/busy → suggest slots → book room → create event → create follow-up. Loaded on demand, no fixed context cost.
+lark-cli's official 20+ domain Skills capture multi-step best practices — parameter formats, call order, preconditions. But those Skills originally relied on the client shell-executing lark-cli and reading local md files, so remote MCP clients couldn't use them. This project rewrites them into pure-MCP form and loads them on demand via `lark_get_skill` — e.g., "schedule a product review" follows resolve attendees → check free/busy → suggest slots → book room → create event → create follow-up. Loaded on demand, no fixed context cost.
 
-Spanning 23 domains: Calendar, IM, Bitable, Mail, Docs, VC, Task, Wiki, Sheets, OKR, Minutes, Whiteboard, and more.
+Spanning 20+ domains: Calendar, IM, Bitable, Mail, Docs, VC, Task, Wiki, Sheets, OKR, Minutes, Whiteboard, and more.
 
-→ See [Smart Orchestration details (sequence diagram + 23-domain list)](docs/skills_en.md)
+→ See [Smart Orchestration details (sequence diagram + full domain list)](docs/skills_en.md)
 
 ## Docs
 

@@ -76,7 +76,7 @@ lark_vc_recording(meeting_ids="69xxxxxxxxxxxxx28", format="json")
 lark_vc_recording(meeting_ids="xxx")
 
 # 第 2 步：使用上一步返回的 minute_token 下载妙记文件
-lark_minutes_download(minute_token="<minute_token>")
+lark_minutes_download(minute_tokens="<minute_token>")
 ```
 
 ### 场景 2：知道 meeting_id，想查询妙记基础信息
@@ -111,7 +111,7 @@ lark_vc_search(query="周会", start="2026-03-10")
 lark_vc_recording(meeting_ids="<ids>")
 
 # 第 3 步：使用其中一个 minute_token 下载妙记文件
-lark_minutes_download(minute_token="<token>")
+lark_minutes_download(minute_tokens="<token>")
 ```
 
 ### 场景 5：从日历事件获取录制
@@ -121,7 +121,7 @@ lark_minutes_download(minute_token="<token>")
 lark_vc_recording(calendar_event_ids="<event_id>")
 
 # 第 2 步：使用上一步返回的 minute_token 下载妙记文件
-lark_minutes_download(minute_token="<minute_token>")
+lark_minutes_download(minute_tokens="<minute_token>")
 ```
 
 ## 常见错误与排查

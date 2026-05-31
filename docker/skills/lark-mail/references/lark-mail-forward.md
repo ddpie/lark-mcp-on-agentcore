@@ -11,6 +11,8 @@
 
 ## CRITICAL — 发送工作流（必须遵循）
 
+**CRITICAL - 编辑邮件内容前 MUST 先调用 `lark_get_skill(domain="mail", section="html")`，其中包含邮件书写规范**
+
 此工具默认**只保存草稿**，不会发送邮件。转发会将原邮件内容发送给新收件人，需要发送时有两种合规方式：
 
 **方式 A（推荐）** — 创建转发草稿（不带 `confirm_send`）：
@@ -55,7 +57,8 @@ lark_mail_forward(message_id="<邮件ID>", to="alice@example.com", confirm_send=
 |------|------|------|
 | `message_id` | 是 | 被转发的邮件 ID |
 | `to` | 是 | 收件人邮箱，多个用逗号分隔 |
-| `body` | 否 | 转发时附加的说明文字。推荐使用 HTML 获得富文本排版；也支持纯文本。根据转发正文和原邮件正文自动检测 HTML。使用 `plain_text=true` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径） |
+| `body` | 否 | 转发时附加的说明文字。推荐使用 HTML 获得富文本排版；也支持纯文本。根据转发正文和原邮件正文自动检测 HTML。使用 `plain_text=true` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径）。与 `body_file` 互斥 |
+| `body_file` | 否 | 从文件读取转发说明 HTML（相对路径，仅限 cwd 子树）。与 `body` 互斥。文件大小上限 32 MB |
 | `from` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `mailbox` 指定所属邮箱。默认读取邮箱主地址 |
 | `mailbox` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `from`，再回退到 `me`）。当发件人（`from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `cc` | 否 | 抄送邮箱，多个用逗号分隔 |

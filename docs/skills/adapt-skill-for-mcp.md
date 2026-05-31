@@ -20,6 +20,7 @@ local files) into a format suitable for downstream agents calling our Remote MCP
 | 6 | CLI terminology → tool terminology; delete pipelines |
 | 6b | Bot-only ops → add ⚠️ warning |
 | 7 | Preserve orchestration logic, CRITICAL markers, language |
+| 8 | Text assets (`.html`/`.txt`/`.csv`): copy verbatim; `cat local-file` → `lark_get_skill(section="assets/...")` |
 
 ## When to use
 
@@ -224,6 +225,36 @@ documented as bot-only (`tenant_access_token` required, no user auth support), a
 - Original language (Chinese stays Chinese, English stays English)
 - Markdown formatting
 
+### 8. Copy text assets verbatim; rewrite local-file reads
+
+Some skills ship **non-markdown text assets** alongside their `.md` files — e.g.
+`lark-mail/assets/templates/*.html` (static email templates). The server serves these through
+`lark_get_skill` for the allow-listed text extensions **`.html`, `.txt`, `.csv`** (see
+`docker/skill-sections.js`). Handle them like this:
+
+- **Copy the asset file verbatim** to the same relative path under `docker/skills/lark-<domain>/`
+  (e.g. `assets/templates/weekly--team-report.html`). Do **NOT** apply the CLI→MCP text rules to
+  asset bodies — an HTML template is data, not skill prose. Preserve the `assets/` directory
+  structure as-is.
+- **Rewrite local-file reads** in the `.md` that references them. The raw skill reads assets off
+  the local filesystem (`cat skills/lark-mail/assets/templates/x.html`, or a relative
+  `[`../assets/templates/`](../assets/templates/)` link) — neither works for a downstream agent
+  with no filesystem. Replace with a `lark_get_skill` call that addresses the asset **with its
+  extension and path relative to the skill dir**:
+
+  | Original (local read) | Adapted (MCP) |
+  |-----------------------|---------------|
+  | `cat skills/lark-mail/assets/templates/weekly--team-report.html` | `lark_get_skill(domain="mail", section="assets/templates/weekly--team-report.html")` |
+  | `[`../assets/templates/`](../assets/templates/)` (browse the dir) | prose: 用 `lark_get_skill(domain="mail", section="assets/templates/<name>.html")` 按名取用某个模板 |
+
+  Note the asset section **keeps its `.md`-less peers' convention inverted**: markdown sections
+  are addressed without an extension (`section="create"`), but assets are addressed **with** the
+  full filename+extension (`section="assets/templates/x.html"`), because that is how
+  `skill-sections.js` lists and resolves them.
+- **Binary assets are NOT supported** (images, PDFs, fonts, …) — the server returns text only. If
+  a skill depends on a binary asset, add a ⚠️ note that it is unavailable via the MCP server
+  rather than inventing a broken reference.
+
 ## Excluded skills (do not adapt)
 
 - `lark-shared` — auth-only, not relevant
@@ -245,27 +276,94 @@ a false negative (leaving an actionable CLI command unconverted).
 
 ## Execution workflow
 
+### Phase 0: Diff analysis (which skills to re-adapt)
+
+Re-adaptation is **incremental by default**: re-adapt only the `docker/skills/` domains whose
+upstream source changed between the OLD and NEW lark-cli versions. (This is distinct from scope
+extraction in the bump runbook, which is **always full** — it re-scans every shortcut regardless
+of this diff. Phase 0 governs ONLY which skills below get transformed.)
+
+Inputs come from the bump runbook ([`bump-lark-cli.md`](bump-lark-cli.md) Step 8): `OLD_VER`,
+`NEW_VER`, two shallow single-tag source clones at `/tmp/lark-cli-$OLD_VER` and
+`/tmp/lark-cli-$NEW_VER`, and the computed `READAPT` domain list. The clones share no git
+history, so diff the on-disk trees with `git diff --no-index` (NOT `git diff v$OLD_VER..v$NEW_VER`,
+which fails on shallow clones). `git diff --no-index` exits 1 when differences exist, so always
+guard with `2>/dev/null || true` under `set -e`.
+
+```bash
+EXCL='lark-shared|lark-skill-maker|lark-event'
+# CHANGED: any domain with a differing/added/deleted file under skills/lark-<domain>/.
+# Parse `diff --git` headers so delete-only domains are not lost (--name-only would drop them).
+mapfile -t CHANGED < <(
+  git diff --no-index /tmp/lark-cli-$OLD_VER/skills /tmp/lark-cli-$NEW_VER/skills 2>/dev/null \
+    | grep '^diff --git ' | grep -oE 'skills/lark-[a-z-]+' | sed -E 's#^skills/##' \
+    | sort -u | grep -vxE "$EXCL" | grep -vxE '^$' || true
+)
+# ADDED: in NEW not OLD (no prior adapted version → adapt FRESH).
+mapfile -t ADDED < <(comm -13 <(ls -1 /tmp/lark-cli-$OLD_VER/skills|sort) <(ls -1 /tmp/lark-cli-$NEW_VER/skills|sort) | grep -vxE "$EXCL" | grep -vxE '^$' || true)
+# REMOVED: in OLD not NEW. Deletions also emit `diff --git` headers, so REMOVED leaks into
+# CHANGED — it MUST be subtracted. REMOVED domains are only `rm -rf`'d (bump Step 8), never adapted.
+mapfile -t REMOVED < <(comm -23 <(ls -1 /tmp/lark-cli-$OLD_VER/skills|sort) <(ls -1 /tmp/lark-cli-$NEW_VER/skills|sort) | grep -vxE '^$' || true)
+# Re-adapt set = (CHANGED ∪ ADDED) \ REMOVED
+mapfile -t READAPT < <(comm -23 <(printf '%s\n' "${CHANGED[@]}" "${ADDED[@]}" | grep -vxE '^$' | sort -u) <(printf '%s\n' "${REMOVED[@]}" | grep -vxE '^$' | sort -u))
+echo "RE-ADAPT (${#READAPT[@]}): ${READAPT[*]}"
+```
+
+If `READAPT` is empty, re-adapt nothing. `N = ${#READAPT[@]}` — dispatch one Phase 1 agent per
+domain in `READAPT` (see Phase 1).
+
+**Force a FULL re-adapt (ignore the diff; `N` = every adaptable domain) when:**
+
+- The transformation RULES below (Rules 1–8, section-resolution, tool-naming, quality checklist)
+  change — the diff only tells you which *upstream* skills changed, not whether already-committed
+  output still complies with the *current* rules. A rule change makes even upstream-unchanged
+  output stale, and is invisible to both the diff and `npm test` (skill-quality only re-validates
+  format on existing dirs), so the full re-adapt must be done manually.
+- `docker/server.js` skill-serving semantics change (`extractSkillDescription` /
+  section-resolution).
+
 ### Phase 1: Transform
 
-Dispatch as many agents in parallel as possible — there are no dependencies between skills.
+Dispatch one agent per domain in the Phase 0 `READAPT` set, in parallel — there are no
+dependencies between skills. **`N` = the number of changed domains**, or **all adaptable
+domains** when a Phase 0 full-re-adapt trigger fired. Do not hardcode the agent count; derive it
+from `READAPT`.
+
+Use the table below to size effort per skill (solo agent for high/medium complexity; batch the
+low-complexity ones), but only for the domains actually in `READAPT`:
 
 | Complexity | Skills | Strategy |
 |-----------|--------|----------|
-| High (10+ references) | calendar, base, drive, im, doc | Solo agent per skill (5 agents) |
-| Medium (3-9 references) | mail, task, wiki, sheets, whiteboard, vc | Solo agent per skill (6 agents) |
-| Low (1-2 files) | approval, attendance, contact, okr / markdown, slides, apps, minutes / workflow-meeting-summary, workflow-standup-report, openapi-explorer, vc-agent | 3 agents (3-4 skills each) |
+| High (10+ references) | calendar, base, drive, im, doc | Solo agent per skill |
+| Medium (3-9 references) | mail, task, wiki, sheets, whiteboard, vc | Solo agent per skill |
+| Low (1-2 files) | approval, attendance, contact, okr / markdown, slides, apps, minutes / workflow-meeting-summary, workflow-standup-report, openapi-explorer, vc-agent | Batch 3-4 skills per agent |
 
-**Target: 14 parallel agents.** No skill depends on another — full parallelism is safe.
+(When every adaptable domain is in `READAPT`, this is the full ~14-agent fan-out the table
+describes; when only a few changed, dispatch only those.)
 
 Each agent, per skill:
 
-1. Read raw SKILL.md from `~/.agents/skills/lark-<domain>/SKILL.md`
+1. Read the upstream per-skill diff for semantic-change context, then read the raw SKILL.md:
+   ```bash
+   # OLD vs NEW upstream source for this domain. --no-index because the two /tmp clones share no
+   # git history; `|| true` because it exits 1 on differences.
+   git diff --no-index /tmp/lark-cli-$OLD_VER/skills/lark-<domain> /tmp/lark-cli-$NEW_VER/skills/lark-<domain> 2>/dev/null || true
+   ```
+   Use this diff to catch **semantic** changes a mechanical CLI→MCP rewrite would miss: new
+   `+shortcuts` (adapt into new `lark_<svc>_<cmd>` tools), new/renamed reference files (new
+   `lark_get_skill` sections), changed routing hints in the description, new artifacts or
+   workflow steps. **ADDED domains have no OLD dir** — the command above errors and yields
+   nothing, so for an added domain skip the diff and read the entire NEW tree directly
+   (`ls -R /tmp/lark-cli-$NEW_VER/skills/lark-<domain>`, then read each file). Then read the raw
+   SKILL.md from `~/.agents/skills/lark-<domain>/SKILL.md`.
 2. Apply transformation rules (respect conditional guards) — including Rule 1: keep & adapt the `name`/`description` frontmatter
 3. Write result to `docker/skills/lark-<domain>/SKILL.md`
 4. For each `.md` file in the skill directory (references/, routes/, scenes/, style/, etc.):
    - Read, apply same rules, write to same relative path under `docker/skills/lark-<domain>/`
+   - Use the per-skill diff to confirm every file added/renamed/deleted upstream is reflected (added files written, deleted files removed)
    - Note: files in subdirs like `references/style/` are accessible to agents via full SKILL.md text but not individually via `lark_get_skill(section=...)`. Preserve their directory structure as-is.
-5. Self-verify: `grep -c "lark-cli"` on all output files — must be 0
+   - For **text assets** (`.html`/`.txt`/`.csv`, e.g. `assets/templates/*.html`): copy verbatim (Rule 8 — no CLI→MCP transform on the asset body), and rewrite any `cat local-file` / relative-link reads of them in the `.md` to `lark_get_skill(section="assets/...")`. Skip binary assets (flag as unavailable).
+5. Self-verify: `grep -c "lark-cli"` on all output files — must be 0 (asset bodies are exempt — they are copied verbatim, so a literal `lark-cli` inside a template is fine; check the `.md` files)
 
 ### Phase 2: Verify
 

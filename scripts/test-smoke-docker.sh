@@ -103,15 +103,20 @@ elif [ "$STATE" = "running" ]; then
     fail "tools/list unexpected: ${TOOLS_RESP:0:100}"
   fi
 
-  # Step 5: Graceful shutdown
+  # Step 5: Graceful shutdown.
+  # The server's SIGTERM handler waits ~7s (server.close + child drain) before
+  # process.exit(0), so allow a grace period comfortably above that. Exit 0 is
+  # the clean path; 143 is SIGTERM-without-handler (128+15). A non-clean exit
+  # here is a real regression — e.g. the secret-load give-up racing the shutdown
+  # handler and winning with exit(1) — so this gates.
   echo ""
   echo "── Shutdown ──"
-  docker stop -t 10 "$CONTAINER" >/dev/null 2>&1
+  docker stop -t 15 "$CONTAINER" >/dev/null 2>&1
   EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' "$CONTAINER" 2>/dev/null || echo "?")
   if [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "143" ]; then
     pass "Graceful shutdown (exit code $EXIT_CODE)"
   else
-    fail "Shutdown exit code: $EXIT_CODE"
+    fail "Graceful shutdown non-clean (exit code $EXIT_CODE)"
   fi
 else
   fail "Container in unexpected state: $STATE"

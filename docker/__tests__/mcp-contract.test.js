@@ -80,8 +80,11 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
 let skillsAvailable = false;
 try {
   mkdirSync('/app/skills/lark-calendar/references', { recursive: true });
+  mkdirSync('/app/skills/lark-calendar/assets/templates', { recursive: true });
   writeFileSync('/app/skills/lark-calendar/SKILL.md', '---\nname: lark-calendar\ndescription: "Calendar orchestration guide"\n---\n\n# calendar (v4)\n\nTest skill content for calendar domain.');
   writeFileSync('/app/skills/lark-calendar/references/lark-calendar-create.md', '# calendar +create\n\nTest reference content.');
+  // Text asset (方案 B): served verbatim through lark_get_skill with extension + path.
+  writeFileSync('/app/skills/lark-calendar/assets/templates/sample.html', '<html><body>SAMPLE_TEMPLATE_MARKER</body></html>');
   skillsAvailable = existsSync('/app/skills/lark-calendar/SKILL.md');
 } catch (e) { /* /app may not be writable in some envs */ }
 
@@ -666,6 +669,46 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       expect(data.result).toBeDefined();
       expect(data.result.isError).toBeUndefined();
       expect(data.result.content[0].text.length).toBeGreaterThan(10);
+    });
+
+    it.skipIf(!skillsAvailable)('lark_get_skill serves a text asset addressed with extension + path (方案 B)', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_get_skill',
+        arguments: { domain: 'calendar', section: 'assets/templates/sample.html' },
+      }, 67);
+      const { data } = parseSSE(body);
+
+      expect(data.result).toBeDefined();
+      expect(data.result.isError).toBeUndefined();
+      // Served verbatim — the raw HTML, not transformed.
+      expect(data.result.content[0].text).toContain('SAMPLE_TEMPLATE_MARKER');
+    });
+
+    it.skipIf(!skillsAvailable)('lark_get_skill lists text assets (with extension) among available sections', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_get_skill',
+        arguments: { domain: 'calendar' },
+      }, 68);
+      const { data } = parseSSE(body);
+
+      expect(data.result.isError).toBeUndefined();
+      const text = data.result.content[0].text;
+      // Markdown listed without extension; the asset listed with its extension + path.
+      expect(text).toContain('assets/templates/sample.html');
+      expect(text).toContain('references/lark-calendar-create');
+    });
+
+    it.skipIf(!skillsAvailable)('lark_get_skill returns unknown_section listing assets for a missing section', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_get_skill',
+        arguments: { domain: 'calendar', section: 'does-not-exist' },
+      }, 70);
+      const { data } = parseSSE(body);
+
+      expect(data.result.isError).toBe(true);
+      const inner = JSON.parse(data.result.content[0].text);
+      expect(inner.error).toBe('unknown_section');
+      expect(inner.available).toContain('assets/templates/sample.html');
     });
 
     it('lark_discover does not require auth token', async () => {
