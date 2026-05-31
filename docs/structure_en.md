@@ -40,8 +40,9 @@ scripts/
   build-scope-allowlist.sh   Regenerate OAuth scope allowlist
 ```
 
-.claude/skills/  (Claude Code project-level skills)
-  bump-lark-cli.md   lark-cli version upgrade runbook (extraction strategy + steps)
+docs/skills/  (runbooks for AI-assisted maintenance)
+  bump-lark-cli.md       lark-cli version upgrade runbook (extraction strategy + steps)
+  adapt-skill-for-mcp.md  rules for transforming lark-cli skills into MCP form
 
 .local/ (gitignored, per-deployment state)
   deploy-config            Deploy configuration memory

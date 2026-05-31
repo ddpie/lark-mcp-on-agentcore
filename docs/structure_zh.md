@@ -40,8 +40,9 @@ scripts/
   build-scope-allowlist.sh   重新生成 OAuth scope allowlist
 ```
 
-.claude/skills/  （Claude Code 项目级 skill）
-  bump-lark-cli.md   lark-cli 版本升级 runbook (提取策略 + 步骤)
+docs/skills/  （AI 辅助维护的 runbook）
+  bump-lark-cli.md       lark-cli 版本升级 runbook (提取策略 + 步骤)
+  adapt-skill-for-mcp.md  把 lark-cli skill 转换为 MCP 形态的规则
 
 .local/ （已 gitignore，存储每次部署的本地状态）
   deploy-config            部署配置记忆
