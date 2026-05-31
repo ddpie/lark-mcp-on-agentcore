@@ -40,7 +40,8 @@ case "${1:-help}" in
   status)
     echo "=== 系统状态 ==="
     echo ""
-    USERS=$(aws secretsmanager list-secrets --region $REGION --filters "Key=name,Values=${SECRET_PREFIX}" --query 'SecretList | length(@)' --output text 2>/dev/null || echo "?")
+    # length(@) is per-page under the CLI paginator (prints "10\n6" past one page); count names client-side.
+    USERS=$(aws secretsmanager list-secrets --region $REGION --filters "Key=name,Values=${SECRET_PREFIX}" --query 'SecretList[].Name' --output text 2>/dev/null | tr '\t' '\n' | grep -c . || echo "?")
     echo "  已授权用户: ${USERS}"
     EB_RULE=$(aws events list-rules --name-prefix LarkMcpOnAgentCoreOAuth --region $REGION --query 'Rules[0].Name' --output text 2>/dev/null || echo "")
     if [ -z "$EB_RULE" ] || [ "$EB_RULE" = "None" ]; then EB="未找到"; else

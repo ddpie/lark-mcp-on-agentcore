@@ -108,6 +108,36 @@ describe('parseFlags', () => {
     expect(flags[0].description).toBe('string   The mode');
   });
 
+  // Regression: cobra boolean flags render with NO type token and NO default
+  // annotation (e.g. `--has-chatted   restrict to users...`). They were being
+  // misclassified as `string`, so server.js emitted `--has-chatted true`, which
+  // lark-cli rejects as an unexpected positional arg. A flag with no type token
+  // is a boolean.
+  it('detects a boolean flag from the ABSENCE of a type token', () => {
+    const { flags } = parseFlags('Flags:\n      --has-chatted   restrict to users you have chatted with');
+    expect(flags[0]).toMatchObject({ name: 'has-chatted', type: 'boolean', required: false });
+  });
+
+  it('classifies an int type token as number', () => {
+    const { flags } = parseFlags('Flags:\n      --page-size int   rows per request, 1-30');
+    expect(flags[0]).toMatchObject({ name: 'page-size', type: 'number' });
+  });
+
+  it('classifies a float type token as number', () => {
+    const { flags } = parseFlags('Flags:\n      --ratio float   scale factor');
+    expect(flags[0]).toMatchObject({ name: 'ratio', type: 'number' });
+  });
+
+  it('keeps string-like type tokens (string, stringArray, duration) as string', () => {
+    expect(parseFlags('Flags:\n      --tags stringArray   labels').flags[0]).toMatchObject({ name: 'tags', type: 'string' });
+    expect(parseFlags('Flags:\n      --wait duration   timeout').flags[0]).toMatchObject({ name: 'wait', type: 'string' });
+  });
+
+  it('still treats a boolean with (default: false) as boolean (no type token)', () => {
+    const { flags } = parseFlags('Flags:\n      --page-all   Fetch all pages (default: false)');
+    expect(flags[0]).toMatchObject({ name: 'page-all', type: 'boolean' });
+  });
+
   it('returns no flags when there is no flag section', () => {
     expect(parseFlags('Just a description, no flags here')).toEqual({ flags: [], supportsYes: false });
   });

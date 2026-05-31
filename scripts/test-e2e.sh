@@ -76,8 +76,12 @@ if [ -n "$OAUTH_ENDPOINT" ]; then
   TAMPER=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/callback?code=fake&state=dGFtcGVyZWQ6MTIzOmZha2U")
   if [ "$TAMPER" = "403" ]; then pass "/callback 拒绝篡改的 state"; else fail "/callback → HTTP ${TAMPER} (期望 403)"; fi
 
+  # /token is defined for POST only. A GET hits an undefined method on the route,
+  # which API Gateway rejects at the edge with 403 MissingAuthenticationToken
+  # (it never reaches the Lambda, so there's no 405). Either is a correct "GET is
+  # not allowed here" — accept both so the assertion matches real AWS behavior.
   TOKEN_HTTP=$(curl -s -o /dev/null -w "%{http_code}" "${OAUTH_ENDPOINT}/token?user_id=test")
-  if [ "$TOKEN_HTTP" = "405" ]; then pass "/token GET 返回 405 Method Not Allowed"; else fail "/token → HTTP ${TOKEN_HTTP} (期望 405)"; fi
+  if [ "$TOKEN_HTTP" = "405" ] || [ "$TOKEN_HTTP" = "403" ]; then pass "/token GET 被拒 (HTTP ${TOKEN_HTTP}, 非 POST)"; else fail "/token → HTTP ${TOKEN_HTTP} (期望 403/405)"; fi
 
   # MCP middleware should reject unauthenticated POSTs with 401.
   MCP_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" \
@@ -116,8 +120,13 @@ if [ -n "$OAUTH_ENDPOINT" ]; then
   if [ "$EXTRA_UNK" = "400" ]; then pass "/authorize 未知 scope → 400"; else fail "/authorize unknown scope → HTTP ${EXTRA_UNK} (期望 400)"; fi
 
   # OAuth metadata response must carry Cache-Control: no-store (no stale config in caches).
-  CACHE=$(curl -sI "${OAUTH_ENDPOINT}/.well-known/oauth-authorization-server" \
-    | tr -d '\r' | grep -i '^cache-control:' | tr '[:upper:]' '[:lower:]')
+  # Use a GET (dump headers via -D), NOT a HEAD (-I): the API Gateway route only
+  # defines GET, so a HEAD hits an undefined method and returns 403 with none of
+  # the real response headers. NOTE: grep returns non-zero on no match, which
+  # under `set -o pipefail` would abort the ENTIRE script mid-run (silently
+  # dropping every test below). Capture headers first, then guard with `|| true`.
+  CACHE_HEADERS=$(curl -s -D - -o /dev/null "${OAUTH_ENDPOINT}/.well-known/oauth-authorization-server" 2>/dev/null || true)
+  CACHE=$(printf '%s' "$CACHE_HEADERS" | tr -d '\r' | grep -i '^cache-control:' | tr '[:upper:]' '[:lower:]' || true)
   if echo "$CACHE" | grep -q 'no-store'; then pass "OAuth metadata 含 Cache-Control: no-store"; else fail "/.well-known cache header: ${CACHE:-<none>}"; fi
 else
   skip "OAuth 端点未配置"
@@ -207,7 +216,11 @@ fi
 # 测试 3: Token 存储
 echo ""
 echo "── Token 存储 ──"
-SM_TEST=$(aws secretsmanager list-secrets --region $REGION --filters "Key=name,Values=lark-mcp-on-agentcore/users" --query 'SecretList | length(@)' --output text 2>/dev/null || echo "0")
+# --filters is a prefix match and the CLI paginates, so `length(@)` would print
+# one count PER PAGE (multi-line, breaking the integer test). Count rows on the
+# client side after collecting all names into a single list.
+SM_NAMES=$(aws secretsmanager list-secrets --region $REGION --filters "Key=name,Values=lark-mcp-on-agentcore/users" --query 'SecretList[].Name' --output text 2>/dev/null || echo "")
+SM_TEST=$(printf '%s' "$SM_NAMES" | tr '\t' '\n' | grep -c . || true)
 if [ "${SM_TEST:-0}" -gt "0" ]; then pass "Secrets Manager 存储了 ${SM_TEST} 个用户 Token"; else skip "暂无用户 Token"; fi
 
 # 测试 4: EventBridge 刷新规则

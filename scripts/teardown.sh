@@ -74,9 +74,14 @@ fi
 
 # 3. User-token secrets — confirm before deleting (real authorizations).
 step "User token secrets"
+# length(@) is applied PER PAGE by the CLI paginator, so once there are more than
+# ~10 secrets it prints one count per page (e.g. "10\n6"), which breaks the -gt
+# integer test below and aborts teardown mid-run under `set -e`. (--no-paginate
+# is NOT a fix: it would silently count only the first page.) Count names
+# client-side instead.
 USER_COUNT=$(aws secretsmanager list-secrets --region "$REGION" \
   --filters "Key=name,Values=lark-mcp-on-agentcore/users" \
-  --query 'SecretList | length(@)' --output text 2>/dev/null || echo "0")
+  --query 'SecretList[].Name' --output text 2>/dev/null | tr '\t' '\n' | grep -c . || true)
 if [ "${USER_COUNT:-0}" -gt 0 ]; then
   warn "Found ${USER_COUNT} user-token secret(s)."
   read -rp "  Delete all user tokens? Users will need to re-authorize. (type 'yes' to proceed) " confirm

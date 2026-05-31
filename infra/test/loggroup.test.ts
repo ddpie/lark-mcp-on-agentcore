@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as cdk from "aws-cdk-lib";
-import { Template, Match } from "aws-cdk-lib/assertions";
+import { Template } from "aws-cdk-lib/assertions";
 import { OAuthStack } from "../lib/oauth-stack";
 
 const TEST_ENV = { account: "123456789012", region: "us-west-2" };
@@ -52,10 +52,11 @@ describe("LogGroup and Lambda naming", () => {
     });
   });
 
-  it("LogGroups default to no retention (infinite) when env is unset", () => {
+  it("LogGroups default to a bounded retention (90 days) when env is unset", () => {
+    // Hardening: previously defaulted to INFINITE (unbounded log growth/cost).
     template.hasResourceProperties("AWS::Logs::LogGroup", {
       LogGroupName: "/aws/lambda/TestStack-oauth",
-      RetentionInDays: Match.absent(),
+      RetentionInDays: 90,
     });
   });
 
