@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.42",
-    "extracted_at": "2026-05-28",
+    "lark_cli_version": "1.0.44",
+    "extracted_at": "2026-05-31",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -106,6 +106,13 @@
     {
       "service": "base",
       "command": "+dashboard-block-get",
+      "scopes": [
+        "base:dashboard:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+dashboard-block-get-data",
       "scopes": [
         "base:dashboard:read"
       ]
@@ -1091,6 +1098,11 @@
         "mail:user_mailbox.message.subject:read",
         "mail:user_mailbox.message.body:read"
       ]
+    },
+    {
+      "service": "mail",
+      "command": "+lint-html",
+      "scopes": []
     },
     {
       "service": "mail",
