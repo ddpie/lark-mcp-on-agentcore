@@ -40,6 +40,7 @@ const FAKE_TIER1 = ['lark_calendar_agenda'];
 //   { mode: 'timeout', partial }                -> err.killed+signal, partial stdout
 //   { mode: 'maxbuffer', partial }              -> err.code=ERR_CHILD_PROCESS_STDIO_MAXBUFFER
 let execFileBehavior = { mode: 'instant' };
+let lastExecFileOpts = null; // captured opts of the most recent execFile call
 const OK_STDOUT = '{"ok":true,"data":{"events":[]}}';
 
 const originalReadFileSync = fs.readFileSync.bind(fs);
@@ -60,16 +61,29 @@ Module._load = function (request) {
   if (request === 'child_process') {
     return {
       execFile: (cmd, args, opts, cb) => {
+        lastExecFileOpts = opts;
         const child = { kill: () => {}, pid: 4242 };
         const b = execFileBehavior;
         if (b.mode === 'slow') {
-          setTimeout(() => cb(null, OK_STDOUT, ''), b.delayMs ?? 200);
+          // Honor an AbortSignal the way Node's execFile does: abort → kill the
+          // child and call back with an AbortError, freeing the slot at once.
+          const timer = setTimeout(() => cb(null, OK_STDOUT, ''), b.delayMs ?? 200);
+          if (opts?.signal) {
+            opts.signal.addEventListener('abort', () => {
+              clearTimeout(timer);
+              cb(Object.assign(new Error('aborted'), { name: 'AbortError', killed: true }), '', '');
+            }, { once: true });
+          }
         } else if (b.mode === 'timeout') {
           const err = Object.assign(new Error('Command failed'), { killed: true, signal: 'SIGTERM' });
           setTimeout(() => cb(err, b.partial ?? '{"partia', ''), 0);
         } else if (b.mode === 'maxbuffer') {
           const err = Object.assign(new Error('stdout maxBuffer length exceeded'), { code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' });
           setTimeout(() => cb(err, b.partial ?? '{"big":"trunc', ''), 0);
+        } else if (b.mode === 'abort-error') {
+          // Node sets BOTH name=AbortError and killed=true when a signal aborts.
+          const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError', killed: true });
+          setTimeout(() => cb(err, '', ''), 0);
         } else {
           setTimeout(() => cb(null, OK_STDOUT, ''), 0);
         }
@@ -172,5 +186,63 @@ describe('R4: child-process timeout / maxBuffer map to a clean structured error'
     execFileBehavior = { mode: 'instant' };
     const ok = await callTool('lark_calendar_agenda', {}, 42);
     expect(ok.data?.result?.isError).toBeUndefined();
+  });
+});
+
+describe('R5: execFile is abortable and its timeout aligns under the Lambda', () => {
+  it('passes an AbortSignal into execFile so a client disconnect can kill the child', async () => {
+    // The middleware aborts its fetch at 25s; if the child keeps running to the
+    // old 60s timeout it holds a concurrency slot for ~35s after the client gave
+    // up. Wiring ac.signal into execFile lets a disconnect kill the child and
+    // free the slot immediately.
+    execFileBehavior = { mode: 'instant' };
+    await callTool('lark_calendar_agenda', {}, 50);
+    expect(lastExecFileOpts).not.toBeNull();
+    expect(lastExecFileOpts.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('caps the execFile timeout at or below the Lambda 25s budget', async () => {
+    execFileBehavior = { mode: 'instant' };
+    await callTool('lark_calendar_agenda', {}, 51);
+    expect(typeof lastExecFileOpts.timeout).toBe('number');
+    expect(lastExecFileOpts.timeout).toBeLessThanOrEqual(25000);
+  });
+
+  it('maps an execFile AbortError to client_aborted, NOT timeout', async () => {
+    // When the signal kills the child, Node sets err.name=AbortError AND
+    // err.killed=true. That must not be misreported as a timeout — it's a
+    // client disconnect. (Only reachable if the request is still being served;
+    // in practice the response is already closed, but the mapping must be right.)
+    execFileBehavior = { mode: 'abort-error' };
+    const r = await callTool('lark_calendar_agenda', {}, 54);
+    expect(r.data?.result?.isError).toBe(true);
+    const text = r.data?.result?.content?.[0]?.text ?? '';
+    expect(JSON.parse(text).error).toBe('client_aborted');
+  });
+
+  it('a client disconnect frees the slot promptly instead of holding it for the full timeout', async () => {
+    // MAX_CONCURRENT=1. Request A is slow (would take 5s). Its client aborts
+    // almost immediately; the child must be killed so a later request can run
+    // well before A's nominal completion.
+    execFileBehavior = { mode: 'slow', delayMs: 5000 };
+    const ctrl = new AbortController();
+    const payload = JSON.stringify({ jsonrpc: '2.0', id: 52, method: 'tools/call', params: { name: 'lark_calendar_agenda', arguments: {} } });
+    const aborted = fetch('http://127.0.0.1:8000/', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', 'x-user-access-token': 'u-tok' },
+      body: payload,
+    }).catch(e => ({ aborted: e.name }));
+    await new Promise(r => setTimeout(r, 50));
+    ctrl.abort();
+    await aborted;
+
+    // If the slot were held until the 5s child finished, this fast call would
+    // not complete quickly. Give it far less than 5s.
+    execFileBehavior = { mode: 'instant' };
+    const t0 = Date.now();
+    const after = await callTool('lark_calendar_agenda', {}, 53);
+    const elapsed = Date.now() - t0;
+    expect(after.data?.result?.isError).toBeUndefined();
+    expect(elapsed).toBeLessThan(2000);
   });
 });

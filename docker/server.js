@@ -41,10 +41,15 @@ const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '10', 10);
 const MAX_QUEUE_DEPTH = parseInt(process.env.MAX_QUEUE_DEPTH || '20', 10);
 const withSemaphore = createSemaphore(MAX_CONCURRENT, MAX_QUEUE_DEPTH);
 
-function runLarkCli(cliArgs, env, timeoutMs) {
+// Per-call lark-cli timeout. Kept at/under the mcp-middleware Lambda's 25s fetch
+// budget (AbortSignal.timeout(25000)) so a child can't outlive the client's 504
+// and hold a concurrency slot for the gap.
+const LARK_CLI_TIMEOUT_MS = parseInt(process.env.LARK_CLI_TIMEOUT_MS || '24000', 10);
+
+function runLarkCli(cliArgs, env, timeoutMs, abortSignal) {
   return new Promise((resolve, reject) => {
     const child = execFile('lark-cli', cliArgs, {
-      timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, env,
+      timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, env, signal: abortSignal,
     }, (err, stdout, stderr) => {
       activeChildren.delete(child);
       if (err) reject(Object.assign(err, { stdout, stderr }));
@@ -228,7 +233,12 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
   };
 
   try {
-    const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, 60000), abortSignal);
+    // Timeout kept at/under the middleware Lambda's 25s fetch budget: once the
+    // client has its 504 there's no point letting lark-cli keep running and
+    // holding a concurrency slot. abortSignal is also wired into execFile so a
+    // client disconnect kills the child and frees the slot immediately, rather
+    // than leaking it until the timeout.
+    const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, LARK_CLI_TIMEOUT_MS, abortSignal), abortSignal);
     const output = stdout.trim() || '{"ok":true,"data":null}';
     return { content: [{ type: 'text', text: patchPermissionError(output, toolName, incrAuthToken) }] };
   } catch (err) {
@@ -236,6 +246,12 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
       return { content: [{ type: 'text', text: '{"error":"server_busy","message":"Too many concurrent requests, retry shortly"}' }], isError: true };
     }
     if (err.message === 'client_aborted') {
+      return { content: [{ type: 'text', text: '{"error":"client_aborted"}' }], isError: true };
+    }
+    // A client disconnect aborts the signal, which makes execFile kill the child
+    // and reject with name=AbortError (and killed=true). That's NOT a timeout —
+    // check it before the killed/signal branch below so it isn't mislabeled.
+    if (err.name === 'AbortError') {
       return { content: [{ type: 'text', text: '{"error":"client_aborted"}' }], isError: true };
     }
     // On timeout (execFile kills the child: err.killed + signal) or maxBuffer
