@@ -44,6 +44,10 @@ A: The script is idempotent — just re-run. For a clean start: `cd infra && npx
 
 A: Use the Feishu app's "Availability" settings. Only users in scope can complete OAuth.
 
+**Q: Can it proactively send messages / broadcast notifications, or trigger automatically when a new message arrives (bot / events)?**
+
+A: No. This service only calls Feishu synchronously under each user's **own identity** — it does not use application (bot) identity or subscribe to real-time events. Proactive push, broadcast notifications, unattended scheduled jobs, and auto-replies are all out of scope. This is a deliberate trade-off of the per-user isolation positioning (see README [Scope & Limitations](../README.md#scope--limitations)). If you need bot/event capabilities, build a separate dedicated Feishu bot service.
+
 **Q: Quick Desktop shows "Creation failed"?**
 
 A: Check two things: 1) The Redirect URL from deploy output is added to your Feishu app's Security Settings; 2) The Client Secret matches the deploy output (if unsure, run `./scripts/ops.sh rotate-secret` to regenerate).
