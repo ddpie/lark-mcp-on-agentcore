@@ -31,7 +31,7 @@ npm run lint                # eslint (no Prettier); npm run lint:fix to autofix
 npm run knip                # dead-code scan
 
 ./scripts/deploy.sh         # interactive deploy (re-run uses saved config)
-./scripts/ops.sh status     # operations toolkit (status/list/revoke/refresh/logs)
+./scripts/ops.sh status     # operations toolkit (status/list-users/revoke/refresh-all/logs/rotate-secret/destroy)
 ./scripts/teardown.sh       # destroy all resources
 ```
 

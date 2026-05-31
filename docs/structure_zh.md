@@ -31,7 +31,7 @@ lambda/
 scripts/
   deploy.sh           交互式部署 (中/英双语，可选 WAF 跨区域 bootstrap)
   install.sh          一键安装 (中/英双语)
-  ops.sh              运维工具 (status/list/revoke/refresh/rotate/logs/destroy)
+  ops.sh              运维工具 (status/list-users/revoke/refresh-all/logs/rotate-secret/destroy)
   teardown.sh         完整销毁 (Runtime + CDK + WAF 如启用 + 可选 user-token 清理)
   test.sh             统一测试入口 (unit / coverage / mutation / audit / e2e)
   test-e2e.sh         端到端测试 (OAuth + Runtime + /mcp + WAF 如启用)

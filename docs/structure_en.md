@@ -31,7 +31,7 @@ lambda/
 scripts/
   deploy.sh           Interactive deployment (Chinese/English, optional WAF cross-region bootstrap)
   install.sh          One-click install (Chinese/English)
-  ops.sh              Operations toolkit (status/list/revoke/refresh/rotate/logs/destroy)
+  ops.sh              Operations toolkit (status/list-users/revoke/refresh-all/logs/rotate-secret/destroy)
   teardown.sh         Full destroy (Runtime + CDK stacks + WAF if enabled + optional user-token cleanup)
   test.sh             Unified test entry (unit / coverage / mutation / audit / e2e)
   test-e2e.sh         End-to-end tests (OAuth + Runtime + /mcp + WAF if enabled)

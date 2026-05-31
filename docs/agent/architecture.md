@@ -21,7 +21,7 @@ Client (remote-MCP, e.g. Quick Desktop)
       · hard 25s timeout (AgentCore/API-GW budget is ~29s)
   → AgentCore Runtime container (`docker/server.js`)
       · extracts the Feishu token from the header into the child-process env
-      · runs `lark-cli` as a fresh child process per tool call (60s timeout, 10MB stdout cap)
+      · runs `lark-cli` as a fresh child process per tool call (24s timeout, env `LARK_CLI_TIMEOUT_MS` default 24000; 10MB stdout cap)
       · returns the result
 
 ## Session isolation & concurrency (NOT in any human doc)
