@@ -24,4 +24,4 @@ pre-push:
       run: ./scripts/test.sh
     # Advisory only: always exits 0, never blocks the push (unlike `test` above).
     - name: docs-llm-check
-      run: ./scripts/check-docs-llm.sh
+      run: ./scripts/check-docs-agent.sh

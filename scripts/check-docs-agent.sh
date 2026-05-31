@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Warn-only, agent-agnostic LLM check: did a code change make docs/agent/* stale?
+# Warn-only, agent-agnostic check: did a code change make docs/agent/* stale?
 # Runs in lefthook pre-push. Complements the mechanical scripts/check-invariants.sh
 # (which cannot judge semantic drift). NEVER blocks a push: every degraded path
-# (no LLM CLI, offline, timeout, parse failure, no relevant changes) prints SKIP and
-# exits 0; even a detected inconsistency only prints WARN and exits 0.
+# (no Agent CLI, offline, timeout, parse failure, no relevant changes) prints SKIP
+# and exits 0; even a detected inconsistency only prints WARN and exits 0.
 
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-LLM_TIMEOUT="${DOC_CHECK_LLM_TIMEOUT:-60}"
+AGENT_TIMEOUT="${DOC_CHECK_AGENT_TIMEOUT:-60}"
 DIFF_CHAR_CAP=12000
 
 skip() { echo "SKIP: $1"; exit 0; }
@@ -72,27 +72,27 @@ relevant="$(echo "$changed" \
   | grep -vE '(__tests__/|\.test\.)' || true)"
 [ -z "$relevant" ] && skip "no doc-relevant code changes in this push"
 
-# 3. Detect an LLM CLI (priority order; first found wins).
-LLM_NAME=""
+# 3. Detect an Agent CLI (priority order; first found wins).
+AGENT_NAME=""
 for c in claude codex gemini kiro-cli cursor-agent llm; do
-  if command -v "$c" >/dev/null 2>&1; then LLM_NAME="$c"; break; fi
+  if command -v "$c" >/dev/null 2>&1; then AGENT_NAME="$c"; break; fi
 done
-if [ -z "$LLM_NAME" ] && [ -n "${DOC_CHECK_LLM_CMD:-}" ]; then LLM_NAME="override"; fi
-[ -z "$LLM_NAME" ] && skip "no LLM CLI detected (install claude/codex/gemini/kiro-cli/cursor-agent/llm)"
+if [ -z "$AGENT_NAME" ] && [ -n "${DOC_CHECK_AGENT_CMD:-}" ]; then AGENT_NAME="override"; fi
+[ -z "$AGENT_NAME" ] && skip "no Agent CLI detected (install claude/codex/gemini/kiro-cli/cursor-agent/llm)"
 
-# run_llm <prompt>  →  prints model stdout; normalized "feed prompt, read stdout".
+# run_agent <prompt>  →  prints model stdout; normalized "feed prompt, read stdout".
 # Each branch is wrapped in `timeout` directly, so the caller is a plain function
 # call (no `export -f`/`bash -c` subshell that couldn't see this function).
-run_llm() {
+run_agent() {
   local prompt="$1"
-  case "$LLM_NAME" in
-    claude)       printf '%s' "$prompt" | timeout "$LLM_TIMEOUT" claude -p ;;
-    codex)        printf '%s' "$prompt" | timeout "$LLM_TIMEOUT" codex exec - ;;
-    gemini)       timeout "$LLM_TIMEOUT" gemini -p "$prompt" ;;
-    kiro-cli)     timeout "$LLM_TIMEOUT" kiro-cli chat --no-interactive --trust-tools= "$prompt" ;;
-    cursor-agent) timeout "$LLM_TIMEOUT" cursor-agent -p "$prompt" --output-format text ;;
-    llm)          printf '%s' "$prompt" | timeout "$LLM_TIMEOUT" llm ;;
-    override)     printf '%s' "$prompt" | timeout "$LLM_TIMEOUT" sh -c "$DOC_CHECK_LLM_CMD" ;;
+  case "$AGENT_NAME" in
+    claude)       printf '%s' "$prompt" | timeout "$AGENT_TIMEOUT" claude -p ;;
+    codex)        printf '%s' "$prompt" | timeout "$AGENT_TIMEOUT" codex exec - ;;
+    gemini)       timeout "$AGENT_TIMEOUT" gemini -p "$prompt" ;;
+    kiro-cli)     timeout "$AGENT_TIMEOUT" kiro-cli chat --no-interactive --trust-tools= "$prompt" ;;
+    cursor-agent) timeout "$AGENT_TIMEOUT" cursor-agent -p "$prompt" --output-format text ;;
+    llm)          printf '%s' "$prompt" | timeout "$AGENT_TIMEOUT" llm ;;
+    override)     printf '%s' "$prompt" | timeout "$AGENT_TIMEOUT" sh -c "$DOC_CHECK_AGENT_CMD" ;;
   esac
 }
 
@@ -120,13 +120,13 @@ $arch_doc
 === (B) docs/agent/invariants.md ===
 $inv_doc"
 
-# 5. Invoke (timeout is inside run_llm per-branch); any failure/empty → SKIP.
+# 5. Invoke (timeout is inside run_agent per-branch); any failure/empty → SKIP.
 #    `head -c` caps the captured output so a runaway/verbose CLI can't balloon
 #    memory before `timeout` fires. Notice on stderr so a multi-second push isn't
 #    a silent hang.
-echo "doc-consistency check: asking $LLM_NAME (up to ${LLM_TIMEOUT}s, advisory)..." >&2
-raw="$(run_llm "$prompt" 2>/dev/null | head -c 65536 || true)"
-[ -z "$raw" ] && skip "LLM check unavailable (no output, timeout, or error)"
+echo "doc-consistency check: asking $AGENT_NAME (up to ${AGENT_TIMEOUT}s, advisory)..." >&2
+raw="$(run_agent "$prompt" 2>/dev/null | head -c 65536 || true)"
+[ -z "$raw" ] && skip "Agent check unavailable (no output, timeout, or error)"
 
 # 6. Extract the JSON object and parse with jq. Models often ignore the
 #    "single-line, no code fences" instruction, so strip ``` fences and collapse
@@ -134,16 +134,16 @@ raw="$(run_llm "$prompt" 2>/dev/null | head -c 65536 || true)"
 #    fenced JSON, which a single-line grep would otherwise silently drop.
 cleaned="$(printf '%s' "$raw" | sed 's/```[a-zA-Z]*//g; s/```//g' | tr '\n' ' ')"
 json="$(printf '%s' "$cleaned" | grep -oE '\{.*\}' | tail -1 || true)"
-[ -z "$json" ] && skip "could not find JSON in LLM output"
+[ -z "$json" ] && skip "could not find JSON in Agent output"
 consistent="$(echo "$json" | jq -r '.consistent' 2>/dev/null || true)"
 case "$consistent" in
-  true)  echo "OK: docs appear consistent with this change (checked via $LLM_NAME)"; exit 0 ;;
+  true)  echo "OK: docs appear consistent with this change (checked via $AGENT_NAME)"; exit 0 ;;
   false) : ;;
-  *)     skip "could not parse LLM output" ;;
+  *)     skip "could not parse Agent output" ;;
 esac
 
 # 7. consistent==false → print findings as warnings, but DO NOT block.
-echo "WARN: docs/agent may be stale vs this change (advisory, not blocking) [via $LLM_NAME]:" >&2
+echo "WARN: docs/agent may be stale vs this change (advisory, not blocking) [via $AGENT_NAME]:" >&2
 echo "$json" | jq -r '.findings[]?' 2>/dev/null | while IFS= read -r f; do
   echo "  - $f" >&2
 done
