@@ -105,10 +105,10 @@ elif [ "$STATE" = "running" ]; then
 
   # Step 5: Graceful shutdown.
   # The server's SIGTERM handler waits ~7s (server.close + child drain) before
-  # process.exit(0), so allow a grace period comfortably above that. Shutdown
-  # TIMING is not the guarantee this smoke test exists to protect (that's boot +
-  # MCP protocol above), so a non-clean exit here WARNs rather than fails — it
-  # must never produce a false CI failure on a container that booted correctly.
+  # process.exit(0), so allow a grace period comfortably above that. Exit 0 is
+  # the clean path; 143 is SIGTERM-without-handler (128+15). A non-clean exit
+  # here is a real regression — e.g. the secret-load give-up racing the shutdown
+  # handler and winning with exit(1) — so this gates.
   echo ""
   echo "── Shutdown ──"
   docker stop -t 15 "$CONTAINER" >/dev/null 2>&1
@@ -116,7 +116,7 @@ elif [ "$STATE" = "running" ]; then
   if [ "$EXIT_CODE" = "0" ] || [ "$EXIT_CODE" = "143" ]; then
     pass "Graceful shutdown (exit code $EXIT_CODE)"
   else
-    echo -e "  ${RED}⚠${NC} Graceful shutdown non-clean (exit code $EXIT_CODE) — not gating (boot + protocol already verified)"
+    fail "Graceful shutdown non-clean (exit code $EXIT_CODE)"
   fi
 else
   fail "Container in unexpected state: $STATE"

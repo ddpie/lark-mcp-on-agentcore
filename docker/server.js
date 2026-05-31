@@ -580,15 +580,18 @@ async function handleRequest(req, res, body) {
   sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, error: { code: -32601, message: 'Method not found' } });
 }
 
+let shuttingDown = false;
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`lark-mcp-on-agentcore listening on :${PORT} (${tier1Tools.length} tier1 + ${allToolDefs.length} discoverable)`);
   loadAppSecret().catch(e => {
+    // If a graceful shutdown is already in progress, don't let the secret-load
+    // give-up race it and exit(1) — the shutdown handler owns the exit code.
+    if (shuttingDown) return;
     console.error(JSON.stringify({ level: 'CRITICAL', event: 'app_secret_load_giveup', error: e.message }));
     process.exit(1);
   });
 });
-
-let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
