@@ -37,9 +37,16 @@ fi
 # Fallback (the lefthook path): prefer the real push target's upstream so we only
 # check the commits actually being pushed, not the whole branch. Try @{push},
 # then @{upstream}, then merge-base with origin/main, then HEAD.
+# NOTE: `git rev-parse @{push}` prints the literal token to stdout (exit!=0) when
+# no remote-tracking ref exists yet (e.g. first push of a new branch), so resolve
+# to a real commit and VERIFY it before use — otherwise the garbage token would
+# poison the range and defeat the merge-base fallback.
 if [ -z "$range" ]; then
-  base="$(git rev-parse --abbrev-ref '@{push}' 2>/dev/null \
-        || git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)"
+  base=""
+  for ref in '@{push}' '@{upstream}'; do
+    cand="$(git rev-parse --verify --quiet "${ref}^{commit}" 2>/dev/null || true)"
+    if [ -n "$cand" ]; then base="$cand"; break; fi
+  done
   if [ -n "$base" ]; then
     range="$base..HEAD"
   else
@@ -61,7 +68,7 @@ fi
 # scripts, oauth-scope/shortcut-scope JSON, Dockerfile) that architecture.md and
 # invariants.md describe in detail. Tests excluded.
 relevant="$(echo "$changed" \
-  | grep -E '^(docker|lambda|infra/lib)/.*\.(js|ts|mjs)$|^scripts/(deploy|build-scope-allowlist)\.sh$|^config/.*\.json$|^docker/(Dockerfile|shortcut-scopes\.json)$' \
+  | grep -E '^(docker|lambda|infra/lib)/.*\.(js|ts|mjs)$|^scripts/(deploy|build-scope-allowlist)\.sh$|^config/oauth-scopes\.json$|^docker/(Dockerfile|shortcut-scopes\.json)$' \
   | grep -vE '(__tests__/|\.test\.)' || true)"
 [ -z "$relevant" ] && skip "no doc-relevant code changes in this push"
 

@@ -63,7 +63,9 @@ scope defaults), `docker/` (MCP server + container), `infra/` (CDK stacks),
 offline suite automatically.
 
 Pre-push also runs an LLM-based doc-consistency check (`scripts/check-docs-llm.sh`,
-warn-only): when a change touches code under `docker/`, `lambda/`, or `infra/lib/`, it
+warn-only): when a change touches the JS/TS under `docker/`, `lambda/`, or `infra/lib/`,
+or the provisioning/scope files (`scripts/deploy.sh`, `scripts/build-scope-allowlist.sh`,
+`config/oauth-scopes.json`, `docker/Dockerfile`, `docker/shortcut-scopes.json`), it
 auto-detects an installed LLM CLI (claude/codex/gemini/kiro-cli/cursor-agent/llm) and
 flags any now-stale statements in `docs/agent/*`. It never blocks the push and skips
 silently when no LLM CLI is available.
