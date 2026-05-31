@@ -98,8 +98,12 @@ $inv_doc"
 raw="$(run_llm "$prompt" 2>/dev/null || true)"
 [ -z "$raw" ] && skip "LLM check unavailable (no output, timeout, or error)"
 
-# 6. Extract the JSON object and parse with jq.
-json="$(echo "$raw" | grep -oE '\{.*\}' | tail -1 || true)"
+# 6. Extract the JSON object and parse with jq. Models often ignore the
+#    "single-line, no code fences" instruction, so strip ``` fences and collapse
+#    newlines before the greedy { ... } match — this recovers pretty-printed and
+#    fenced JSON, which a single-line grep would otherwise silently drop.
+cleaned="$(printf '%s' "$raw" | sed 's/```[a-zA-Z]*//g; s/```//g' | tr '\n' ' ')"
+json="$(printf '%s' "$cleaned" | grep -oE '\{.*\}' | tail -1 || true)"
 [ -z "$json" ] && skip "could not find JSON in LLM output"
 consistent="$(echo "$json" | jq -r '.consistent' 2>/dev/null || true)"
 case "$consistent" in
