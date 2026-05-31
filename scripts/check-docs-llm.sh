@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Warn-only, agent-agnostic LLM check: did a code change make docs/agent/* stale?
+# Runs in lefthook pre-push. Complements the mechanical scripts/check-invariants.sh
+# (which cannot judge semantic drift). NEVER blocks a push: every degraded path
+# (no LLM CLI, offline, timeout, parse failure, no relevant changes) prints SKIP and
+# exits 0; even a detected inconsistency only prints WARN and exits 0.
+
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$PROJECT_DIR"
+
+LLM_TIMEOUT="${DOC_CHECK_LLM_TIMEOUT:-60}"
+DIFF_CHAR_CAP=12000
+
+skip() { echo "SKIP: $1"; exit 0; }
+
+# 1. Determine the push diff range.
+#    pre-push feeds "<local_ref> <local_sha> <remote_ref> <remote_sha>" lines on stdin.
+range=""
+if [ ! -t 0 ]; then
+  while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -z "${local_sha:-}" ] && continue
+    case "$local_sha" in *[!0]*) : ;; *) continue ;; esac  # skip deletes (all-zero local)
+    if [ -n "${remote_sha:-}" ] && [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
+      range="$remote_sha..$local_sha"
+    else
+      range="$local_sha"  # new branch: no remote base yet
+    fi
+    break
+  done || true
+fi
+if [ -z "$range" ]; then
+  base="$(git merge-base origin/main HEAD 2>/dev/null || true)"
+  if [ -n "$base" ]; then range="$base..HEAD"; else range="HEAD"; fi
+fi
+
+# 2. Heuristic gate: only proceed if the diff touches doc-relevant code.
+if [ "$range" = "HEAD" ] || ! echo "$range" | grep -q '\.\.'; then
+  changed="$(git show --name-only --pretty=format: "$range" 2>/dev/null | sort -u)"
+else
+  changed="$(git diff --name-only "$range" 2>/dev/null || true)"
+fi
+relevant="$(echo "$changed" \
+  | grep -E '^(docker|lambda|infra/lib)/.*\.(js|ts|mjs)$' \
+  | grep -vE '(__tests__/|\.test\.)' || true)"
+[ -z "$relevant" ] && skip "no doc-relevant code changes in this push"
+
+# 3. Detect an LLM CLI (priority order; first found wins).
+LLM_NAME=""
+for c in claude codex gemini kiro-cli cursor-agent llm; do
+  if command -v "$c" >/dev/null 2>&1; then LLM_NAME="$c"; break; fi
+done
+if [ -z "$LLM_NAME" ] && [ -n "${DOC_CHECK_LLM_CMD:-}" ]; then LLM_NAME="override"; fi
+[ -z "$LLM_NAME" ] && skip "no LLM CLI detected (install claude/codex/gemini/kiro-cli/cursor-agent/llm)"
+
+# run_llm <prompt>  →  prints model stdout; normalized "feed prompt, read stdout".
+# Each branch is wrapped in `timeout` directly, so the caller is a plain function
+# call (no `export -f`/`bash -c` subshell that couldn't see this function).
+run_llm() {
+  local prompt="$1"
+  case "$LLM_NAME" in
+    claude)       printf '%s' "$prompt" | timeout "$LLM_TIMEOUT" claude -p ;;
+    codex)        printf '%s' "$prompt" | timeout "$LLM_TIMEOUT" codex exec - ;;
+    gemini)       timeout "$LLM_TIMEOUT" gemini -p "$prompt" ;;
+    kiro-cli)     timeout "$LLM_TIMEOUT" kiro-cli chat --no-interactive --trust-tools= "$prompt" ;;
+    cursor-agent) timeout "$LLM_TIMEOUT" cursor-agent -p "$prompt" --output-format text ;;
+    llm)          printf '%s' "$prompt" | timeout "$LLM_TIMEOUT" llm ;;
+    override)     printf '%s' "$prompt" | timeout "$LLM_TIMEOUT" sh -c "$DOC_CHECK_LLM_CMD" ;;
+  esac
+}
+
+# 4. Build the prompt: relevant diff (capped) + the two docs that hold code citations.
+diff_text="$(git diff "$range" -- $relevant 2>/dev/null | head -c "$DIFF_CHAR_CAP" || true)"
+[ -z "$diff_text" ] && skip "empty diff for relevant files"
+arch_doc="$(cat docs/agent/architecture.md 2>/dev/null || true)"
+inv_doc="$(cat docs/agent/invariants.md 2>/dev/null || true)"
+
+prompt="You are checking whether a code change has made project documentation factually stale.
+
+Below are (A) a unified diff of changed code files, and (B) two documentation files that describe the code. Decide whether any statement in the docs is now factually WRONG because of the diff. Pay attention to: function/file names, file locations, numeric values (timeouts, limits, counts), and described behavior.
+
+Output ONLY a single line of minified JSON, no prose, no code fences:
+{\"consistent\": true} if nothing in the docs is contradicted, or
+{\"consistent\": false, \"findings\": [\"<doc file> says X but the code now Y\", ...]} listing each stale statement.
+If you are unsure, output {\"consistent\": true} (this is a non-blocking advisory check; avoid false alarms).
+
+=== (A) CODE DIFF ===
+$diff_text
+
+=== (B) docs/agent/architecture.md ===
+$arch_doc
+
+=== (B) docs/agent/invariants.md ===
+$inv_doc"
+
+# 5. Invoke (timeout is inside run_llm per-branch); any failure/empty → SKIP.
+raw="$(run_llm "$prompt" 2>/dev/null || true)"
+[ -z "$raw" ] && skip "LLM check unavailable (no output, timeout, or error)"
+
+# 6. Extract the JSON object and parse with jq.
+json="$(echo "$raw" | grep -oE '\{.*\}' | tail -1 || true)"
+[ -z "$json" ] && skip "could not find JSON in LLM output"
+consistent="$(echo "$json" | jq -r '.consistent' 2>/dev/null || true)"
+case "$consistent" in
+  true)  echo "OK: docs appear consistent with this change (checked via $LLM_NAME)"; exit 0 ;;
+  false) : ;;
+  *)     skip "could not parse LLM output" ;;
+esac
+
+# 7. consistent==false → print findings as warnings, but DO NOT block.
+echo "WARN: docs/agent may be stale vs this change (advisory, not blocking) [via $LLM_NAME]:" >&2
+echo "$json" | jq -r '.findings[]?' 2>/dev/null | while IFS= read -r f; do
+  echo "  - $f" >&2
+done
+echo "  → review docs/agent/architecture.md and docs/agent/invariants.md before merging." >&2
+exit 0
