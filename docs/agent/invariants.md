@@ -25,6 +25,10 @@ Also never hand-edit: `node_modules/`, `coverage/`, `.stryker-tmp/`.
 - **Add/curate an OAuth scope** ⇒ it must exist in the generated allowlist
   (`scope-allowlist.ts`); regenerate, don't hand-add. Check: `scripts/audit-tools.sh`.
 - **Change CDK stacks** ⇒ update the snapshot (`cd infra && npm run test:update`).
+- **Change the Runtime's env vars / idle timeout / request-header allowlist** ⇒
+  edit `scripts/deploy.sh` (boto3 `create/update_agent_runtime`), NOT CDK;
+  `infra/lib/runtime-stack.ts` only builds the image + IAM role. See
+  `docs/agent/architecture.md` (Provisioning split).
 
 ## Code ↔ doc couplings
 
@@ -41,3 +45,22 @@ Also never hand-edit: `node_modules/`, `coverage/`, `.stryker-tmp/`.
 - Only **user-identity** scopes are allowed; bot-only scopes must never leak into
   the allowlist or skills (see positioning: user-only, no bot). Verify during
   lark-cli bump skill review.
+
+## Security invariants — do not relax without security review
+
+These live in `lambda/token-refresh-shim/index.ts` (confused-deputy & token
+safety). Do not loosen any of them without an explicit security review:
+
+- **`userId` is accepted ONLY from the HMAC-signed `t=` token** (incremental-auth),
+  never from a raw `user_id` query param — confused-deputy guard (`index.ts:~374-403`).
+- **`extra_scope` is enforced against the generated allowlist** (`SCOPE_ALLOWLIST`
+  from `scope-allowlist.ts`, checked at `index.ts:~404-416`) so a phishing link
+  can't broaden the consent screen.
+- **Auth codes are single-use** via an atomic DynamoDB `DeleteItem` with
+  `ReturnValues=ALL_OLD` (`dynamodb-codes.ts:~29-45`); racing requests see one
+  winner.
+- **`preflightWritable` runs before consuming the single-use `refresh_token`**
+  (`index.ts:~209,291`); if Secrets Manager storage fails *after* the token was
+  burned, a CRITICAL `store_token_lost` log fires (`index.ts:~311-329`).
+- **Scheduled refresh only fires past token half-life** (`remaining > totalTtl/2`
+  ⇒ skip, `index.ts:~287-289`).

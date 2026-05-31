@@ -31,6 +31,65 @@ compute/memory/filesystem; up to 8h lifetime; idle-timeout configurable). The
 `server.js` process with its own counter. User isolation is triple-layered:
 microVM boundary → per-call child process → token passed via env, never shared.
 
+Container lifecycle (relevant when touching startup/shutdown or concurrency):
+`/ping` returns 503 until the app secret has loaded (`docker/server.js:~294`);
+on shutdown the server drains in-flight calls ~5s, then `SIGTERM` then `SIGKILL`s
+any remaining lark-cli children (`docker/server.js:~518`).
+
+## Provisioning split (CDK vs deploy.sh) — read before changing Runtime config
+
+Infra is **not** all owned by CDK. The split:
+
+- **CDK** owns: the Docker image (`DockerImageAsset`) + the AgentCore IAM
+  `RuntimeRole` (`infra/lib/runtime-stack.ts` — that file does *only* these two
+  and emits CfnOutputs consumed by deploy.sh), plus the OAuth/middleware Lambdas,
+  alarms/dashboard, and optional WAF.
+- **`scripts/deploy.sh`** (boto3 `bedrock-agentcore-control`) owns the **AgentCore
+  Runtime itself and its endpoint** — `create_agent_runtime` / `update_agent_runtime`
+  at `scripts/deploy.sh:~1049-1096`, endpoint at `~1119-1127`. That call defines the
+  Runtime's `environmentVariables` (`APP_ID`, `AUTHORIZE_BASE`, `APP_SECRET_ID` that
+  `docker/server.js:67-70` reads), `lifecycleConfiguration.idleRuntimeSessionTimeout`,
+  and `requestHeaderConfiguration.requestHeaderAllowlist`
+  (`['X-User-Access-Token','X-Runtime-User-Id','X-Incr-Auth-Token']`).
+
+**Implication:** to change the Runtime's env vars, idle timeout, or allowed request
+headers, edit `scripts/deploy.sh` and re-run it — editing `runtime-stack.ts` +
+`cdk deploy` will NOT change them. The middleware's `X-User-Access-Token` /
+`X-Incr-Auth-Token` headers only reach the container because of the deploy.sh
+allowlist.
+
+## Tool dispatch & skills (the heart of server.js)
+
+`docker/server.js` speaks three MCP methods: `initialize`, `tools/list`,
+`tools/call`. Of the catalog, **28 tier-1 (high-frequency) tools are exposed
+directly**; the long tail is reached via `lark_discover` → `lark_invoke`. Two
+meta-tools, `lark_list_skills` and `lark_get_skill`, serve the domain guides under
+`docker/skills/**` and clients are instructed (via tool descriptions) to call them
+FIRST. So "tier-1" means direct-exposed vs the discover/invoke fallback, and
+editing tool exposure or skill-serving lives in `docker/server.js`.
+
+## Risk classification & destructive-write gating
+
+Each tool is tagged by `detectRisk` (`docker/generate-tools-lib.js:57-65`) as
+`read` / `write` / `high-risk-write` — by a `risk:` marker in the lark-cli help,
+else heuristics on delete/remove (and create/send/update). At runtime
+(`docker/server.js:~210`) a `high-risk-write` tool is REFUSED unless
+`args._confirm===true` (returns sentinel `user_approval_required`); `tools/list`
+surfaces `destructiveHint` annotations so spec-compliant clients pop a confirm UI;
+and lark-cli's `--yes` is injected only for commands that declare `supportsYes`
+(`docker/server.js:233`).
+
+## Error envelope & permission-repair contract
+
+Tool results are always `{content:[{type:'text',...}]}`; errors additionally set
+`isError:true`. Sentinel error shapes that clients/middleware depend on:
+`server_busy`, `user_approval_required`, `server_initializing`, `client_aborted`.
+`patchPermissionError` (`docker/server.js:202`, impl in `docker/server-lib.js`)
+detects Feishu error code `99991679`, resolves the missing scopes, and rewrites the
+error into an `authorize_url` (incremental auth) built from `AUTHORIZE_BASE` + the
+`X-Incr-Auth-Token`. Do NOT change these error shapes or the 99991679 repair without
+checking the middleware and clients that parse them.
+
 ## Token & identity (where each secret lives)
 
 - User tokens: AWS Secrets Manager at `lark-mcp-on-agentcore/users/{userId}` (encrypted).

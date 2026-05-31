@@ -10,7 +10,10 @@ Hosted remote-MCP service on AWS Bedrock AgentCore that wraps **lark-cli** so
 remote-MCP clients can call Feishu's 2500+ APIs via 200+ tools. Identity is
 **user-only** (each user calls as themselves; no bot identity, no event stream).
 Languages: TypeScript (`lambda/`, `infra/`), JavaScript (`docker/`, no build
-step), Bash (`scripts/`). Node 20, ARM64-only container, AWS CDK for infra.
+step), Bash (`scripts/`). Node 20, ARM64-only container. AWS CDK builds the image,
+IAM, Lambdas, and alarms; the AgentCore **Runtime itself** (its env vars, idle
+timeout, request-header allowlist) is provisioned by `scripts/deploy.sh` via boto3,
+not CDK — see `docs/agent/architecture.md`.
 
 Each MCP session runs in its own AgentCore microVM — see
 `docs/agent/architecture.md` for the request lifecycle and concurrency model.
@@ -57,8 +60,12 @@ scope defaults), `docker/` (MCP server + container), `infra/` (CDK stacks),
 
 `./scripts/test.sh` is the single entry point. Tests are vitest under
 `**/__tests__/`. Pre-push runs the offline suite automatically. After CDK changes
-run `cd infra && npm run test:update` to refresh the snapshot. See
-`docs/agent/playbooks.md` for change-specific test steps.
+run `cd infra && npm run test:update` to refresh the snapshot. The unit tier
+includes cdk-nag compliance (`infra/test/compliance.test.ts` — a new CDK resource
+tripping an AWS-Solutions rule fails until you add a `NagSuppressions` entry with
+rationale) and `infra/test/scope-coverage.test.ts`. `--full` does NOT include
+`--mutation` (stryker mutates the two Lambda `index.ts` files; run it separately).
+See `docs/agent/playbooks.md` for change-specific test steps.
 
 ## Critical constraints (details: docs/agent/invariants.md)
 
