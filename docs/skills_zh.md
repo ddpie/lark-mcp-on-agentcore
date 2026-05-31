@@ -47,7 +47,7 @@ sequenceDiagram
 
 Skill 通过 `lark_get_skill` 按需加载，不占用固定 context。
 
-## 23 个编排域一览
+## 编排域一览
 
 | 域 | 覆盖场景 |
 |---|---|

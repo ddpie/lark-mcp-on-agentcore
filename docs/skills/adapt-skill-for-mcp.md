@@ -20,6 +20,7 @@ local files) into a format suitable for downstream agents calling our Remote MCP
 | 6 | CLI terminology → tool terminology; delete pipelines |
 | 6b | Bot-only ops → add ⚠️ warning |
 | 7 | Preserve orchestration logic, CRITICAL markers, language |
+| 8 | Text assets (`.html`/`.txt`/`.csv`): copy verbatim; `cat local-file` → `lark_get_skill(section="assets/...")` |
 
 ## When to use
 
@@ -224,6 +225,36 @@ documented as bot-only (`tenant_access_token` required, no user auth support), a
 - Original language (Chinese stays Chinese, English stays English)
 - Markdown formatting
 
+### 8. Copy text assets verbatim; rewrite local-file reads
+
+Some skills ship **non-markdown text assets** alongside their `.md` files — e.g.
+`lark-mail/assets/templates/*.html` (static email templates). The server serves these through
+`lark_get_skill` for the allow-listed text extensions **`.html`, `.txt`, `.csv`** (see
+`docker/skill-sections.js`). Handle them like this:
+
+- **Copy the asset file verbatim** to the same relative path under `docker/skills/lark-<domain>/`
+  (e.g. `assets/templates/weekly--team-report.html`). Do **NOT** apply the CLI→MCP text rules to
+  asset bodies — an HTML template is data, not skill prose. Preserve the `assets/` directory
+  structure as-is.
+- **Rewrite local-file reads** in the `.md` that references them. The raw skill reads assets off
+  the local filesystem (`cat skills/lark-mail/assets/templates/x.html`, or a relative
+  `[`../assets/templates/`](../assets/templates/)` link) — neither works for a downstream agent
+  with no filesystem. Replace with a `lark_get_skill` call that addresses the asset **with its
+  extension and path relative to the skill dir**:
+
+  | Original (local read) | Adapted (MCP) |
+  |-----------------------|---------------|
+  | `cat skills/lark-mail/assets/templates/weekly--team-report.html` | `lark_get_skill(domain="mail", section="assets/templates/weekly--team-report.html")` |
+  | `[`../assets/templates/`](../assets/templates/)` (browse the dir) | prose: 用 `lark_get_skill(domain="mail", section="assets/templates/<name>.html")` 按名取用某个模板 |
+
+  Note the asset section **keeps its `.md`-less peers' convention inverted**: markdown sections
+  are addressed without an extension (`section="create"`), but assets are addressed **with** the
+  full filename+extension (`section="assets/templates/x.html"`), because that is how
+  `skill-sections.js` lists and resolves them.
+- **Binary assets are NOT supported** (images, PDFs, fonts, …) — the server returns text only. If
+  a skill depends on a binary asset, add a ⚠️ note that it is unavailable via the MCP server
+  rather than inventing a broken reference.
+
 ## Excluded skills (do not adapt)
 
 - `lark-shared` — auth-only, not relevant
@@ -283,7 +314,7 @@ domain in `READAPT` (see Phase 1).
 
 **Force a FULL re-adapt (ignore the diff; `N` = every adaptable domain) when:**
 
-- The transformation RULES below (Rules 1–7, section-resolution, tool-naming, quality checklist)
+- The transformation RULES below (Rules 1–8, section-resolution, tool-naming, quality checklist)
   change — the diff only tells you which *upstream* skills changed, not whether already-committed
   output still complies with the *current* rules. A rule change makes even upstream-unchanged
   output stale, and is invisible to both the diff and `npm test` (skill-quality only re-validates
@@ -331,7 +362,8 @@ Each agent, per skill:
    - Read, apply same rules, write to same relative path under `docker/skills/lark-<domain>/`
    - Use the per-skill diff to confirm every file added/renamed/deleted upstream is reflected (added files written, deleted files removed)
    - Note: files in subdirs like `references/style/` are accessible to agents via full SKILL.md text but not individually via `lark_get_skill(section=...)`. Preserve their directory structure as-is.
-5. Self-verify: `grep -c "lark-cli"` on all output files — must be 0
+   - For **text assets** (`.html`/`.txt`/`.csv`, e.g. `assets/templates/*.html`): copy verbatim (Rule 8 — no CLI→MCP transform on the asset body), and rewrite any `cat local-file` / relative-link reads of them in the `.md` to `lark_get_skill(section="assets/...")`. Skip binary assets (flag as unavailable).
+5. Self-verify: `grep -c "lark-cli"` on all output files — must be 0 (asset bodies are exempt — they are copied verbatim, so a literal `lark-cli` inside a template is fine; check the `.md` files)
 
 ### Phase 2: Verify
 

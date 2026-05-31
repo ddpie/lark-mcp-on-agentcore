@@ -47,7 +47,7 @@ sequenceDiagram
 
 Skills are loaded on demand via `lark_get_skill` — no fixed context cost.
 
-## 23 orchestration domains
+## Orchestration domains
 
 | Domain | Coverage |
 |---|---|
