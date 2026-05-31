@@ -65,6 +65,19 @@ jobs:
             echo "::warning::CDK snapshot changed — review infrastructure diff"
           fi
 
+  docker-smoke:
+    # End-to-end container boot: builds the image and verifies the container
+    # actually starts and answers MCP initialize / tools/list. Catches the class
+    # of bug that unit tests cannot — e.g. a new server.js require() whose file
+    # was never COPYed into the image (MODULE_NOT_FOUND at startup). ubuntu
+    # runners have Docker preinstalled; no AWS credentials needed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Container smoke test (build + boot + MCP protocol)
+        run: bash scripts/test-smoke-docker.sh
+
   semgrep:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
