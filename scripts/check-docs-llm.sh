@@ -16,7 +16,11 @@ DIFF_CHAR_CAP=12000
 skip() { echo "SKIP: $1"; exit 0; }
 
 # 1. Determine the push diff range.
-#    pre-push feeds "<local_ref> <local_sha> <remote_ref> <remote_sha>" lines on stdin.
+#    A native git pre-push hook receives "<local_ref> <local_sha> <remote_ref>
+#    <remote_sha>" lines on stdin. NOTE: lefthook does NOT forward that stdin to
+#    `run:` jobs, so under lefthook the loop below reads nothing and we fall back.
+#    The stdin branch is kept so the script is still correct when invoked as a raw
+#    git hook or with the refs piped in manually.
 range=""
 if [ ! -t 0 ]; then
   while read -r _local_ref local_sha _remote_ref remote_sha; do
@@ -30,19 +34,34 @@ if [ ! -t 0 ]; then
     break
   done || true
 fi
+# Fallback (the lefthook path): prefer the real push target's upstream so we only
+# check the commits actually being pushed, not the whole branch. Try @{push},
+# then @{upstream}, then merge-base with origin/main, then HEAD.
 if [ -z "$range" ]; then
-  base="$(git merge-base origin/main HEAD 2>/dev/null || true)"
-  if [ -n "$base" ]; then range="$base..HEAD"; else range="HEAD"; fi
+  base="$(git rev-parse --abbrev-ref '@{push}' 2>/dev/null \
+        || git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)"
+  if [ -n "$base" ]; then
+    range="$base..HEAD"
+  else
+    mb="$(git merge-base origin/main HEAD 2>/dev/null || true)"
+    if [ -n "$mb" ]; then range="$mb..HEAD"; else range="HEAD"; fi
+  fi
 fi
 
 # 2. Heuristic gate: only proceed if the diff touches doc-relevant code.
+#    `|| true` on BOTH branches so a failing git invocation (bad ref, shallow
+#    clone, empty repo) degrades to "no changes" → SKIP, never aborts under set -e.
 if [ "$range" = "HEAD" ] || ! echo "$range" | grep -q '\.\.'; then
-  changed="$(git show --name-only --pretty=format: "$range" 2>/dev/null | sort -u)"
+  changed="$(git show --name-only --pretty=format: "$range" 2>/dev/null | sort -u || true)"
 else
   changed="$(git diff --name-only "$range" 2>/dev/null || true)"
 fi
+# Doc-relevant code = the surfaces docs/agent/* actually cite: the JS/TS under
+# docker/lambda/infra-lib AND the provisioning/scope files (deploy.sh, scope
+# scripts, oauth-scope/shortcut-scope JSON, Dockerfile) that architecture.md and
+# invariants.md describe in detail. Tests excluded.
 relevant="$(echo "$changed" \
-  | grep -E '^(docker|lambda|infra/lib)/.*\.(js|ts|mjs)$' \
+  | grep -E '^(docker|lambda|infra/lib)/.*\.(js|ts|mjs)$|^scripts/(deploy|build-scope-allowlist)\.sh$|^config/.*\.json$|^docker/(Dockerfile|shortcut-scopes\.json)$' \
   | grep -vE '(__tests__/|\.test\.)' || true)"
 [ -z "$relevant" ] && skip "no doc-relevant code changes in this push"
 
@@ -95,7 +114,11 @@ $arch_doc
 $inv_doc"
 
 # 5. Invoke (timeout is inside run_llm per-branch); any failure/empty → SKIP.
-raw="$(run_llm "$prompt" 2>/dev/null || true)"
+#    `head -c` caps the captured output so a runaway/verbose CLI can't balloon
+#    memory before `timeout` fires. Notice on stderr so a multi-second push isn't
+#    a silent hang.
+echo "doc-consistency check: asking $LLM_NAME (up to ${LLM_TIMEOUT}s, advisory)..." >&2
+raw="$(run_llm "$prompt" 2>/dev/null | head -c 65536 || true)"
 [ -z "$raw" ] && skip "LLM check unavailable (no output, timeout, or error)"
 
 # 6. Extract the JSON object and parse with jq. Models often ignore the
