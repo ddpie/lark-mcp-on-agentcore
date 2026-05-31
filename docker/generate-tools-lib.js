@@ -11,6 +11,24 @@
 //   server.js adds --yes itself when needed (gated by supportsYes).
 const HIDDEN_FLAGS = new Set(['yes', 'dry-run', 'jq']);
 
+// cobra renders a flag as `--name <type-token>   <description>`, EXCEPT for
+// booleans, which render as `--name   <description>` with NO type token. So the
+// token immediately after the flag name is the type — and its absence means the
+// flag is a boolean. Map the known cobra type tokens; anything else (including
+// no token) is handled by the caller.
+const NUMBER_TYPE_TOKENS = new Set(['int', 'int8', 'int16', 'int32', 'int64', 'uint', 'uint8', 'uint16', 'uint32', 'uint64', 'float', 'float32', 'float64', 'count']);
+const STRING_TYPE_TOKENS = new Set(['string', 'stringArray', 'stringSlice', 'strings', 'duration', 'bytesHex', 'ip']);
+
+// Resolve a flag's JSON-schema type from the text following its name (`rest`).
+// A leading known type token decides string vs number; no recognized token
+// means cobra omitted it, i.e. the flag is a boolean switch.
+function flagTypeFromRest(rest) {
+  const firstToken = rest.match(/^(\S+)/)?.[1];
+  if (firstToken && NUMBER_TYPE_TOKENS.has(firstToken)) return 'number';
+  if (firstToken && STRING_TYPE_TOKENS.has(firstToken)) return 'string';
+  return 'boolean';
+}
+
 function parseFlags(helpText) {
   const flags = [];
   let supportsYes = false;
@@ -20,10 +38,12 @@ function parseFlags(helpText) {
     if (!m) continue;
     const [, rawName, rest] = m;
     const name = rawName;
-    let type = 'string';
     if (name.includes(' ')) continue;
     if (name === 'yes') { supportsYes = true; continue; }
     if (HIDDEN_FLAGS.has(name)) continue;
+    let type = flagTypeFromRest(rest);
+    // A `(default: false/true)` annotation is an explicit boolean signal even if
+    // some other leading token were present.
     if (rest.toLowerCase().includes('(default: false)') || rest.toLowerCase().includes('(default: true)')) type = 'boolean';
     const required = rest.includes('(required)');
     const enumMatch = rest.match(/\(enum:\s*([^)]+)\)/);

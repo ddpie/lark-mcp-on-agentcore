@@ -378,6 +378,16 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     if (err.message === 'client_aborted') {
       return { content: [{ type: 'text', text: '{"error":"client_aborted"}' }], isError: true };
     }
+    // On timeout (execFile kills the child: err.killed + signal) or maxBuffer
+    // overflow, err.stdout holds a TRUNCATED partial fragment — almost always
+    // invalid JSON, and it buries the real cause. Map these to clean structured
+    // errors instead of returning the corrupt blob (the line below).
+    if (err.killed || err.signal) {
+      return { content: [{ type: 'text', text: '{"error":"timeout","message":"lark-cli call exceeded the time limit"}' }], isError: true };
+    }
+    if (err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+      return { content: [{ type: 'text', text: '{"error":"output_too_large","message":"lark-cli output exceeded the buffer limit; narrow the query (e.g. pagination/filters)"}' }], isError: true };
+    }
     const message = err.stdout?.trim() || err.stderr?.trim() || err.message;
     return { content: [{ type: 'text', text: patchPermissionError(message, toolName, incrAuthToken) }], isError: true };
   }
@@ -433,9 +443,25 @@ async function handleRequest(req, res, body) {
     return;
   }
 
-  // Propagate client-cancellation into the semaphore queue.
+  // JSON-RPC notifications carry no `id`. The spec (and MCP) forbid sending any
+  // response to a notification — e.g. the mandatory notifications/initialized
+  // handshake message and notifications/cancelled. Acknowledge with 202 and an
+  // empty body instead of falling through to a (malformed, id-less) error frame.
+  if (mcpReq && typeof mcpReq === 'object' && !Array.isArray(mcpReq) && !('id' in mcpReq)) {
+    res.writeHead(202, { 'Cache-Control': 'no-store' });
+    res.end();
+    return;
+  }
+
+  // Propagate a GENUINE client disconnect into the semaphore queue. The
+  // REQUEST's 'close' event fires as soon as the request body is fully received
+  // (BEFORE we write the response), so listening there would cancel every
+  // queued request the moment its body arrived — a spurious client_aborted for
+  // anything waiting on a concurrency slot. The RESPONSE's 'close' is the right
+  // signal: it fires when the response is done OR the socket dies early; only
+  // the latter (response not yet finished) is a real disconnect worth aborting.
   const ac = new AbortController();
-  req.on('close', () => ac.abort());
+  res.on('close', () => { if (!res.writableFinished) ac.abort(); });
 
   // Extract user token and incremental-auth token from headers
   const userToken = req.headers['x-user-access-token'] || '';

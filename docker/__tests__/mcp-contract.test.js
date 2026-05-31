@@ -437,6 +437,43 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       expect(data.error.code).toBe(-32601);
     });
 
+    // Helper: send a raw JSON-RPC payload verbatim (so we can omit `id` to form
+    // a notification) and capture the raw response.
+    const sendRaw = (obj) => new Promise((resolve, reject) => {
+      const payload = JSON.stringify(obj);
+      const req = http.request({
+        hostname: '127.0.0.1', port: serverPort, path: '/', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      }, (r) => {
+        let body = ''; r.on('data', c => { body += c; });
+        r.on('end', () => resolve({ statusCode: r.statusCode, body }));
+      });
+      req.on('error', reject);
+      req.write(payload); req.end();
+    });
+
+    it('a notification (no id) gets NO JSON-RPC response body', async () => {
+      // JSON-RPC 2.0 §4.1 / MCP: the server MUST NOT reply to a notification.
+      // notifications/initialized is sent by every compliant client right after
+      // initialize. The bug returned a -32601 error frame with a missing id.
+      const { body } = await sendRaw({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
+      expect(body).toBe('');
+    });
+
+    it('notifications/cancelled (no id) also gets no response body', async () => {
+      const { body } = await sendRaw({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 5 } });
+      expect(body).toBe('');
+    });
+
+    it('a request WITH id still gets an error frame for unknown methods', async () => {
+      // Guard: the no-id short-circuit must not swallow real requests.
+      const { body } = await sendRaw({ jsonrpc: '2.0', id: 77, method: 'totally/unknown', params: {} });
+      expect(body).not.toBe('');
+      const data = parseSSE(body).data;
+      expect(data.id).toBe(77);
+      expect(data.error.code).toBe(-32601);
+    });
+
     it('response is always wrapped in SSE format', async () => {
       const { body, headers } = await sendMcpRequest('initialize', {}, 40);
 
