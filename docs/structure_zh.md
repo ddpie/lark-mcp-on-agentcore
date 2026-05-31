@@ -38,6 +38,7 @@ scripts/
   audit-tools.sh      工具目录结构性自检 (15 项断言, 含 catalog snapshot)
   audit-deps.sh       多目录 npm audit
   check-lark-cli-version.sh  Dockerfile / scope-map 版本一致性检查
+  check-docs-agent.sh   LLM 文档一致性检查 (pre-push, 仅告警, 工具无关)
   build-scope-allowlist.sh   重新生成 OAuth scope allowlist
 ```
 

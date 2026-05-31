@@ -22,3 +22,6 @@ pre-push:
   jobs:
     - name: test
       run: ./scripts/test.sh
+    # Advisory only: always exits 0, never blocks the push (unlike `test` above).
+    - name: docs-llm-check
+      run: ./scripts/check-docs-agent.sh

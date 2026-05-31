@@ -38,6 +38,7 @@ scripts/
   audit-tools.sh      Tool catalog structural audit (15 assertions, with snapshot)
   audit-deps.sh       Multi-dir npm audit
   check-lark-cli-version.sh  Dockerfile / scope-map version drift check
+  check-docs-agent.sh   LLM doc-consistency check (pre-push, warn-only, agent-agnostic)
   build-scope-allowlist.sh   Regenerate OAuth scope allowlist
 ```
 

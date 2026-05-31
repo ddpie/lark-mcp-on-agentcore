@@ -39,6 +39,12 @@ Also never hand-edit: `node_modules/`, `coverage/`, `.stryker-tmp/`.
 - **Add any `docs/*_en.md`** ⇒ add the `_zh.md` counterpart (and vice-versa).
   Check: `scripts/check-invariants.sh` (bilingual pairing).
 - **`docs/agent/*` referenced by `AGENTS.md` must exist.** Check: `scripts/check-invariants.sh`.
+- **Semantic drift** (a doc statement contradicting current code behavior) is not
+  mechanically checkable. `scripts/check-docs-agent.sh` (pre-push, warn-only) uses an
+  Agent to flag it on changes to the JS/TS under `docker/`/`lambda/`/`infra/lib/` or the
+  provisioning/scope surfaces (`scripts/deploy.sh`, `scripts/build-scope-allowlist.sh`,
+  `config/oauth-scopes.json`, `docker/Dockerfile`, `docker/shortcut-scopes.json`); it
+  complements, does not replace, `scripts/check-invariants.sh`.
 
 ## Identity boundary
 
