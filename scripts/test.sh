@@ -89,6 +89,7 @@ fi
   for f in "'"$ROOT"'"/scripts/*.sh; do bash -n "$f" || exit 1; done
 '
 [ "$DO_LINT" = 1 ] && run_tier "lint (eslint)" bash -c "cd '$ROOT' && npm run lint"
+[ "$DO_LINT" = 1 ] && run_tier "lint (invariants)" bash -c "cd '$ROOT' && ./scripts/check-invariants.sh"
 [ "$DO_TYPECHECK" = 1 ] && run_tier "typecheck (tsc --noEmit)" bash -c "cd '$ROOT/infra' && npx tsc --noEmit"
 if [ "$DO_UNIT" = 1 ]; then
   if [ "$DO_COV" = 1 ]; then
