@@ -22,6 +22,11 @@ import Module from 'node:module';
 // before importing server.js (read at module load).
 process.env.MAX_CONCURRENT = '1';
 process.env.MAX_QUEUE_DEPTH = '20';
+// Bind a port distinct from mcp-contract.test.js's 8000. Both files import the
+// side-effectful server.js (which calls server.listen); a shared vitest worker
+// would otherwise collide on the same port. server.js reads process.env.PORT.
+process.env.PORT = '18010';
+const PORT = 18010;
 
 const FAKE_TOOL_DEF_READ = {
   service: 'calendar',
@@ -98,7 +103,7 @@ function callTool(name, args = {}, id = 1) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
     const req = http.request({
-      hostname: '127.0.0.1', port: 8000, path: '/', method: 'POST',
+      hostname: '127.0.0.1', port: PORT, path: '/', method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload), 'x-user-access-token': 'u-tok' },
     }, (res) => {
       let body = ''; res.on('data', c => { body += c; });
@@ -227,7 +232,7 @@ describe('R5: execFile is abortable and its timeout aligns under the Lambda', ()
     execFileBehavior = { mode: 'slow', delayMs: 5000 };
     const ctrl = new AbortController();
     const payload = JSON.stringify({ jsonrpc: '2.0', id: 52, method: 'tools/call', params: { name: 'lark_calendar_agenda', arguments: {} } });
-    const aborted = fetch('http://127.0.0.1:8000/', {
+    const aborted = fetch(`http://127.0.0.1:${PORT}/`, {
       method: 'POST', signal: ctrl.signal,
       headers: { 'Content-Type': 'application/json', 'x-user-access-token': 'u-tok' },
       body: payload,

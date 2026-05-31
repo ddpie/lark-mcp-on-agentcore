@@ -129,7 +129,12 @@ Module._load = function (request, parent, isMain) {
 
 // --- Test Helpers ---
 
-const serverPort = 8000; // Hardcoded in server.js
+// Pin our own PORT before server.js loads (it reads process.env.PORT, default
+// 8000). Explicit so that if another server-loading test file (e.g.
+// server-runtime.test.js, which uses 18010) ever shares this worker, each file
+// stays self-consistent and they never collide on one port.
+const serverPort = 8000;
+process.env.PORT = String(serverPort);
 
 function sendMcpRequest(method, params = {}, id = 1, headers = {}) {
   return new Promise((resolve, reject) => {

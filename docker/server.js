@@ -60,7 +60,9 @@ function runLarkCli(cliArgs, env, timeoutMs, abortSignal) {
   });
 }
 
-const PORT = 8000;
+// AgentCore expects 8000 (Dockerfile EXPOSE 8000); env-overridable so tests that
+// load this module can bind distinct ports and never collide on a shared worker.
+const PORT = parseInt(process.env.PORT || '8000', 10);
 const REGION = process.env.AWS_REGION || process.env.DEPLOY_REGION || 'us-west-2';
 const APP_ID = process.env.APP_ID || '';
 const APP_SECRET_ID = process.env.APP_SECRET_ID || 'lark-mcp-on-agentcore/feishu-app';
