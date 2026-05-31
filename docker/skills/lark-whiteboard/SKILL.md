@@ -22,10 +22,6 @@ description: "飞书画板：查询和编辑飞书云文档中的画板。支持
 | 绘制复杂图表（架构/流程/组织等）| → **[§ 创作 Workflow](#创作-workflow)** |
 | 修改/重绘已有复杂画板 | → **[§ 修改 Workflow](#修改-workflow)** |
 
-> **⚠️ 强制规范（通过 stdin 更新）**：
-> 数据来源于本地文件时，**必须**使用 `source="-"` 配合 `input_format`。
-> 例：`cat chart.mmd | lark_whiteboard_update(whiteboard_token="xxx", source="-", input_format="mermaid")`
-
 ## Shortcuts
 
 | Shortcut | 说明 |
@@ -45,8 +41,8 @@ description: "飞书画板：查询和编辑飞书云文档中的画板。支持
 | 用户给了什么 | 怎么获取 |
 |---|---|
 | 直接给了 whiteboard token（`wbcnXXX`）| 直接使用 |
-| 文档 URL 或 doc_id，文档中已有画板 | `lark_docs_fetch(api_version="v2", doc="<URL>")`，从返回的 `<whiteboard token="xxx"/>` 提取 |
-| 文档 URL 或 doc_id，需要新建画板 | `lark_docs_update(api_version="v2", doc="<doc_id>", command="append", content='<whiteboard type="blank"></whiteboard>')`，从响应 `data.new_blocks[0].block_token` 取得（`block_type == "whiteboard"` 的那条；参数详见 lark_get_skill(domain="doc")）|
+| 文档 URL 或 doc_id，文档中已有画板 | `lark_docs_fetch(doc="<URL>")`，从返回的 `<whiteboard token="xxx"/>` 提取 |
+| 文档 URL 或 doc_id，需要新建画板 | `lark_docs_update(api_version="v2", doc="<doc_id>", command="append", content='<whiteboard type="blank"></whiteboard>')`，从响应 `data.new_blocks[0].block_token` 取得（`block_type == "whiteboard"` 的那条；参数详见 `lark_get_skill(domain="doc")`）|
 
 **Step 2：渲染 & 写入**
 
@@ -82,9 +78,9 @@ lark_whiteboard_query(output_as="code")
 
 | 图表类型 | 身份 | 路径 |
 |---|---|---|
-| 思维导图、时序图、类图、饼图、甘特图 | 任何身份 | `lark_get_skill(domain="whiteboard", section="mermaid")` — routes/mermaid.md |
-| 其他图表 | `Claude` / `Gemini` / `GPT` / `GLM` | `lark_get_skill(domain="whiteboard", section="svg")` — routes/svg.md |
-| 其他图表 | `Doubao` / `Seed` / `Other` | `lark_get_skill(domain="whiteboard", section="dsl")` — routes/dsl.md |
+| 思维导图、流程图、时序图、类图、饼图、甘特图 | 任何身份 | `lark_get_skill(domain="whiteboard", section="routes/mermaid")` |
+| 其他图表 | `Claude` / `Gemini` / `GPT` / `GLM` | `lark_get_skill(domain="whiteboard", section="routes/svg")` |
+| 其他图表 | `Doubao` / `Seed` / `Other` | `lark_get_skill(domain="whiteboard", section="routes/dsl")` |
 
 > **⚠️ SVG 路径失败回退**：走 routes/svg.md 时，碰到以下情况之一 → **丢弃当前 SVG，改读 routes/dsl.md 从零重画，不要逐行修补**：
 > - 渲染命令直接报错（语法级崩溃，不是 `--check` 的 warn/error）
@@ -109,18 +105,14 @@ diagram.png           ← 渲染结果
 
 ### 写入画板
 
-> [!CAUTION]
-> **写入前强制 dry-run**：向已有内容的画板写入时，必须先加 `overwrite=true` 配合 dry-run 探测。
-> 输出含 `XX whiteboard nodes will be deleted` → 必须向用户确认后才能执行。
+> 关于 overwrite
+> 画板更新时，若不携带 `overwrite=true`，则是增量更新画板内容，若画板内已有内容的话，新增内容可能会和已有内容重叠，导致问题。
+> 因此，若需要整体更新画板内容，需携带 `overwrite=true` 覆盖式更新。
 
 ```bash
-# 第一步：dry-run 探测
-npx -y @larksuite/whiteboard-cli@^0.2.11 -i <产物文件> --to openapi --format json \
-  | lark_whiteboard_update(whiteboard_token="<Token>", source="-", input_format="raw", idempotent_token="<10+字符唯一串>", overwrite=true, _confirm=false)
-
-# 第二步：确认后执行
 npx -y @larksuite/whiteboard-cli@^0.2.11 -i <产物文件> --to openapi --format json \
   | lark_whiteboard_update(whiteboard_token="<Token>", source="-", input_format="raw", idempotent_token="<10+字符唯一串>", overwrite=true, _confirm=true)
 ```
 
 > `idempotent_token` 最少 10 字符，建议用时间戳+标识拼接（如 `1744800000-board-1`），避免重试导致重复写入。
+> ⚠️ 应用身份（bot identity）上传不支持通过 MCP server 使用——MCP server 始终以用户身份执行。

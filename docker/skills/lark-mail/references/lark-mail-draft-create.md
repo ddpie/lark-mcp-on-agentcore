@@ -6,6 +6,8 @@
 
 如需修改已有草稿，不要使用此工具，请使用 `lark_mail_draft_edit`。
 
+**CRITICAL - 编辑邮件内容前 MUST 先调用 `lark_get_skill(domain="mail", section="html")`，其中包含邮件书写规范**
+
 ## 安全约束
 
 此工具创建草稿——**不会**发送邮件。用户可以在飞书邮件 UI 中打开草稿查看详情，确认后再进入后续操作。因此：
@@ -38,7 +40,8 @@ lark_mail_draft_create(to="alice@example.com", subject="简短通知", body="收
 |------|------|------|
 | `to` | 否 | 完整收件人列表，多个用逗号分隔。支持 `Alice <alice@example.com>` 格式。省略时草稿不带收件人（之后可通过 `lark_mail_draft_edit` 添加） |
 | `subject` | 是 | 草稿主题 |
-| `body` | 是 | 邮件正文。推荐使用 HTML 获得富文本排版；也支持纯文本（自动检测）。使用 `plain_text=true` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径） |
+| `body` | 二选一 | 邮件正文。推荐使用 HTML 获得富文本排版；也支持纯文本（自动检测）。使用 `plain_text=true` 可强制纯文本模式。支持 `<img src="./local.png" />` 相对路径自动解析为内嵌图片（仅支持相对路径，不支持绝对路径）。与 `body_file` 互斥 |
+| `body_file` | 二选一 | 从文件读取邮件正文 HTML（相对路径，仅限 cwd 子树）。与 `body` 互斥。文件大小上限 32 MB |
 | `from` | 否 | 发件人邮箱地址（EML From 头）。使用别名（send_as）发信时，设为别名地址并配合 `mailbox` 指定所属邮箱。省略时使用邮箱主地址 |
 | `mailbox` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `from`，再回退到 `me`）。当发件人（`from`）与邮箱不同时使用，如通过别名或 send_as 地址发信。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `cc` | 否 | 完整抄送列表，多个用逗号分隔 |

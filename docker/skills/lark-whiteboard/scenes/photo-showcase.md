@@ -4,7 +4,7 @@
 
 > **注意**：仅当用户明确说了「图片/配图/插图/照片」等词时才进入本场景。单纯说"旅行路线图"、"产品展示"等不触发。
 
-> **前置条件**：进入本场景前，必须已完成 [`references/image.md`](../references/image.md) 的 Step 0（图片准备），拿到所有 media token。
+> **前置条件**：进入本场景前，必须已完成 `lark_get_skill(domain="whiteboard", section="image")` 的 Step 0（图片准备），拿到所有 media token。
 
 ## Content 约束
 
@@ -117,8 +117,8 @@
 
 生成 DSL 前确认：
 
-- [ ] 所有 image 节点的 `image.src` 都是通过 `docs +media-upload --parent-type whiteboard` 上传的 media token（非 URL、非 Drive file token）
-- [ ] 所有图片已上传到目标画板（`--parent-node` 设为目标画板 token）
+- [ ] 所有 image 节点的 `image.src` 都是通过 `lark_docs_media_upload(parent_type="whiteboard")` 上传的 media token（非 URL、非 Drive file token）
+- [ ] 所有图片已上传到目标画板（`parent_node` 设为目标画板 token）
 - [ ] 每个 media token 不同（对应不同的真实图片）
 - [ ] 所有图片尺寸一致（同一画板内统一 width×height）
 - [ ] 图片宽高比合理（推荐 3:2，即 240×160）

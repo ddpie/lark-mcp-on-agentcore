@@ -8,11 +8,13 @@
 - `set_cc`
 - `set_bcc`
 
-**正文编辑和其他高级操作必须通过 `patch_file`**。没有 `set_body` 参数。
+**正文整体替换的快捷方式：** `body` / `body_file`（二选一互斥）会自动展开为 `set_body` op。如果只想做整段正文替换且不需要保留引用区，用这两个参数即可，无需写 patch-file。要保留引用区或做更精细的 op 组合，仍走 `patch_file`。两个入口与 `patch_file` 内的 `set_body` / `set_reply_body` 互斥。
 
-### 正文编辑：两个 op 的选择
+**CRITICAL - 编辑邮件内容前 MUST 先调用 `lark_get_skill(domain="mail", section="html")`，其中包含邮件书写规范**
 
-正文编辑通过 `patch_file` 传入，有两个 op 可选：
+## 正文编辑：快捷参数与 typed op 的选择
+
+整段替换正文且不需要保留引用区时，可直接使用 `body` / `body_file`。需要保留引用区、修改引用区或组合高级正文编辑时，通过 `patch_file` 传入 typed body op，有两个 op 可选：
 
 | 情况 | op | 行为 |
 |------|-----|------|
@@ -47,7 +49,10 @@
 # 编辑草稿元数据（主题、收件人）
 lark_mail_draft_edit(draft_id="<draft-id>", set_subject="更新后的主题", set_to="alice@example.com,bob@example.com")
 
-# 编辑草稿正文（必须通过 patch_file）
+# 快速完整替换正文
+lark_mail_draft_edit(draft_id="<draft-id>", body="<p>更新后的正文</p>")
+
+# 高级正文编辑（如保留回复/转发引用区）
 lark_mail_draft_edit(draft_id="<draft-id>", patch_file="./patch.json")
 
 # 查看草稿（只读）— 返回包含 has_quoted_content、attachments_summary 和 inline_summary 的投影
@@ -67,13 +72,15 @@ lark_mail_draft_edit(print_patch_template=true)
 | `set_to` | 否 | 用此处提供的地址替换整个 To 收件人列表 |
 | `set_cc` | 否 | 用此处提供的地址替换整个 Cc 抄送列表 |
 | `set_bcc` | 否 | 用此处提供的地址替换整个 Bcc 密送列表 |
+| `body` | 否 | 整段替换正文（自动展开为 `set_body` op）。与 `body_file` 互斥；与 `patch_file` 内的 `set_body` / `set_reply_body` op 互斥 |
+| `body_file` | 否 | 从文件读取正文 HTML（相对路径，仅限 cwd 子树）。与 `body` 互斥。文件大小上限 32 MB |
 | `set_priority` | 否 | 设置邮件优先级：`high`、`normal`、`low`。设为 `normal` 会清除已有优先级 |
 | `set_event_summary` | 否 | 设置日程标题。需同时设置 `set_event_start` 和 `set_event_end` |
 | `set_event_start` | 条件必填 | 设置日程开始时间（ISO 8601） |
 | `set_event_end` | 条件必填 | 设置日程结束时间（ISO 8601） |
 | `set_event_location` | 否 | 设置日程地点 |
 | `remove_event` | 否 | 移除草稿中的日程邀请。与 `set_event_*` 互斥 |
-| `patch_file` | 否 | 所有正文编辑、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `print_patch_template=true` 查看 JSON 结构 |
+| `patch_file` | 否 | typed body op（`set_body` / `set_reply_body`）、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `print_patch_template=true` 查看 JSON 结构 |
 | `print_patch_template` | 否 | 打印 `patch_file` 的 JSON 模板和支持的操作。建议在生成补丁文件前先运行此参数。不会读取或写入草稿 |
 | `inspect` | 否 | 查看草稿但不修改。返回包含 `has_quoted_content`（是否有引用区）、`attachments_summary`（普通附件，含 `part_id`/`cid`/`filename`）、`large_attachments_summary`（超大附件，含 `token`/`filename`/`size_bytes`）和 `inline_summary` 的草稿投影 |
 | `request_receipt` | 否 | 在草稿上追加 `Disposition-Notification-To: <草稿的 From 地址>` 头，请求已读回执（RFC 3798）。本质上是在 patch 中注入一个 `set_header` op；已有的 DNT 值会被覆盖。可以与其他 `set_*` / `patch_file` 编辑组合，也可以单独使用 |
@@ -245,8 +252,8 @@ lark_mail_draft_edit(draft_id="<draft_id>", inspect=true)
 
 - `ops` 按顺序执行
 - `target` 接受 `part_id` 或 `cid`；优先级：`part_id` > `cid`
-- **所有文件路径（`patch_file` 及 ops 中的 `path`）必须为相对路径**
-- **正文编辑没有直接参数，必须通过 `patch_file`**
+- **所有文件路径（`body_file`、`patch_file` 及 ops 中的 `path`）必须为相对路径**
+- **快速完整正文替换可用 `body` / `body_file`；高级正文编辑使用 `patch_file`**
 - **`set_body` 替换用户撰写内容** — 不保留旧的引用区（用户要保留需在 value 里带上，或改用 `set_reply_body`）；自动保留签名、超大附件卡片、普通附件
 - **`set_reply_body` 替换用户撰写内容** — 自动保留引用区、签名、超大附件卡片、普通附件；value 只传用户撰写的部分，不要包含引用区/签名/附件卡片；如果用户要修改引用区内容，用 `set_body` 并在 value 里带上修改后的引用区
 - **删除签名 / 附件**不能通过 `set_body` 清空实现 — 必须用对应的专用 op：`remove_signature`、`remove_attachment`（按 `part_id` / `cid` / `token` 定位）
@@ -281,9 +288,8 @@ lark_mail_draft_edit(draft_id="<draft_id>", inspect=true)
 # 1. 查看草稿当前状态
 lark_mail_draft_edit(draft_id="<draft_id>", inspect=true)
 
-# 2. 编辑草稿（元数据用参数，正文用 patch_file）
-# patch.json: { "ops": [{ "op": "set_body", "value": "<p>更新后的内容</p>" }] }
-lark_mail_draft_edit(draft_id="<draft_id>", set_subject="最终版本", patch_file="./patch.json")
+# 2. 编辑草稿（元数据和快速正文替换）
+lark_mail_draft_edit(draft_id="<draft_id>", set_subject="最终版本", body="<p>更新后的内容</p>")
 
 # 3. 发送草稿
 lark_invoke(tool_name="lark_mail_user_mailbox_drafts_send", args={params: {"user_mailbox_id": "me", "draft_id": "<draft_id>"}})
