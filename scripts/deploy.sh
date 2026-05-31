@@ -367,12 +367,16 @@ while [ -z "${APP_ID:-}" ]; do
         "https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal" \
         -H "Content-Type: application/json" \
         -d "{\"app_id\":\"${APP_ID}\",\"app_secret\":\"${APP_SECRET}\"}" 2>/dev/null || echo '{}')
-      VERIFY_CODE=$(echo "$VERIFY_RESP" | grep -o '"code":[0-9]*' | head -1 | cut -d: -f2)
+      # `|| true`: grep returns non-zero on no match, which under `set -e -o
+      # pipefail` would abort the whole deploy if Feishu returns an unexpected
+      # body (e.g. VERIFY_RESP defaulted to "{}" on a curl failure). Treat a
+      # missing field as "creds not verified" and re-prompt instead of crashing.
+      VERIFY_CODE=$(echo "$VERIFY_RESP" | grep -o '"code":[0-9]*' | head -1 | cut -d: -f2 || true)
       if [ "${VERIFY_CODE:-}" = "0" ]; then
         info "${L[creds_valid]}"
         break
       else
-        VERIFY_MSG=$(echo "$VERIFY_RESP" | grep -o '"msg":"[^"]*"' | head -1 | cut -d'"' -f4)
+        VERIFY_MSG=$(echo "$VERIFY_RESP" | grep -o '"msg":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
         # shellcheck disable=SC2059
         printf "  ${L[creds_invalid]}\n" "${VERIFY_MSG:-unknown}"
         unset FEISHU_APP_ID FEISHU_APP_SECRET
@@ -1008,9 +1012,12 @@ fi
 # window (no ForceDeleteWithoutRecovery) to allow rollback if needed.
 OPENID_SM_PREFIX="lark-mcp-on-agentcore/openid-map"
 OPENID_DDB_TABLE="lark-mcp-on-agentcore-openid-map"
+# length(@) is applied per-page by the CLI paginator (prints "10\n6" past one
+# page), which would break the -gt test and over/under-report the migration
+# count; count names client-side. (--no-paginate would undercount to page 1.)
 OPENID_COUNT=$(aws secretsmanager list-secrets --region "$REGION" \
   --filters "Key=name,Values=${OPENID_SM_PREFIX}" \
-  --query 'SecretList | length(@)' --output text 2>/dev/null || echo "0")
+  --query 'SecretList[].Name' --output text 2>/dev/null | tr '\t' '\n' | grep -c . || true)
 if [ "${OPENID_COUNT:-0}" -gt 0 ]; then
   info "Migrating ${OPENID_COUNT} openid-map entries from Secrets Manager to DynamoDB..."
   python3 -c "
