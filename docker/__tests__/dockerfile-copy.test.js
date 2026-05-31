@@ -49,7 +49,7 @@ describe('Dockerfile COPY covers server.js local requires', () => {
     expect(required.length).toBeGreaterThan(0);
   });
 
-  it.each(['skill-description', 'skill-sections'])(
+  it.each(['skill-description', 'skill-sections', 'server-lib'])(
     'COPYs the known runtime module %s.js',
     (mod) => {
       expect(copied.has(mod)).toBe(true);

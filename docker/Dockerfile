@@ -28,6 +28,7 @@ COPY generate-tools.js /app/generate-tools.js
 COPY generate-tools-lib.js /app/generate-tools-lib.js
 COPY shortcut-scopes.json /app/shortcut-scopes.json
 COPY server.js /app/server.js
+COPY server-lib.js /app/server-lib.js
 COPY skill-description.js /app/skill-description.js
 COPY skill-sections.js /app/skill-sections.js
 COPY tier1.json /app/tier1.json

@@ -3,8 +3,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint lambda/ docker/server.js docker/generate-tools.js docker/generate-tools-lib.js docker/skill-description.js docker/skill-sections.js",
-    "lint:fix": "eslint lambda/ docker/server.js docker/generate-tools.js docker/generate-tools-lib.js docker/skill-description.js docker/skill-sections.js --fix",
+    "lint": "eslint lambda/ docker/server.js docker/server-lib.js docker/generate-tools.js docker/generate-tools-lib.js docker/skill-description.js docker/skill-sections.js",
+    "lint:fix": "eslint lambda/ docker/server.js docker/server-lib.js docker/generate-tools.js docker/generate-tools-lib.js docker/skill-description.js docker/skill-sections.js --fix",
     "knip": "knip"
   },
   "dependencies": {

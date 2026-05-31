@@ -9,6 +9,19 @@ const { execFile } = require('child_process');
 const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 const { extractSkillDescription } = require('./skill-description');
 const { isUnsafeSection, listAllSections, resolveSection } = require('./skill-sections');
+const {
+  ServerBusyError,
+  toToolName,
+  toSchemaKey,
+  buildInputSchema,
+  toolAnnotations,
+  buildToolScopeMap,
+  buildCatalogIndex,
+  searchCatalog: searchCatalogLib,
+  findByName: findByNameLib,
+  patchPermissionError: patchPermissionErrorLib,
+  createSemaphore,
+} = require('./server-lib');
 
 process.on('uncaughtException', (err) => {
   console.error(JSON.stringify({ level: 'FATAL', event: 'uncaughtException', error: err.message, stack: err.stack }));
@@ -21,38 +34,12 @@ process.on('unhandledRejection', (reason) => {
 // Track in-flight lark-cli child processes so SIGTERM can drain or kill them.
 const activeChildren = new Set();
 
-// Bounded concurrency for lark-cli child processes.
+// Bounded concurrency for lark-cli child processes. ServerBusyError and the
+// queue/abort logic live in server-lib.js (createSemaphore) so they're unit-
+// testable without server.js's module-level side effects.
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT || '10', 10);
 const MAX_QUEUE_DEPTH = parseInt(process.env.MAX_QUEUE_DEPTH || '20', 10);
-let activeProcesses = 0;
-const queue = [];
-
-class ServerBusyError extends Error {
-  constructor() { super('server_busy'); this.name = 'ServerBusyError'; }
-}
-
-async function withSemaphore(fn, abortSignal) {
-  if (activeProcesses >= MAX_CONCURRENT) {
-    if (queue.length >= MAX_QUEUE_DEPTH) throw new ServerBusyError();
-    await new Promise((resolve, reject) => {
-      const entry = { resolve, reject };
-      queue.push(entry);
-      if (abortSignal) {
-        abortSignal.addEventListener('abort', () => {
-          const idx = queue.indexOf(entry);
-          if (idx >= 0) { queue.splice(idx, 1); reject(new Error('client_aborted')); }
-        }, { once: true });
-      }
-    });
-  }
-  activeProcesses++;
-  try { return await fn(); }
-  finally {
-    activeProcesses--;
-    const next = queue.shift();
-    if (next) next.resolve();
-  }
-}
+const withSemaphore = createSemaphore(MAX_CONCURRENT, MAX_QUEUE_DEPTH);
 
 function runLarkCli(cliArgs, env, timeoutMs) {
   return new Promise((resolve, reject) => {
@@ -107,72 +94,8 @@ const tier1Names = new Set(JSON.parse(fs.readFileSync('/app/tier1.json', 'utf8')
 console.log(`Tool catalog: ${allToolDefs.length} tools, Tier 1: ${tier1Names.size}`);
 
 // Scope mapping: toolName -> required scopes (generated at build time)
-const toolScopeMap = new Map();
-for (const def of allToolDefs) {
-  if (def.scopes && def.scopes.length > 0) {
-    toolScopeMap.set(toToolName(def), def.scopes);
-  }
-}
+const toolScopeMap = buildToolScopeMap(allToolDefs);
 console.log(`Scope map: ${toolScopeMap.size} tools (lark-cli ${catalogRaw._larkCliVersion}, scope-map ${catalogRaw._scopeMapVersion})`);
-
-function toToolName(def) {
-  const cmd = def.command.replace(/^\+/, '');
-  return `lark_${def.service}_${cmd.replace(/-/g, '_')}`;
-}
-
-function toSchemaKey(flagName) { return flagName.replace(/-/g, '_'); }
-
-function buildInputSchema(def) {
-  const properties = {};
-  const required = [];
-  for (const flag of def.flags) {
-    const key = toSchemaKey(flag.name);
-    const prop = { description: flag.description };
-    if (flag.type === 'boolean') prop.type = 'boolean';
-    else if (flag.type === 'number') prop.type = 'number';
-    else prop.type = 'string';
-    if (flag.enum) prop.enum = flag.enum;
-    properties[key] = prop;
-    if (flag.required) required.push(key);
-  }
-  if (def.risk === 'high-risk-write') {
-    properties._confirm = {
-      type: 'boolean',
-      description: 'Must be set to true to confirm this destructive operation. Ask the user first; do not set this without explicit user approval.',
-    };
-  }
-  return { type: 'object', properties, ...(required.length > 0 ? { required } : {}) };
-}
-
-// MCP tool annotations (spec: 2025-03-26). Clients use these to render UI:
-// destructive tools should prompt the user explicitly before invocation.
-function toolAnnotations(def) {
-  if (def.risk === 'high-risk-write') {
-    return {
-      title: def.description,
-      readOnlyHint: false,
-      destructiveHint: true,
-      idempotentHint: false,
-      openWorldHint: true,
-    };
-  }
-  if (def.risk === 'write') {
-    return {
-      title: def.description,
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true,
-    };
-  }
-  return {
-    title: def.description,
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: true,
-  };
-}
 
 // Build tier1 tool schemas
 const tier1Tools = [];
@@ -189,10 +112,7 @@ for (const def of allToolDefs) {
 console.log(`Tier 1 matched: ${tier1Tools.length}/${tier1Names.size}`);
 
 // Catalog index for discover
-const catalogIndex = allToolDefs.map(def => {
-  const name = toToolName(def);
-  return { name, def, tokens: `${name} ${def.description}`.toLowerCase().split(/[\s_]+/) };
-});
+const catalogIndex = buildCatalogIndex(allToolDefs);
 
 const DISCOVER_TOOL = {
   name: 'lark_discover',
@@ -257,72 +177,12 @@ const GET_SKILL_TOOL = {
   },
 };
 
-function searchCatalog(query, category) {
-  const tokens = query ? query.toLowerCase().split(/\s+/).filter(Boolean) : [];
-  let candidates = catalogIndex.filter(e => !tier1Names.has(e.name));
-  if (category) candidates = candidates.filter(e => e.def.service === category);
-  if (tokens.length === 0) return candidates.slice(0, 20);
-
-  const scored = [];
-  for (const entry of candidates) {
-    let score = 0;
-    for (const tok of tokens) {
-      if (entry.tokens.some(t => t.startsWith(tok) || tok.startsWith(t))) score++;
-    }
-    if (score > 0) scored.push({ entry, score });
-  }
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 20).map(s => s.entry);
-}
-
-function findByName(name) {
-  return catalogIndex.find(e => e.name === name);
-}
-
-function patchPermissionError(output, toolName, incrAuthToken) {
-  try {
-    const data = JSON.parse(output);
-    if (data.error && Number(data.error.code) === 99991679) {
-      // Collect missing scopes as a Set, normalize to comma-separated for the URL.
-      const missing = new Set();
-      // Layer 2: check local scope mapping table first
-      if (toolName && toolScopeMap.has(toolName)) {
-        for (const s of toolScopeMap.get(toolName)) missing.add(s);
-      }
-      // Layer 3: extract from lark-cli error response
-      if (missing.size === 0 && data.error.console_url) {
-        try {
-          const u = new URL(data.error.console_url);
-          const raw = u.searchParams.get('scopes') || '';
-          for (const s of raw.split(/[,\s]+/).filter(Boolean)) missing.add(s);
-        } catch {}
-      }
-      if (missing.size === 0) {
-        // Capture all scope tokens — Feishu may list multiple comma/space-separated.
-        const matches = [...(data.error.message || '').matchAll(/scopes?[:\s]+([a-z0-9_:.\- ,]+)/gi)];
-        for (const m of matches) {
-          for (const s of m[1].split(/[,\s]+/)) {
-            if (/^[a-z0-9_:.-]+$/i.test(s) && s.length > 2) missing.add(s);
-          }
-        }
-      }
-
-      if (missing.size > 0 && AUTHORIZE_BASE) {
-        const scopeList = [...missing];
-        const tokenParam = incrAuthToken ? `&t=${encodeURIComponent(incrAuthToken)}` : '';
-        // OAuth Lambda expects comma-separated extra_scope (no spaces); each scope must be in allowlist.
-        const authUrl = `${AUTHORIZE_BASE}/authorize?extra_scope=${encodeURIComponent(scopeList.join(','))}${tokenParam}`;
-        data.error.hint = `Missing permission: ${scopeList.join(' ')}. Click to authorize: ${authUrl}`;
-        data.error.authorize_url = authUrl;
-      } else {
-        data.error.hint = 'This tool requires a permission that could not be determined automatically. Please contact ddpie.flea@gmail.com for support.';
-      }
-      delete data.error.console_url;
-      return JSON.stringify(data, null, 2);
-    }
-  } catch {}
-  return output;
-}
+// Thin wrappers binding this process's catalog/scope state to the pure
+// implementations in server-lib.js (the single source of truth, unit-tested).
+const searchCatalog = (query, category) => searchCatalogLib(catalogIndex, tier1Names, query, category);
+const findByName = (name) => findByNameLib(catalogIndex, name);
+const patchPermissionError = (output, toolName, incrAuthToken) =>
+  patchPermissionErrorLib(toolScopeMap, AUTHORIZE_BASE, output, toolName, incrAuthToken);
 
 async function executeTool(def, args, userToken, toolName, incrAuthToken, abortSignal) {
   // High-risk writes (delete, etc.) require explicit user approval. Primary
