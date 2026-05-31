@@ -14,6 +14,7 @@ docker/
   generate-tools.js   Build 时生成工具目录 + scope 映射
   shortcut-scopes.json  lark-cli 命令 → scope 映射 (源码提取)
   server.js           MCP server (tier1 + discover/invoke + skills + semaphore + SIGTERM)
+  server-lib.js       抽取的可单测 helper (patchPermissionError, createSemaphore)
   tier1.json          28 个高频工具
   skills/             MCP 适配后的 Skill (从 lark-cli skills 转换，由 lark_get_skill 提供)
 infra/

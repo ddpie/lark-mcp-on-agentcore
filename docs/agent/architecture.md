@@ -29,7 +29,8 @@ Client (remote-MCP, e.g. Quick Desktop)
 AgentCore gives **each MCP session its own dedicated microVM** (isolated
 compute/memory/filesystem; up to 8h lifetime; idle-timeout configurable). The
 `Mcp-Session-Id` header provides microVM stickiness. Therefore the
-`MAX_CONCURRENT=10` / `MAX_QUEUE_DEPTH=20` semaphore in `docker/server.js` is
+`MAX_CONCURRENT=10` / `MAX_QUEUE_DEPTH=20` semaphore (`docker/server-lib.js`,
+function `createSemaphore`, wired up in `docker/server.js`) is
 **per-session**, not a shared global pool — each session's microVM runs its own
 `server.js` process with its own counter. User isolation is triple-layered:
 microVM boundary → per-call child process → token passed via env, never shared.
@@ -90,9 +91,10 @@ injected only for commands that declare `supportsYes` (`docker/server.js`, the
 Tool results are always `{content:[{type:'text',...}]}`; errors additionally set
 `isError:true`. Sentinel error shapes that clients/middleware depend on:
 `server_busy`, `user_approval_required`, `server_initializing`, `client_aborted`.
-`patchPermissionError` (`docker/server.js`, function `patchPermissionError` — the
-`99991679` check lives inside it) detects Feishu error code `99991679`, resolves
-the missing scopes, and rewrites the
+`patchPermissionError` (implemented in `docker/server-lib.js` — the single,
+unit-tested source of truth, where `PERMISSION_ERROR_CODE = 99991679` lives;
+`docker/server.js` imports and wraps it) detects Feishu error code `99991679`,
+resolves the missing scopes, and rewrites the
 error into an `authorize_url` (incremental auth) built from `AUTHORIZE_BASE` + the
 `X-Incr-Auth-Token`. Do NOT change these error shapes or the 99991679 repair without
 checking the middleware and clients that parse them.

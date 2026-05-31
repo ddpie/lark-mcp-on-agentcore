@@ -14,6 +14,7 @@ docker/
   generate-tools.js   Build-time tool catalog + scope mapping
   shortcut-scopes.json  lark-cli command → scope mapping (from source)
   server.js           MCP server (tier1 + discover/invoke + skills + semaphore + SIGTERM)
+  server-lib.js       Extracted unit-tested helpers (patchPermissionError, createSemaphore)
   tier1.json          28 high-frequency tools
   skills/             MCP-adapted Skills (transformed from lark-cli skills, served by lark_get_skill)
 infra/
