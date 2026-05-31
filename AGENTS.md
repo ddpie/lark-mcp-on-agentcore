@@ -60,7 +60,15 @@ scope defaults), `docker/` (MCP server + container), `infra/` (CDK stacks),
 
 `./scripts/test.sh` is the single entry point. Tests are vitest under
 `lambda/**/__tests__/`, `docker/__tests__/`, and `infra/test/`. Pre-push runs the
-offline suite automatically. After CDK changes
+offline suite automatically.
+
+Pre-push also runs an LLM-based doc-consistency check (`scripts/check-docs-llm.sh`,
+warn-only): when a change touches code under `docker/`, `lambda/`, or `infra/lib/`, it
+auto-detects an installed LLM CLI (claude/codex/gemini/kiro-cli/cursor-agent/llm) and
+flags any now-stale statements in `docs/agent/*`. It never blocks the push and skips
+silently when no LLM CLI is available.
+
+After CDK changes
 run `cd infra && npm run test:update` to refresh the snapshot. The unit tier
 includes cdk-nag compliance (`infra/test/compliance.test.ts` — a new CDK resource
 tripping an AWS-Solutions rule fails until you add a `NagSuppressions` entry with
