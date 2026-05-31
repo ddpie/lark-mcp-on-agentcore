@@ -31,10 +31,14 @@ const LOG_RETENTION_MAP: Record<string, logs.RetentionDays> = {
   "365": logs.RetentionDays.ONE_YEAR,
 };
 
+// Default to a bounded retention so logs don't accumulate (and bill) forever
+// when LOG_RETENTION_DAYS is unset. Operators can raise it via the env var.
+const DEFAULT_LOG_RETENTION = logs.RetentionDays.THREE_MONTHS;
+
 function createLogGroup(scope: Construct, id: string, fnName: string, retention?: logs.RetentionDays): logs.LogGroup {
   return new logs.LogGroup(scope, id, {
     logGroupName: `/aws/lambda/${fnName}`,
-    retention: retention ?? logs.RetentionDays.INFINITE,
+    retention: retention ?? DEFAULT_LOG_RETENTION,
     removalPolicy: cdk.RemovalPolicy.DESTROY,
   });
 }
@@ -103,6 +107,10 @@ export class OAuthStack extends cdk.Stack {
       handler: "handler",
       timeout: cdk.Duration.seconds(120),
       memorySize: 256,
+      // Cap concurrency so a traffic spike (or a WAF bypass) can't scale this
+      // function to the whole account quota and starve other Lambdas / run up
+      // cost. Override via OAUTH_RESERVED_CONCURRENCY.
+      reservedConcurrentExecutions: parseInt(process.env.OAUTH_RESERVED_CONCURRENCY || "20", 10),
       logGroup: oauthLogGroup,
       environment: {
         CALLBACK_URL: "SET_AFTER_DEPLOY",
@@ -122,6 +130,9 @@ export class OAuthStack extends cdk.Stack {
       actions: ["ssm:GetParameter"],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${stateSecretParam}`],
     }));
+    // Per-user token secrets only. Scoped to .../users/* — NOT the whole project
+    // prefix — so a compromised OAuth Lambda cannot overwrite the feishu-app
+    // master credential (read of which is granted separately via grantRead above).
     oauthFn.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         "secretsmanager:GetSecretValue",
@@ -132,7 +143,7 @@ export class OAuthStack extends cdk.Stack {
         // authorization for new users.
         "secretsmanager:TagResource",
       ],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:lark-mcp-on-agentcore/*`],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${this.secretPrefix}/*`],
     }));
     // ListSecrets is an account-level action and does not honor resource-scoping
     oauthFn.addToRolePolicy(new iam.PolicyStatement({
@@ -176,6 +187,9 @@ export class OAuthStack extends cdk.Stack {
       handler: "handler",
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,
+      // Hot path — cap concurrency to bound the DoS/cost blast radius (sized to
+      // the AgentCore Runtime's capacity). Override via MIDDLEWARE_RESERVED_CONCURRENCY.
+      reservedConcurrentExecutions: parseInt(process.env.MIDDLEWARE_RESERVED_CONCURRENCY || "50", 10),
       logGroup: middlewareLogGroup,
       environment: {
         RUNTIME_ARN: props.runtimeArn || "",
@@ -199,8 +213,17 @@ export class OAuthStack extends cdk.Stack {
       resources: [`arn:aws:bedrock-agentcore:${this.region}:${this.account}:runtime/*`],
     }));
 
-    // Single API Gateway: all routes (OAuth + MCP)
-    const api = new apigateway.RestApi(this, "OAuthApi", { restApiName: "lark-mcp-on-agentcore-oauth" });
+    // Single API Gateway: all routes (OAuth + MCP). Stage-level throttling is a
+    // region-independent request-rate cap that applies even when the optional
+    // CloudFront WAF is skipped (SKIP_WAF) or bypassed by hitting execute-api
+    // directly — without it the OAuth/MCP endpoints would have no rate control.
+    const api = new apigateway.RestApi(this, "OAuthApi", {
+      restApiName: "lark-mcp-on-agentcore-oauth",
+      deployOptions: {
+        throttlingRateLimit: parseInt(process.env.APIGW_RATE_LIMIT || "50", 10),
+        throttlingBurstLimit: parseInt(process.env.APIGW_BURST_LIMIT || "100", 10),
+      },
+    });
     const oauthIntegration = new apigateway.LambdaIntegration(oauthFn);
     const mcpIntegration = new apigateway.LambdaIntegration(middlewareFn);
 

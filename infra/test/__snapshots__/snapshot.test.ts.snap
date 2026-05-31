@@ -464,6 +464,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
           },
         },
         "MemorySize": 512,
+        "ReservedConcurrentExecutions": 50,
         "Role": {
           "Fn::GetAtt": [
             "MiddlewareFunctionServiceRole1ED1018C",
@@ -553,6 +554,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "DeletionPolicy": "Delete",
       "Properties": {
         "LogGroupName": "/aws/lambda/TestOAuthStack-middleware",
+        "RetentionInDays": 90,
         "Tags": [
           {
             "Key": "project",
@@ -681,6 +683,15 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         "DeploymentId": {
           "Ref": "OAuthApiDeploymentAC5F88DB500949945a094bf8473011b52a767c79",
         },
+        "MethodSettings": [
+          {
+            "DataTraceEnabled": false,
+            "HttpMethod": "*",
+            "ResourcePath": "/*",
+            "ThrottlingBurstLimit": 100,
+            "ThrottlingRateLimit": 50,
+          },
+        ],
         "RestApiId": {
           "Ref": "OAuthApi8AB10ACC",
         },
@@ -1698,6 +1709,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
           },
         },
         "MemorySize": 256,
+        "ReservedConcurrentExecutions": 20,
         "Role": {
           "Fn::GetAtt": [
             "OAuthFunctionServiceRole6ABBFC33",
@@ -1788,7 +1800,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
                 "secretsmanager:TagResource",
               ],
               "Effect": "Allow",
-              "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/*",
+              "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/users/*",
             },
             {
               "Action": "secretsmanager:ListSecrets",
@@ -1887,6 +1899,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "DeletionPolicy": "Delete",
       "Properties": {
         "LogGroupName": "/aws/lambda/TestOAuthStack-oauth",
+        "RetentionInDays": 90,
         "Tags": [
           {
             "Key": "project",
