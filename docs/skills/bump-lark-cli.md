@@ -233,7 +233,25 @@ The `scope-coverage` test validates:
 - Every tier1 tool has a shortcut-scopes entry
 - Extraction covers all lark-cli runtime shortcuts (no gaps)
 
-### 11. Commit
+### 11. Container smoke test (build + boot)
+
+> **`npm test` is not enough.** It runs against the source tree and never builds
+> the image, so a broken *artifact* (e.g. a new `server.js` require whose file was
+> never `COPY`ed in the Dockerfile, or a skill that fails to load) passes every
+> unit test yet crashes the container at startup with `MODULE_NOT_FOUND`. Always
+> boot the real image before committing.
+
+```bash
+bash scripts/test-smoke-docker.sh   # builds the image, boots the container,
+                                    # asserts MCP initialize/tools-list + clean shutdown
+```
+
+This must reach `Skills loaded: <N> domains` and pass all checks. The same job runs
+in CI (`docker-smoke`), and the `dockerfile-copy` unit test statically asserts every
+`require('./x')` in `server.js` has a matching `COPY` — but run the smoke test locally
+so a broken image never reaches a commit.
+
+### 12. Commit
 
 Include all changed files:
 - `docker/Dockerfile`
@@ -248,6 +266,7 @@ Include all changed files:
 - [ ] No bot-only scopes in shortcut-scopes.json (e.g. `im:message:send_as_bot` should NOT appear)
 - [ ] `scripts/check-lark-cli-version.sh` passes
 - [ ] `npm test` passes (scope-coverage test catches missing oauth-scopes)
+- [ ] `bash scripts/test-smoke-docker.sh` passes — the image **builds and the container boots** (catches a broken artifact that `npm test` cannot, e.g. a new module not `COPY`ed into the Dockerfile)
 - [ ] `git diff --stat` shows only the expected files (4-5 depending on oauth-scopes changes)
 - [ ] Re-adaptation scope is correct — the touched `docker/skills/` domains match the Step 8
   dispatch set (or **all** domains if a full-re-adapt trigger fired):
