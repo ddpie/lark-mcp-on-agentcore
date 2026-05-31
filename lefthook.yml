@@ -15,6 +15,9 @@ pre-commit:
         - ref: merge
         - run: "! command -v gitleaks"
 
+    - name: check-invariants
+      run: ./scripts/check-invariants.sh
+
 pre-push:
   jobs:
     - name: test

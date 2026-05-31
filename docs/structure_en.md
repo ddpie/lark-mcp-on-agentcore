@@ -14,6 +14,7 @@ docker/
   generate-tools.js   Build-time tool catalog + scope mapping
   shortcut-scopes.json  lark-cli command → scope mapping (from source)
   server.js           MCP server (tier1 + discover/invoke + skills + semaphore + SIGTERM)
+  server-lib.js       Extracted unit-tested helpers (patchPermissionError, createSemaphore)
   tier1.json          28 high-frequency tools
   skills/             MCP-adapted Skills (transformed from lark-cli skills, served by lark_get_skill)
 infra/
@@ -30,7 +31,7 @@ lambda/
 scripts/
   deploy.sh           Interactive deployment (Chinese/English, optional WAF cross-region bootstrap)
   install.sh          One-click install (Chinese/English)
-  ops.sh              Operations toolkit (status/list/revoke/refresh/rotate/logs/destroy)
+  ops.sh              Operations toolkit (status/list-users/revoke/refresh-all/logs/rotate-secret/destroy)
   teardown.sh         Full destroy (Runtime + CDK stacks + WAF if enabled + optional user-token cleanup)
   test.sh             Unified test entry (unit / coverage / mutation / audit / e2e)
   test-e2e.sh         End-to-end tests (OAuth + Runtime + /mcp + WAF if enabled)
@@ -40,8 +41,9 @@ scripts/
   build-scope-allowlist.sh   Regenerate OAuth scope allowlist
 ```
 
-.claude/skills/  (Claude Code project-level skills)
-  bump-lark-cli.md   lark-cli version upgrade runbook (extraction strategy + steps)
+docs/skills/  (runbooks for AI-assisted maintenance)
+  bump-lark-cli.md       lark-cli version upgrade runbook (extraction strategy + steps)
+  adapt-skill-for-mcp.md  rules for transforming lark-cli skills into MCP form
 
 .local/ (gitignored, per-deployment state)
   deploy-config            Deploy configuration memory

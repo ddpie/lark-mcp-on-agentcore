@@ -14,6 +14,7 @@ docker/
   generate-tools.js   Build 时生成工具目录 + scope 映射
   shortcut-scopes.json  lark-cli 命令 → scope 映射 (源码提取)
   server.js           MCP server (tier1 + discover/invoke + skills + semaphore + SIGTERM)
+  server-lib.js       抽取的可单测 helper (patchPermissionError, createSemaphore)
   tier1.json          28 个高频工具
   skills/             MCP 适配后的 Skill (从 lark-cli skills 转换，由 lark_get_skill 提供)
 infra/
@@ -30,7 +31,7 @@ lambda/
 scripts/
   deploy.sh           交互式部署 (中/英双语，可选 WAF 跨区域 bootstrap)
   install.sh          一键安装 (中/英双语)
-  ops.sh              运维工具 (status/list/revoke/refresh/rotate/logs/destroy)
+  ops.sh              运维工具 (status/list-users/revoke/refresh-all/logs/rotate-secret/destroy)
   teardown.sh         完整销毁 (Runtime + CDK + WAF 如启用 + 可选 user-token 清理)
   test.sh             统一测试入口 (unit / coverage / mutation / audit / e2e)
   test-e2e.sh         端到端测试 (OAuth + Runtime + /mcp + WAF 如启用)
@@ -40,8 +41,9 @@ scripts/
   build-scope-allowlist.sh   重新生成 OAuth scope allowlist
 ```
 
-.claude/skills/  （Claude Code 项目级 skill）
-  bump-lark-cli.md   lark-cli 版本升级 runbook (提取策略 + 步骤)
+docs/skills/  （AI 辅助维护的 runbook）
+  bump-lark-cli.md       lark-cli 版本升级 runbook (提取策略 + 步骤)
+  adapt-skill-for-mcp.md  把 lark-cli skill 转换为 MCP 形态的规则
 
 .local/ （已 gitignore，存储每次部署的本地状态）
   deploy-config            部署配置记忆
