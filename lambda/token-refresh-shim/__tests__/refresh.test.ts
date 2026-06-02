@@ -158,6 +158,56 @@ describe('refresh path — preflight protection', () => {
     expect(body.errors[0].phase).toBe('feishu_resp');
   });
 
+  it('treats revoked token as deauthorized (skipped, not failed) and schedules secret deletion', async () => {
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
+    const userSecretId = 'lark-mcp-on-agentcore/users/u_revoked';
+    mockClient.secretsManager.__set(userSecretId, JSON.stringify({
+      access_token: 'old', refresh_token: 'rt-old',
+      expires_at: Math.floor(Date.now() / 1000) + 60,
+      issued_at: Math.floor(Date.now() / 1000) - 7140,
+    }));
+    mockClient.secretsManager.__listNames([userSecretId]);
+
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 20016, msg: 'token has been revoked' })));
+
+    const { handler } = await import('../index');
+    const result = await handler({ source: 'aws.events' } as any);
+    const body = JSON.parse(result.body!);
+
+    expect(body.failed).toBe(0);
+    expect(body.skipped).toBe(1);
+    expect(body.refreshed).toBe(0);
+    // Scheduled deletion (7-day recovery window): secret is pending-deletion, not gone.
+    expect(mockClient.secretsManager.__isPendingDeletion(userSecretId)).toBe(true);
+  });
+
+  it('counts secret-delete failure as failed (triggers RefreshFailedAlarm)', async () => {
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
+    const userSecretId = 'lark-mcp-on-agentcore/users/u_revoked_nodelete';
+    mockClient.secretsManager.__set(userSecretId, JSON.stringify({
+      access_token: 'old', refresh_token: 'rt-old',
+      expires_at: Math.floor(Date.now() / 1000) + 60,
+      issued_at: Math.floor(Date.now() / 1000) - 7140,
+    }));
+    mockClient.secretsManager.__listNames([userSecretId]);
+    // Simulate missing DeleteSecret IAM permission.
+    mockClient.secretsManager.__failOn('DeleteSecretCommand', { name: 'AccessDeniedException', message: 'not authorized to perform: secretsmanager:DeleteSecret' });
+
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 20016, msg: 'token has been revoked' })));
+
+    const { handler } = await import('../index');
+    const result = await handler({ source: 'aws.events' } as any);
+    const body = JSON.parse(result.body!);
+
+    expect(body.failed).toBe(1);
+    expect(body.skipped).toBe(0);
+    expect(body.errors[0].phase).toBe('secret_delete');
+  });
+
   it('skips user when getToken returns null (secret deleted concurrently)', async () => {
     mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
     // listNames returns a name, but the secret is NOT in the store (deleted between list and get)

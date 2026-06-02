@@ -138,6 +138,11 @@ export class OAuthStack extends cdk.Stack {
         "secretsmanager:GetSecretValue",
         "secretsmanager:PutSecretValue",
         "secretsmanager:CreateSecret",
+        // Cleanup of revoked users (Feishu code 20016) during the refresh cycle.
+        "secretsmanager:DeleteSecret",
+        // Restore a secret in its 7-day recovery window when the user re-authorizes
+        // before scheduled deletion completes (storeToken's pending-deletion path).
+        "secretsmanager:RestoreSecret",
         // Required when CreateSecret is called with embedded Tags. Without this,
         // strict orgs with explicit Deny on TagResource block first-time
         // authorization for new users.

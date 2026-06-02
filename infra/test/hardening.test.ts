@@ -79,5 +79,9 @@ describe("hardening: OAuth Lambda write grant is scoped to users/*, not the whol
     expect(broadWrite, "OAuth write grant still uses the broad project prefix").toBe(false);
     // And the narrowed users/* write grant must be present.
     expect(json).toContain("users/*");
+    // DeleteSecret must be granted (for revoked-user cleanup) and scoped to users/*
+    expect(json).toContain("secretsmanager:DeleteSecret");
+    // RestoreSecret must be granted (re-auth within the 7-day recovery window)
+    expect(json).toContain("secretsmanager:RestoreSecret");
   });
 });

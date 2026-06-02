@@ -445,7 +445,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "0dafe392c62c7c6223c97ff7550df62d251cf9962b9dbd39cb0360fd86a3b107.zip",
+          "S3Key": "5a3ee408db4f16cecf44a04c39e1353e2c3ec65380360a5435113f292cfb5d58.zip",
         },
         "Environment": {
           "Variables": {
@@ -1682,7 +1682,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "082881eefa1dda3d609f1f12fc255f7627349fc85ea631915d9204189f66fa67.zip",
+          "S3Key": "caeb66da0ed13948ad10649d50929d9b0c9e4c43e68eb52d125c4c6fed112aa5.zip",
         },
         "Environment": {
           "Variables": {
@@ -1797,6 +1797,8 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
                 "secretsmanager:GetSecretValue",
                 "secretsmanager:PutSecretValue",
                 "secretsmanager:CreateSecret",
+                "secretsmanager:DeleteSecret",
+                "secretsmanager:RestoreSecret",
                 "secretsmanager:TagResource",
               ],
               "Effect": "Allow",

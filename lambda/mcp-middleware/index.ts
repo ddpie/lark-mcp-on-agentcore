@@ -6,6 +6,7 @@ import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { log, hashUserId } from '../shared/log';
+import { isPendingDeletionError } from '../shared/secrets';
 
 const SECRET_PREFIX = process.env.SECRET_PREFIX || 'lark-mcp-on-agentcore/users';
 const STATE_SECRET_PARAM = process.env.STATE_SECRET_PARAM || '/lark-mcp-on-agentcore/state-secret';
@@ -86,6 +87,10 @@ async function getUserToken(userId: string): Promise<{ token: string | null; tra
     return { token: null };
   } catch (e: any) {
     if (e.name === 'ResourceNotFoundException') return { token: null };
+    // A secret scheduled for deletion (user revoked authorization, still in the
+    // 7-day recovery window) is effectively deauthorized — route to re-authorize
+    // (403 + authorize_url), not a 503 backend fault.
+    if (isPendingDeletionError(e)) return { token: null };
     // SM throttle / AccessDenied: do not surface as "not authorized" — that would
     // misdirect users to re-authorize with Feishu when SM is the actual problem.
     log('ERROR', 'get_user_token_failed', { userIdHash: hashUserId(userId), error: e.message, name: e.name });

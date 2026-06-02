@@ -175,6 +175,11 @@ aws ssm get-parameter --name /lark-mcp-on-agentcore/oauth-client-secret \
 
 If persistently skipped, check that the Lambda's IAM Role has `secretsmanager:PutSecretValue` permission.
 
+> **Note:** Users who revoked authorization on Feishu (code 20016) are also counted as `skipped`.
+> Their secrets are scheduled for deletion (7-day recovery window). If you see repeated
+> `user_secret_delete_failed` in logs, verify the Lambda has `secretsmanager:DeleteSecret` permission.
+> Users who re-authorize during the recovery window will have their secret automatically restored.
+
 ### Users report "feishu_not_authorized"
 
 **Possible causes:**
