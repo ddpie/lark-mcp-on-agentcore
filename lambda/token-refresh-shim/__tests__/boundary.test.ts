@@ -340,7 +340,8 @@ describe('boundary — security adversarial inputs', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app_tok' })))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         code: 0, data: { access_token: 'at', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_alice' }
-      })));
+      })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: { name: 'Alice' } })));
     const r = await call({
       path: '/callback', httpMethod: 'GET',
       queryStringParameters: { code: 'valid_code', state },
