@@ -46,8 +46,8 @@ lark_apps_create(name="客户调研问卷", app_type="HTML", description="本季
 {
   "ok": false,
   "error": {
-    "type": "api_error",
-    "code": "api_error",
+    "type": "api",
+    "code": 99991400,
     "message": "...",
     "hint": "可执行的修复建议（可能为空）"
   }

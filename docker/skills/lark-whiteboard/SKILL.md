@@ -41,7 +41,7 @@ description: "飞书画板：查询和编辑飞书云文档中的画板。支持
 | 用户给了什么 | 怎么获取 |
 |---|---|
 | 直接给了 whiteboard token（`wbcnXXX`）| 直接使用 |
-| 文档 URL 或 doc_id，文档中已有画板 | `lark_docs_fetch(doc="<URL>")`，从返回的 `<whiteboard token="xxx"/>` 提取 |
+| 文档 URL 或 doc_id，文档中已有画板 | `lark_docs_fetch(api_version="v2", doc="<URL>")`，从返回的 `<whiteboard token="xxx"/>` 提取 |
 | 文档 URL 或 doc_id，需要新建画板 | `lark_docs_update(api_version="v2", doc="<doc_id>", command="append", content='<whiteboard type="blank"></whiteboard>')`，从响应 `data.new_blocks[0].block_token` 取得（`block_type == "whiteboard"` 的那条；参数详见 `lark_get_skill(domain="doc")`）|
 
 **Step 2：渲染 & 写入**

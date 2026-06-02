@@ -57,9 +57,9 @@ lark_vc_notes(meeting_ids="69xxxxxxxxxxxxx28", format="json")
 
 | 输入 | 所需权限 |
 |------|---------|
-| `meeting_ids` | `vc:meeting.meetingevent:read`、`vc:note:read` |
+| `meeting_ids` | `vc:meeting.meetingevent:read`、`vc:note:read`、`vc:record:readonly` |
 | `minute_tokens` | `vc:note:read`、`minutes:minutes:readonly`、`minutes:minutes.artifacts:read`、`minutes:minutes.transcript:export` |
-| `calendar_event_ids` | `calendar:calendar:read`、`calendar:calendar.event:read`、`vc:meeting.meetingevent:read`、`vc:note:read` |
+| `calendar_event_ids` | `calendar:calendar:read`、`calendar:calendar.event:read`、`vc:meeting.meetingevent:read`、`vc:note:read`、`vc:record:readonly` |
 
 ## 输出结果
 
@@ -69,7 +69,9 @@ lark_vc_notes(meeting_ids="69xxxxxxxxxxxxx28", format="json")
 
 | 字段 | 说明 |
 |------|------|
-| `note_doc_token` | **AI 智能纪要**文档 Token — AI 生成的总结、待办、章节 |
+| `meeting_id` | 会议 ID（`meeting_ids` / `calendar_event_ids` 路径） |
+| `minute_token` | **会议对应的妙记 Token**（`meeting_ids` / `calendar_event_ids` 路径自动通过录制 API 反查并附加）|
+| `note_doc_token` | **AI 智能纪要**文档 Token — AI 生成的总结、待办 |
 | `meeting_notes` | **用户绑定的会议纪要**文档 Token 列表 — 用户主动关联到会议的文档（仅 `calendar_event_ids` 路径返回） |
 | `verbatim_doc_token` | **逐字稿**文档 Token — 完整的逐句文字记录，含说话人和时间戳 |
 | `shared_doc_tokens` | 会中共享文档 Token 列表 |
@@ -77,6 +79,8 @@ lark_vc_notes(meeting_ids="69xxxxxxxxxxxxx28", format="json")
 | `create_time` | 创建时间（格式化） |
 
 > **选择哪个 token？** 用户说"会议纪要""总结""待办""纪要内容" → 返回 `note_doc_token` 和 `meeting_notes`（如有）。用户说"逐字稿""完整记录""谁说了什么" → 用 `verbatim_doc_token`。意图不明确时，展示所有文档链接让用户选择。
+>
+> 📌 不确定该返回哪个 token？参见 `lark_get_skill(domain="vc", section="vc-domain-boundaries")` 的产物链路对比表，了解 AI 总结链路 vs 录制链路的区别。
 
 ### minute_tokens 路径的 AI 产物
 
