@@ -71,7 +71,7 @@ lark_vc_notes(meeting_ids="69xxxxxxxxxxxxx28", format="json")
 |------|------|
 | `meeting_id` | 会议 ID（`meeting_ids` / `calendar_event_ids` 路径） |
 | `minute_token` | **会议对应的妙记 Token**（`meeting_ids` / `calendar_event_ids` 路径自动通过录制 API 反查并附加）|
-| `note_doc_token` | **AI 智能纪要**文档 Token — AI 生成的总结、待办、章节 |
+| `note_doc_token` | **AI 智能纪要**文档 Token — AI 生成的总结、待办 |
 | `meeting_notes` | **用户绑定的会议纪要**文档 Token 列表 — 用户主动关联到会议的文档（仅 `calendar_event_ids` 路径返回） |
 | `verbatim_doc_token` | **逐字稿**文档 Token — 完整的逐句文字记录，含说话人和时间戳 |
 | `shared_doc_tokens` | 会中共享文档 Token 列表 |

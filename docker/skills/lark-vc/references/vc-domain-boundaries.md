@@ -60,14 +60,14 @@
 
 智能纪要的逐字稿（`verbatim_doc_token`）和妙记的文字记录（Transcript）都记录了用户原始对话内容，格式一致：
 
-```
+```text
 发言人名称 相对时间戳
 <发言内容>
 ```
 
 示例：
 
-```
+```text
 张三 00:00:00.195
 我们接下来讨论一下项目进度。
 ```
@@ -134,7 +134,7 @@ lark_docs_fetch(api_version="v2", doc="<doc_token>", doc_format="markdown")
 
 ## 三域关联总览
 
-```
+```text
 Calendar (日程) ──── 发起预约 ────► VC (会议)
                                        │
                     ┌──────────────────┤
