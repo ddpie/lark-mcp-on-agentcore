@@ -39,7 +39,7 @@ lark_apps_html_publish(app_id="app_xxx", path="./index.html")
 {
   "ok": false,
   "error": {
-    "type": "api_error",
+    "type": "api",
     "message": "html-publish failed (code=90001): build failed: dependency conflict",
     "hint": "构建失败：检查打包文件清单"
   }
