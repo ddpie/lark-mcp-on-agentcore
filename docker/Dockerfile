@@ -21,8 +21,8 @@ RUN npx skills add larksuite/cli -y -g 2>/dev/null || true
 
 # Install server runtime dependencies (AWS SDK for SM secret loading)
 WORKDIR /app
-COPY package.json /app/package.json
-RUN npm install --omit=dev --no-audit --no-fund
+COPY package.json package-lock.json /app/
+RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY generate-tools.js /app/generate-tools.js
 COPY generate-tools-lib.js /app/generate-tools-lib.js

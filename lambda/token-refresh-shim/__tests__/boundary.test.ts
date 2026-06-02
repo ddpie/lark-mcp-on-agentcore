@@ -295,6 +295,70 @@ describe('boundary — security adversarial inputs', () => {
     // URL constructor parses this fine, hostname matches
     expect(r.statusCode).toBe(302);
   });
+
+  it('/callback incremental-auth rejects when consenting user has existing mapping to different owner', async () => {
+    // stateData.u = 'ou_alice' but Feishu returns open_id for user B ('ou_bob')
+    // whose mapping is already bound to a different userId ('ou_bob')
+    const state = buildState({ u: 'ou_alice' });
+    mockClient.dynamodb.__setOpenId('ou_bob', 'ou_bob');
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app_tok' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0, data: { access_token: 'at', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_bob' }
+      })));
+    const r = await call({
+      path: '/callback', httpMethod: 'GET',
+      queryStringParameters: { code: 'valid_code', state },
+    });
+    expect(r.statusCode).toBe(403);
+    expect(r.body).toContain('identity_mismatch');
+  });
+
+  it('/callback incremental-auth rejects unmapped consenting user whose open_id differs from session owner', async () => {
+    // stateData.u = 'ou_alice', Feishu returns open_id = 'ou_bob', NO mapping exists.
+    // Fail closed: open_id ≠ stateData.u and no mapping proves ownership.
+    const state = buildState({ u: 'ou_alice' });
+    // No __setOpenId call → getOpenIdMapping('ou_bob') returns null
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app_tok' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0, data: { access_token: 'at', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_bob' }
+      })));
+    const r = await call({
+      path: '/callback', httpMethod: 'GET',
+      queryStringParameters: { code: 'valid_code', state },
+    });
+    expect(r.statusCode).toBe(403);
+    expect(r.body).toContain('identity_mismatch');
+  });
+
+  it('/callback incremental-auth succeeds when consenting user matches session owner', async () => {
+    const state = buildState({ u: 'ou_alice' });
+    // Map ou_alice's open_id to the same userId so the check passes
+    mockClient.dynamodb.__setOpenId('ou_alice', 'ou_alice');
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app_tok' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 0, data: { access_token: 'at', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_alice' }
+      })));
+    const r = await call({
+      path: '/callback', httpMethod: 'GET',
+      queryStringParameters: { code: 'valid_code', state },
+    });
+    // Should succeed (store token) — the success page or a redirect
+    expect([200, 302]).toContain(r.statusCode);
+    expect(r.body || '').not.toContain('identity_mismatch');
+  });
+
+  it('/token with malformed percent-encoding returns 400 not 500', async () => {
+    const r = await call({
+      path: '/token', httpMethod: 'POST',
+      body: 'grant_type=authorization_code&code=%ZZ&code_verifier=v&redirect_uri=https://x.example&client_secret=test-client-secret',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+    // URLSearchParams handles malformed % gracefully (returns literal string) → code lookup fails
+    expect([400, 401]).toContain(r.statusCode);
+  });
 });
 
 // =============================================================================
