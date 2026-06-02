@@ -6,11 +6,12 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "moduleResolution": "node",
     "types": ["node"]
   },
   "include": ["lambda/**/*.ts", "vitest.config.ts"],
-  "exclude": ["node_modules", "infra"]
+  "exclude": ["node_modules", "infra", "lambda/**/__tests__/**", "lambda/**/*.test.ts"]
 }

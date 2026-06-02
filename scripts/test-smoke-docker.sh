@@ -12,7 +12,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE="lark-mcp-smoke-test"
+IMAGE="${IMAGE:-lark-mcp-smoke-test}"
+KEEP_IMAGE="${KEEP_IMAGE:-0}"
 CONTAINER=""
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
@@ -25,7 +26,9 @@ cleanup() {
   if [ -n "$CONTAINER" ]; then
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
   fi
-  docker rmi -f "$IMAGE" >/dev/null 2>&1 || true
+  if [ "$KEEP_IMAGE" != "1" ]; then
+    docker rmi -f "$IMAGE" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 

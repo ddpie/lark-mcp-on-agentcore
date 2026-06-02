@@ -6,11 +6,36 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  workflow-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install shellcheck + actionlint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: ShellCheck
+        run: shellcheck -S warning scripts/*.sh
+
+      - name: Actionlint
+        run: |
+          "$HOME/go/bin/actionlint" -color
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -33,6 +58,9 @@ jobs:
         with:
           dockerfile: docker/Dockerfile
           ignore: DL3008,DL3003
+
+      - name: Typecheck (lambda)
+        run: npx tsc --noEmit -p tsconfig.json
 
       - name: Typecheck (infra)
         run: cd infra && npx tsc --noEmit
@@ -90,8 +118,17 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Dependency Review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
 
       - name: Gitleaks (secret detection)
         uses: gitleaks/gitleaks-action@v2
@@ -101,7 +138,7 @@ jobs:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
       - name: Trivy (deps + IaC + secrets)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
