@@ -7,7 +7,7 @@
 #   --mutation      stryker mutation testing (~7 min, finds weak assertions)
 #   --smoke         docker container build + local HTTP smoke test (needs Docker)
 #   --mcp-protocol  MCP protocol validation against spec (needs Docker + jq)
-#   --typecheck     tsc --noEmit on infra
+#   --typecheck     tsc --noEmit on lambda + infra
 #   --lint          bash -n + eslint on source
 #   --audit         scripts/audit-tools.sh (needs AWS or --catalog)
 #   --e2e           scripts/test-e2e.sh (needs deployed stack)
@@ -90,7 +90,8 @@ fi
 '
 [ "$DO_LINT" = 1 ] && run_tier "lint (eslint)" bash -c "cd '$ROOT' && npm run lint"
 [ "$DO_LINT" = 1 ] && run_tier "lint (invariants)" bash -c "cd '$ROOT' && ./scripts/check-invariants.sh"
-[ "$DO_TYPECHECK" = 1 ] && run_tier "typecheck (tsc --noEmit)" bash -c "cd '$ROOT/infra' && npx tsc --noEmit"
+[ "$DO_TYPECHECK" = 1 ] && run_tier "typecheck (lambda tsc --noEmit)" bash -c "cd '$ROOT' && npx tsc --noEmit -p tsconfig.json"
+[ "$DO_TYPECHECK" = 1 ] && run_tier "typecheck (infra tsc --noEmit)" bash -c "cd '$ROOT/infra' && npx tsc --noEmit"
 if [ "$DO_UNIT" = 1 ]; then
   if [ "$DO_COV" = 1 ]; then
     run_tier "unit (vitest + coverage)" bash -c "cd '$ROOT' && npx vitest run --coverage"

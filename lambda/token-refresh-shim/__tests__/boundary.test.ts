@@ -238,6 +238,11 @@ describe('boundary — security adversarial inputs', () => {
     const ts = Math.floor(Date.now() / 1000);
     const full = `${payloadB64}.${ts}`;
     const sig = createHmac('sha256', STATE_KEY).update(full).digest('hex');
+    // State sig is valid → handler proceeds to the Feishu exchange; mock it so
+    // the test never hits the network (would hang to timeout on CI).
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 99, msg: 'invalid code' })));
     const r = await call({
       path: '/callback', httpMethod: 'GET',
       queryStringParameters: { code: 'x', state: `${full}.${sig}` },
@@ -378,11 +383,16 @@ describe('boundary — protocol compliance', () => {
 
   it('/callback with POST method (some IdPs POST back)', async () => {
     const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'c' });
+    // Mock the Feishu exchange so the test never hits the network (would hang to
+    // the 5s timeout on network-restricted CI runners).
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 99, msg: 'invalid code' })));
     const r = await call({
       path: '/callback', httpMethod: 'POST',
       queryStringParameters: { code: 'invalid-code', state },
     });
-    // Proceeds to Feishu exchange (will fail with mock, but routing works)
+    // Exchange fails (code != 0) → 400; routing for POST works.
     expect([200, 302, 400]).toContain(r.statusCode);
   });
 

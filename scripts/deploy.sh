@@ -50,6 +50,7 @@ if [ "$AUTO_YES" = "1" ]; then
   fi
   # Load all saved config values as env vars
   set -a
+  # shellcheck source=/dev/null
   source "$DEPLOY_CONFIG"
   set +a
 fi
@@ -439,7 +440,8 @@ else
   if [ "$_WAF_PICK" = "${L[enable]}" ]; then ENABLE_WAF=1; else ENABLE_WAF=0; fi
 fi
 if [ "$ENABLE_WAF" = "1" ]; then info "${L[waf_enabled]}"; else info "${L[waf_disabled]}"; fi
-export SKIP_WAF=$([ "$ENABLE_WAF" = "1" ] && echo 0 || echo 1)
+SKIP_WAF=$([ "$ENABLE_WAF" = "1" ] && echo 0 || echo 1)
+export SKIP_WAF
 
 # Log retention. Honor LOG_RETENTION_DAYS env override; on non-interactive
 # stdin default to 90 without prompting.
@@ -835,7 +837,7 @@ if [ "$WAF_STATUS" = "ROLLBACK_COMPLETE" ] || [ "$WAF_STATUS" = "DELETE_FAILED" 
   aws cloudformation wait stack-delete-complete --stack-name LarkMcpOnAgentCoreWaf --region "us-east-1" 2>/dev/null || true
 fi
 
-for SECRET_NAME in "lark-mcp-on-agentcore/feishu-app"; do
+SECRET_NAME="lark-mcp-on-agentcore/feishu-app"
   SECRET_STATUS=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --region "$REGION" \
     --query 'DeletedDate' --output text 2>/dev/null || echo "NOT_FOUND")
   if [ "$SECRET_STATUS" != "NOT_FOUND" ] && [ "$SECRET_STATUS" != "None" ]; then
@@ -851,7 +853,6 @@ for SECRET_NAME in "lark-mcp-on-agentcore/feishu-app"; do
         --force-delete-without-recovery 2>/dev/null || true
     fi
   fi
-done
 
 SSM_EXISTS=$(aws ssm get-parameter --name "/lark-mcp-on-agentcore/state-secret" --region "$REGION" \
   --query 'Parameter.Name' --output text 2>/dev/null || echo "NOT_FOUND")

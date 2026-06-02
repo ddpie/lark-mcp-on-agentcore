@@ -75,7 +75,7 @@ fi
 
 # Wait for the server to begin listening (poll with short timeout)
 READY=0
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 1 "http://localhost:${PORT}/" 2>/dev/null || echo "000")
   if [ "$HTTP" != "000" ]; then
     READY=1
