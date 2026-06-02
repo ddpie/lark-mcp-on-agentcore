@@ -265,7 +265,7 @@ else
   echo ""
   if [ -d "$DIR" ]; then
     echo "  ${L[dir_exists]}"
-    cd "$DIR" && git fetch origin && git reset --hard origin/main
+    cd "$DIR" && git fetch origin && if ! git diff --quiet HEAD 2>/dev/null; then echo "  ⚠️  Local changes detected — run 'git stash' or 'git reset --hard origin/main' manually." >&2; exit 1; fi && git reset --hard origin/main
   else
     echo "  ${L[cloning]}"
     git clone --depth 1 "$REPO" "$DIR"

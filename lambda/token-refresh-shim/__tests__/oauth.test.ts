@@ -446,7 +446,7 @@ describe('/callback — full Feishu exchange path', () => {
   });
 
   it('falls back to userId prefix when /authen/v1/user_info fails', async () => {
-    mockFeishu({ userInfoFails: true });
+    mockFeishu({ userInfoFails: true, exchange: { code: 0, msg: 'ok', data: { access_token: 'feishu-tok', refresh_token: 'rt', expires_in: 7200, open_id: 'ou_abcdefghijklmnop' } } });
     const state = buildState({ u: 'ou_abcdefghijklmnop' });
     const r = await call({
       path: '/callback',
@@ -931,8 +931,12 @@ describe('EventBridge — getToken transient error handling', () => {
 // =============================================================================
 
 describe('/callback — i18n success page', () => {
+  function mockFeishuWithUser(userId: string, opts: Parameters<typeof mockFeishu>[0] = {}) {
+    mockFeishu({ ...opts, exchange: { code: 0, msg: 'ok', data: { access_token: 'feishu-tok', refresh_token: 'rt', expires_in: 7200, open_id: userId } } });
+  }
+
   it('renders English when Accept-Language is en', async () => {
-    mockFeishu();
+    mockFeishuWithUser('ou_en_user');
     const state = buildState({ u: 'ou_en_user' });
     const r = await call({
       path: '/callback',
@@ -948,7 +952,7 @@ describe('/callback — i18n success page', () => {
   });
 
   it('renders Chinese when Accept-Language starts with zh', async () => {
-    mockFeishu();
+    mockFeishuWithUser('ou_zh_user');
     const state = buildState({ u: 'ou_zh_user' });
     const r = await call({
       path: '/callback',
@@ -963,7 +967,7 @@ describe('/callback — i18n success page', () => {
   });
 
   it('falls back to English when Accept-Language is unknown', async () => {
-    mockFeishu();
+    mockFeishuWithUser('ou_ja_user');
     const state = buildState({ u: 'ou_ja_user' });
     const r = await call({
       path: '/callback',
@@ -977,7 +981,7 @@ describe('/callback — i18n success page', () => {
   });
 
   it('falls back to English when no Accept-Language header', async () => {
-    mockFeishu();
+    mockFeishuWithUser('ou_no_lang');
     const state = buildState({ u: 'ou_no_lang' });
     const r = await call({
       path: '/callback',

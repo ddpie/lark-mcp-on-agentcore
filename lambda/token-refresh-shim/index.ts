@@ -231,11 +231,9 @@ async function listAllUserSecrets(): Promise<string[]> {
 
 function parseBody(event: LambdaEvent): Record<string, string> {
   const raw = event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString() : event.body || '';
+  const parsed = new URLSearchParams(raw);
   const params: Record<string, string> = {};
-  for (const pair of raw.split('&')) {
-    const [k, v] = pair.split('=');
-    if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || '');
-  }
+  for (const [k, v] of parsed) params[k] = v;
   return params;
 }
 
@@ -489,6 +487,21 @@ async function handle(event: LambdaEvent) {
     let stableUserId: string;
     if (stateData.u) {
       // Incremental-auth flow: userId came from a verified `t=` token.
+      // Verify the consenting Feishu user matches the original user to prevent
+      // a confused-deputy attack where user B opens user A's link and consents.
+      // Fail closed: only proceed if the open_id provably belongs to stateData.u
+      // (either via existing mapping or direct equality).
+      if (result.data.open_id) {
+        const mappedOwner = await getOpenIdMapping(result.data.open_id);
+        const ownerMatch = mappedOwner === stateData.u || result.data.open_id === stateData.u;
+        if (!ownerMatch) {
+          log('WARN', 'incremental_auth_identity_mismatch', {
+            expectedHash: hashUserId(stateData.u),
+            actualHash: hashUserId(mappedOwner || result.data.open_id),
+          });
+          return { statusCode: 403, headers: { "Content-Type": "application/json" }, body: '{"error":"identity_mismatch","error_description":"The Feishu account that authorized does not match the MCP session owner"}' };
+        }
+      }
       stableUserId = stateData.u;
     } else if (result.data.open_id) {
       // Standard OAuth flow: derive stable userId from Feishu open_id, with mapping reuse.
