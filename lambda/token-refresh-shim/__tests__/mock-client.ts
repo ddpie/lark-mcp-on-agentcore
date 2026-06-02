@@ -5,6 +5,9 @@
 
 interface SecretStore { [id: string]: string }
 let store: SecretStore = {};
+// Secrets scheduled for deletion (RecoveryWindowInDays) — still present but
+// pending-deletion: PutSecretValue/CreateSecret fail until RestoreSecret clears the flag.
+let pendingDeletion: Set<string> = new Set();
 let listNames: string[] = [];
 let failOpName: string | null = null;
 let failOpError: { name: string; message: string } | null = null;
@@ -32,6 +35,7 @@ let failOpenidPut: { name: string; message: string } | null = null;
 
 const reset = () => {
   store = {};
+  pendingDeletion = new Set();
   listNames = [];
   failOpName = null;
   failOpError = null;
@@ -51,6 +55,8 @@ class GetSecretValueCommand { constructor(public input: any) {} }
 class PutSecretValueCommand { constructor(public input: any) {} }
 class CreateSecretCommand { constructor(public input: any) {} }
 class ListSecretsCommand { constructor(public input: any) {} }
+class DeleteSecretCommand { constructor(public input: any) {} }
+class RestoreSecretCommand { constructor(public input: any) {} }
 
 class SecretsManagerClient {
   send(cmd: any): Promise<any> {
@@ -74,6 +80,12 @@ class SecretsManagerClient {
         err.name = failOpError.name;
         return Promise.reject(err);
       }
+      // A secret scheduled for deletion rejects writes until restored — mirrors real SM.
+      if (pendingDeletion.has(cmd.input.SecretId)) {
+        const err: any = new Error(`Secret ${cmd.input.SecretId} is scheduled for deletion`);
+        err.name = 'InvalidRequestException';
+        return Promise.reject(err);
+      }
       store[cmd.input.SecretId] = cmd.input.SecretString;
       return Promise.resolve({ ARN: 'arn', VersionId: 'v' });
     }
@@ -82,6 +94,11 @@ class SecretsManagerClient {
       if (failCreateMatch && cmd.input.Name.includes(failCreateMatch.nameMatch)) {
         const err: any = new Error(failCreateMatch.err.message);
         err.name = failCreateMatch.err.name;
+        return Promise.reject(err);
+      }
+      if (pendingDeletion.has(cmd.input.Name)) {
+        const err: any = new Error(`Secret ${cmd.input.Name} is scheduled for deletion`);
+        err.name = 'InvalidRequestException';
         return Promise.reject(err);
       }
       store[cmd.input.Name] = cmd.input.SecretString;
@@ -105,6 +122,22 @@ class SecretsManagerClient {
 
     if (cmd instanceof ListSecretsCommand) {
       return Promise.resolve({ SecretList: listNames.map(n => ({ Name: n })) });
+    }
+
+    if (cmd instanceof DeleteSecretCommand) {
+      if (cmd.input.ForceDeleteWithoutRecovery) {
+        delete store[cmd.input.SecretId];
+        pendingDeletion.delete(cmd.input.SecretId);
+      } else {
+        // Scheduled deletion (RecoveryWindowInDays): secret stays but is pending-deletion.
+        pendingDeletion.add(cmd.input.SecretId);
+      }
+      return Promise.resolve({});
+    }
+
+    if (cmd instanceof RestoreSecretCommand) {
+      pendingDeletion.delete(cmd.input.SecretId);
+      return Promise.resolve({});
     }
 
     return Promise.reject(new Error(`Unmocked command: ${cmdName}`));
@@ -138,8 +171,12 @@ export const mockClient = {
     PutSecretValueCommand,
     CreateSecretCommand,
     ListSecretsCommand,
+    DeleteSecretCommand,
+    RestoreSecretCommand,
     __set: (id: string, value: string) => { store[id] = value; },
     __get: (id: string) => store[id],
+    __isPendingDeletion: (id: string) => pendingDeletion.has(id),
+    __schedulePendingDeletion: (id: string) => { pendingDeletion.add(id); },
     __listNames: (names: string[]) => { listNames = names; },
     __failOn: (op: string, err: { name: string; message: string }) => { failOpName = op; failOpError = err; },
     __failOnPutFrom: (n: number, err: { name: string; message: string }) => { failOnPutFrom = n; failOpError = err; },

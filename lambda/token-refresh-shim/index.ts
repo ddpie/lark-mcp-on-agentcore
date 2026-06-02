@@ -1,8 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual, createHash } from 'crypto';
-import { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand, CreateSecretCommand, ListSecretsCommand } from '@aws-sdk/client-secrets-manager';
+import { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand, CreateSecretCommand, ListSecretsCommand, DeleteSecretCommand, RestoreSecretCommand } from '@aws-sdk/client-secrets-manager';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { storeCode, retrieveAndDeleteCode } from './dynamodb-codes';
 import { storeOpenIdMapping, getOpenIdMapping } from './dynamodb-openid';
+import { isPendingDeletionError } from '../shared/secrets';
 import { log, hashUserId } from '../shared/log';
 import { SCOPE_ALLOWLIST } from './scope-allowlist';
 import i18n from '../../config/i18n.json';
@@ -186,7 +187,15 @@ async function storeToken(userId: string, data: { access_token: string; refresh_
     issued_at: now,
   });
   try { await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value })); return false; }
-  catch (e: any) { if (e.name === "ResourceNotFoundException") { await sm.send(new CreateSecretCommand({ Name: secretId, SecretString: value, Tags: PROJECT_TAGS })); return true; } throw e; }
+  catch (e: any) {
+    if (e.name === "ResourceNotFoundException") { await sm.send(new CreateSecretCommand({ Name: secretId, SecretString: value, Tags: PROJECT_TAGS })); return true; }
+    if (isPendingDeletionError(e)) {
+      await sm.send(new RestoreSecretCommand({ SecretId: secretId }));
+      await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value }));
+      return false;
+    }
+    throw e;
+  }
 }
 
 interface StoredToken { access_token: string; refresh_token: string; expires_at: number; issued_at: number }
@@ -301,7 +310,31 @@ async function handle(event: LambdaEvent) {
         return;
       }
       if (result.code !== 0 || !result.data) {
+        // 20016 = user explicitly revoked authorization on Feishu.
+        // Treat as deauthorized (skip, not fail) to avoid noisy alerts for intentional revocations.
+        // Other codes (20012 expired, 20017 invalid) may indicate abnormal consumption and should still alert.
+        const REVOKED_CODES = new Set([20016]);
+        if (REVOKED_CODES.has(result.code)) {
+          log('INFO', 'user_deauthorized', { userIdHash: hashUserId(userId), code: result.code, msg: result.msg });
+          try {
+            await sm.send(new DeleteSecretCommand({
+              SecretId: `${SECRET_PREFIX}/${userId}`,
+              RecoveryWindowInDays: 7,
+            }));
+            log('INFO', 'user_secret_deleted', { userIdHash: hashUserId(userId) });
+            skipped++;
+          } catch (e: any) {
+            // Cleanup failure is operationally significant (likely IAM/SM misconfig
+            // or sustained throttle): count as failed so RefreshFailedAlarm fires,
+            // otherwise the stale secret silently persists and accrues cost.
+            log('WARN', 'user_secret_delete_failed', { userIdHash: hashUserId(userId), error: e.message });
+            errors.push({ userIdHash: hashUserId(userId), phase: 'secret_delete', error: e.message });
+            failed++;
+          }
+          return;
+        }
         failed++;
+        log('WARN', 'refresh_feishu_error', { userIdHash: hashUserId(userId), code: result.code, msg: result.msg });
         errors.push({ userIdHash: hashUserId(userId), phase: 'feishu_resp', error: `${result.code} ${result.msg}` });
         return;
       }

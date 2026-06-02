@@ -25,11 +25,16 @@ const ssmSend = vi.fn(async (_cmd: any) => {
 
 interface SmRow { access_token: string; expires_at: number; }
 let smStore: Record<string, SmRow> = {};
-let smFailMode: 'none' | 'not_found' | 'throttle' = 'none';
+let smFailMode: 'none' | 'not_found' | 'throttle' | 'pending_deletion' = 'none';
 const smSend = vi.fn(async (cmd: any) => {
   if (smFailMode === 'throttle') {
     const err: any = new Error('throttle');
     err.name = 'ThrottlingException';
+    throw err;
+  }
+  if (smFailMode === 'pending_deletion') {
+    const err: any = new Error('You can’t perform this operation on the secret because it was marked for deletion.');
+    err.name = 'InvalidRequestException';
     throw err;
   }
   if (smFailMode === 'not_found' || !smStore[cmd.input.SecretId]) {
@@ -171,6 +176,19 @@ describe('mcp-middleware — Feishu token retrieval', () => {
     expect(r.statusCode).toBe(503);
     expect(JSON.parse(r.body!).error).toBe('backend_unavailable');
     expect(r.headers?.['Content-Type']).toBe('application/json');
+  });
+
+  it('returns 403 + authorize_url when the secret is scheduled for deletion (revoked user)', async () => {
+    const tok = signMcpToken('ou_user', Math.floor(Date.now() / 1000) + 3600);
+    // A revoked user inside the 7-day recovery window: GetSecretValue raises
+    // InvalidRequestException, not ResourceNotFoundException. Must still route to
+    // re-authorize (403) rather than a 503 backend fault.
+    smFailMode = 'pending_deletion';
+    const r = await call({ headers: { authorization: `Bearer ${tok}` }, body: '{}' });
+    expect(r.statusCode).toBe(403);
+    const body = JSON.parse(r.body!);
+    expect(body.error).toBe('feishu_not_authorized');
+    expect(body.authorize_url).toMatch(/\/authorize\?t=/);
   });
 
   it('treats token within 120s of expiry as not authorized (403)', async () => {

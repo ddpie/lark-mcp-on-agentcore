@@ -175,6 +175,11 @@ aws ssm get-parameter --name /lark-mcp-on-agentcore/oauth-client-secret \
 
 如果持续 skipped，检查 Lambda 的 IAM Role 是否有 `secretsmanager:PutSecretValue` 权限。
 
+> **注意：** 用户在飞书上主动撤销授权（code 20016）也会计入 `skipped`。
+> 其 secret 会被标记为计划删除（7 天恢复窗口）。如果日志中反复出现
+> `user_secret_delete_failed`，请检查 Lambda 是否有 `secretsmanager:DeleteSecret` 权限。
+> 用户在恢复窗口内重新授权时，secret 会自动恢复。
+
 ### 用户报告 "feishu_not_authorized"
 
 **可能原因：**

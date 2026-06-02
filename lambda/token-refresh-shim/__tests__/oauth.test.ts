@@ -479,6 +479,39 @@ describe('/callback — full Feishu exchange path', () => {
     expect(stored).toBeDefined();
   });
 
+  it('restores a pending-deletion secret when user re-authorizes within the recovery window', async () => {
+    const userSecretId = 'lark-mcp-on-agentcore/users/ou_real_user';
+    // A revoked user's secret inside the 7-day recovery window: present but pending-deletion.
+    mockClient.secretsManager.__set(userSecretId, JSON.stringify({ access_token: 'stale', refresh_token: 'rt', expires_at: 0, issued_at: 0 }));
+    mockClient.secretsManager.__schedulePendingDeletion(userSecretId);
+
+    // User re-authorizes: callback → storeToken's PutSecretValue hits InvalidRequestException
+    // → RestoreSecret → PutSecretValue succeeds.
+    mockFeishu();
+    const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'c' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+
+    expect(r.statusCode).toBe(302);
+    expect(mockClient.secretsManager.__isPendingDeletion(userSecretId)).toBe(false);
+    const stored = JSON.parse(mockClient.secretsManager.__get(userSecretId));
+    expect(stored.access_token).toBe('feishu-tok');
+  });
+
+  it('creates a new secret on first authorization (PutSecretValue → ResourceNotFoundException → CreateSecret)', async () => {
+    const userSecretId = 'lark-mcp-on-agentcore/users/ou_real_user';
+    // First-time user: no secret yet → PutSecretValue raises ResourceNotFoundException,
+    // storeToken falls back to CreateSecret.
+    mockClient.secretsManager.__failPutMatching('users/ou_real_user', { name: 'ResourceNotFoundException', message: 'not found' });
+
+    mockFeishu();
+    const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'c' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: 'ok', state } });
+
+    expect(r.statusCode).toBe(302);
+    const stored = JSON.parse(mockClient.secretsManager.__get(userSecretId));
+    expect(stored.access_token).toBe('feishu-tok');
+  });
+
   it('throws when getOpenIdMapping hits DDB error — prevents identity fork', async () => {
     mockFeishu();
     mockClient.dynamodb.__failOpenidGet({ name: 'ThrottlingException', message: 'rate exceeded' });
