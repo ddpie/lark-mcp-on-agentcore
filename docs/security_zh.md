@@ -74,6 +74,21 @@ WAFv2 部署在 us-east-1（CloudFront scope），可选启用（部署时交互
 
 禁用 WAF 时不会产生任何费用。如果之前启用了 WAF，重新部署时选择禁用，deploy.sh 会自动销毁 us-east-1 的 WAF stack。
 
+## AWS Security Agent 域名验证（可选）
+
+要用 [AWS Security Agent](https://docs.aws.amazon.com/securityagent/) 对本部署做渗透测试，AWS 要求通过 HTTP route 方式证明域名所有权。当你在部署时提供验证 Token（`deploy.sh` 交互提示，或 `DOMAIN_VERIFICATION_TOKENS=` 环境变量；多个 agent space 用逗号或空格分隔），OAuth Lambda 会在以下路径返回:
+
+```
+GET /.well-known/aws/securityagent-domain-verification.json  →  {"tokens":["<token>", ...]}
+```
+
+特性:
+
+- **设计上免鉴权 GET** —— 域名所有权验证天然必须免鉴权可达。该路由只返回部署者配置的公开 Token,不读取任何密钥、不接收请求输入、不发起任何 I/O。
+- **默认惰性** —— 未配置 Token 时返回 404,因此对不使用 Security Agent 的部署不增加任何攻击面。
+- 以 `application/json` + `Cache-Control: no-store` 返回;与其它路由共享同一套 CloudFront + WAF 路径。
+- **可移除** —— 此端点仅为 Security Agent 验证而存在。验证完成后(或不使用 Security Agent 时),重新部署时清除 Token 即可禁用;若不再需要该功能,可整体移除路由与配置。
+
 ## Webhook 签名验证
 
 告警 Webhook 推送到飞书群机器人时支持两种安全验证：

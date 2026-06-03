@@ -648,8 +648,11 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Type": "AWS::IAM::Role",
       "UpdateReplacePolicy": "Retain",
     },
-    "OAuthApiDeploymentAC5F88DB500949945a094bf8473011b52a767c79": {
+    "OAuthApiDeploymentAC5F88DB501b1964bbd289c202ab4a4b94dedb68": {
       "DependsOn": [
+        "OAuthApiwellknownaws86AFF11A",
+        "OAuthApiwellknownawssecurityagentdomainverificationjsonGET87B0E62F",
+        "OAuthApiwellknownawssecurityagentdomainverificationjson25189DF3",
         "OAuthApiwellknownoauthauthorizationserverGET561B1766",
         "OAuthApiwellknownoauthauthorizationserverA70044CC",
         "OAuthApiwellknown5E60497E",
@@ -681,7 +684,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       ],
       "Properties": {
         "DeploymentId": {
-          "Ref": "OAuthApiDeploymentAC5F88DB500949945a094bf8473011b52a767c79",
+          "Ref": "OAuthApiDeploymentAC5F88DB501b1964bbd289c202ab4a4b94dedb68",
         },
         "MethodSettings": [
           {
@@ -1368,6 +1371,128 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       },
       "Type": "AWS::ApiGateway::Resource",
     },
+    "OAuthApiwellknownaws86AFF11A": {
+      "Properties": {
+        "ParentId": {
+          "Ref": "OAuthApiwellknown5E60497E",
+        },
+        "PathPart": "aws",
+        "RestApiId": {
+          "Ref": "OAuthApi8AB10ACC",
+        },
+      },
+      "Type": "AWS::ApiGateway::Resource",
+    },
+    "OAuthApiwellknownawssecurityagentdomainverificationjson25189DF3": {
+      "Properties": {
+        "ParentId": {
+          "Ref": "OAuthApiwellknownaws86AFF11A",
+        },
+        "PathPart": "securityagent-domain-verification.json",
+        "RestApiId": {
+          "Ref": "OAuthApi8AB10ACC",
+        },
+      },
+      "Type": "AWS::ApiGateway::Resource",
+    },
+    "OAuthApiwellknownawssecurityagentdomainverificationjsonGET87B0E62F": {
+      "Properties": {
+        "AuthorizationType": "NONE",
+        "HttpMethod": "GET",
+        "Integration": {
+          "IntegrationHttpMethod": "POST",
+          "Type": "AWS_PROXY",
+          "Uri": {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":apigateway:us-west-2:lambda:path/2015-03-31/functions/",
+                {
+                  "Fn::GetAtt": [
+                    "OAuthFunction814F9D6D",
+                    "Arn",
+                  ],
+                },
+                "/invocations",
+              ],
+            ],
+          },
+        },
+        "ResourceId": {
+          "Ref": "OAuthApiwellknownawssecurityagentdomainverificationjson25189DF3",
+        },
+        "RestApiId": {
+          "Ref": "OAuthApi8AB10ACC",
+        },
+      },
+      "Type": "AWS::ApiGateway::Method",
+    },
+    "OAuthApiwellknownawssecurityagentdomainverificationjsonGETApiPermissionTestOAuthStackOAuthApiCAFFC54FGETwellknownawssecurityagentdomainverificationjson3DE21554": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "OAuthFunction814F9D6D",
+            "Arn",
+          ],
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Join": [
+            "",
+            [
+              "arn:",
+              {
+                "Ref": "AWS::Partition",
+              },
+              ":execute-api:us-west-2:123456789012:",
+              {
+                "Ref": "OAuthApi8AB10ACC",
+              },
+              "/",
+              {
+                "Ref": "OAuthApiDeploymentStageprod294A63BE",
+              },
+              "/GET/.well-known/aws/securityagent-domain-verification.json",
+            ],
+          ],
+        },
+      },
+      "Type": "AWS::Lambda::Permission",
+    },
+    "OAuthApiwellknownawssecurityagentdomainverificationjsonGETApiPermissionTestTestOAuthStackOAuthApiCAFFC54FGETwellknownawssecurityagentdomainverificationjsonBEECE689": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "OAuthFunction814F9D6D",
+            "Arn",
+          ],
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Join": [
+            "",
+            [
+              "arn:",
+              {
+                "Ref": "AWS::Partition",
+              },
+              ":execute-api:us-west-2:123456789012:",
+              {
+                "Ref": "OAuthApi8AB10ACC",
+              },
+              "/test-invoke-stage/GET/.well-known/aws/securityagent-domain-verification.json",
+            ],
+          ],
+        },
+      },
+      "Type": "AWS::Lambda::Permission",
+    },
     "OAuthApiwellknownoauthauthorizationserverA70044CC": {
       "Properties": {
         "ParentId": {
@@ -1682,7 +1807,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "caeb66da0ed13948ad10649d50929d9b0c9e4c43e68eb52d125c4c6fed112aa5.zip",
+          "S3Key": "63d07f6d3310ed6da4fc90f8ce72cb2ed549579bbbe0549702d4c54dd86905b5.zip",
         },
         "Environment": {
           "Variables": {
@@ -1692,6 +1817,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "CODE_TABLE": {
               "Ref": "OAuthCodesFF09132A",
             },
+            "DOMAIN_VERIFICATION": "",
             "OAUTH_CLIENT_ID": "lark-mcp-on-agentcore",
             "OAUTH_CLIENT_SECRET": "SET_AFTER_DEPLOY",
             "OPENID_TABLE": {
