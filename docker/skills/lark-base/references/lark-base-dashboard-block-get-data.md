@@ -13,12 +13,12 @@
 
 > [!IMPORTANT]
 > - 本命令返回的是**图表结果协议**，不是 block 元数据；
-> - 如果你需要 `name`、`type`、`layout`、`data_config` 等配置，请先用 `+dashboard-block-get`（`lark_get_skill(domain="base", section="dashboard-block-get")`）；
+> - 如果你需要 `name`、`type`、`layout`、`data_config` 等配置，请先用 `lark_base_dashboard_block_get()`；
 > - 文本组件（`text`）不涉及计算，不适用本命令；
 
 ## 一句话理解
 
-`+dashboard-block-get-data` = **拿图表“算出来的结果”**，而不是拿图表“怎么配置的”。
+`lark_base_dashboard_block_get_data` = **拿图表”算出来的结果”**，而不是拿图表”怎么配置的”。
 
 ---
 
@@ -627,9 +627,9 @@ lark_base_dashboard_block_get_data(base_token="xxx", block_id="chtxxxxxxxx")
 
 ## 何时不要误用
 
-- 想看 block 的 `data_config`、名称、类型、布局 → 用 `+dashboard-block-get`
-- 想列出仪表盘里有哪些组件 → 用 `+dashboard-block-list`
-- 想修改或新建组件 → 用 `+dashboard-block-update` / `+dashboard-block-create`
+- 想看 block 的 `data_config`、名称、类型、布局 → 用 `lark_base_dashboard_block_get`
+- 想列出仪表盘里有哪些组件 → 用 `lark_base_dashboard_block_list`
+- 想修改或新建组件 → 用 `lark_base_dashboard_block_update` / `lark_base_dashboard_block_create`
 - 想看原始记录明细，而不是图表聚合结果 → 回到 `record-*`
 - 目标是文本组件 → 本命令不适用
 
@@ -647,7 +647,7 @@ lark_base_dashboard_block_get_data(base_token="xxx", block_id="chtxxxxxxxx")
 - `data_config`
 - 所属 dashboard 信息
 
-这些都应该通过 `+dashboard-block-get`（`lark_get_skill(domain="base", section="dashboard-block-get")`）获取。
+这些都应该通过 `lark_base_dashboard_block_get()` 获取。
 
 ### 误区 2：以为它返回的是原始记录
 
@@ -666,5 +666,5 @@ lark_base_dashboard_block_get_data(base_token="xxx", block_id="chtxxxxxxxx")
 ## 参考
 
 - `lark_get_skill(domain="base", section="dashboard")` — dashboard 模块总指引
-- `lark_get_skill(domain="base", section="dashboard-block-get")` — 获取 block 元数据
+- `lark_base_dashboard_block_get()` — 获取 block 元数据
 - `lark_get_skill(domain="base", section="dashboard-block-data-config")` — data_config 结构和组件类型说明

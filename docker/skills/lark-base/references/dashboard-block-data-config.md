@@ -1,6 +1,6 @@
-# dashboard block data_config 参考
+# dashboard block data_config SSOT
 
-Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有共享结构。
+Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 dashboard block `data_config` 的单一事实来源（SSOT），包含组件类型、字段结构、筛选格式、约束和可复制模板。
 
 ## 支持的组件类型（`type` 枚举）
 
@@ -22,7 +22,7 @@ Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有
 
 ## 字段类型与操作符速查（AI 决策用）
 
-> 先用 `+field-list` / `+field-get` 确认字段 `type`；本节使用当前字段接口里的 canonical 类型名：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。
+> 先用 `lark_base_field_list` / `lark_base_field_get` 确认字段 `type`；本节使用当前字段接口里的 canonical 类型名：`number`、`text`、`select`、`datetime`、`checkbox`、`user`。
 
 ```
 text: is, isNot, contains, doesNotContain, isEmpty, isNotEmpty
@@ -169,13 +169,13 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 - 长度/结构
   - `group_by` 最多 2 个；每项 `field_name` 必填
   - `group_by[].sort.type` 取值 `group|value|view`；`order` 取值 `asc|desc`
-- 规范化（CLI 自动处理）
+- 规范化（工具自动处理）
   - `series[].rollup` 自动转成大写（如 `sum` → `SUM`）
   - `group_by[].sort.type/order` 自动转成小写
-- 本地校验（可通过 `--no-validate` 跳过）
-  - `+dashboard-block-create` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
-  - `+dashboard-block-update` 不做强类型校验，由后端验证具体字段
-  - 仅需传入合法 JSON；CLI 不会擅自改写你的业务含义
+- 本地校验（可通过 `no_validate` 跳过）
+  - `lark_base_dashboard_block_create` 默认对 `data_config` 做轻量校验；失败会聚合错误并给出修复建议
+  - `lark_base_dashboard_block_update` 不做强类型校验，由后端验证具体字段
+  - 仅需传入合法 JSON；工具不会擅自改写你的业务含义
 
 ## 可复制模板
 

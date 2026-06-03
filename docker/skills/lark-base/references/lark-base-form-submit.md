@@ -4,12 +4,12 @@
 
 ## 填写前必读：先获取表单详情
 
-**在调用 `+form-submit` 之前，必须先使用 `lark_get_skill(domain="base", section="form-detail")` 获取表单详情。** 原因如下：
+**在调用 `lark_base_form_submit()` 之前，必须先使用 `lark_base_form_detail()` 获取表单详情。** 原因如下：
 
 1. **字段类型匹配**：每个题目的 `type` 决定了值的格式（文本、数字、选项、人员、日期等），需根据类型正确构造 `fields` 中的值
 2. **必填校验**：通过 `questions[].required` 判断哪些题目为必填项，避免遗漏
 3. **显示条件过滤**：部分题目带有 `filter`（显示/隐藏逻辑），需根据用户已填的其他题目值判断该题目是否应该出现——**不应填写被 filter 隐藏的题目**
-4. **获取 base_token（附件场景必用）**：`+form-detail` 返回的 `data.base_token` 是该表单所属的多维表格标识。当表单包含附件字段时，提交时必须通过 `--base-token` 传入此值，因为附件需要上传到该 Base 的 Drive Media 中
+4. **获取 base_token（附件场景必用）**：`lark_base_form_detail` 返回的 `data.base_token` 是该表单所属的多维表格标识。当表单包含附件字段时，提交时必须通过 `base_token` 传入此值，因为附件需要上传到该 Base 的 Drive Media 中
 
 典型流程：
 
@@ -23,7 +23,7 @@ lark_base_form_detail(share_token="<share_token>")
 lark_base_form_submit(json='{"fields":{...}}', share_token="<share_token>")
 ```
 
-详见 `lark_get_skill(domain="base", section="form-detail")` 中的「questions 结构说明」和「filter 结构说明」。
+`lark_base_form_detail()` 的返回中要重点读取 `questions[].type`、`questions[].required`、题目 `filter` 和附件场景所需的 `data.base_token`。
 
 ## 命令
 
@@ -51,14 +51,13 @@ lark_base_form_submit(json='{"fields":{...}}', share_token="<share_token>")
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `share_token <token>` | 是 | 表单分享 Token（必填），从表单分享链接中提取 |
-| `base_token <token>` | 条件必填 | Base token；**当 `--json` 包含 `attachments` 时必须提供**，用于将附件上传到 Base Drive Media |
+| `base_token <token>` | 条件必填 | Base token；**当 `json` 包含 `attachments` 时必须提供**，用于将附件上传到 Base Drive Media |
 | `json <json>` | 是 | JSON 对象，包含 `"fields"`（普通字段值）和 `"attachments"`（附件上传），详见下方说明 |
 | `format` | 否 | 输出格式：json（默认）\| pretty \| table \| ndjson \| csv |
-| `as` | 否 | 身份：user（默认）\| bot |
 
-### --json 结构说明
+### json 参数结构说明
 
-`--json` 是一个 JSON 对象，包含两个部分：
+`json` 是一个 JSON 对象，包含两个部分：
 
 #### fields（普通字段）
 
@@ -86,7 +85,7 @@ lark_base_form_submit(json='{"fields":{...}}', share_token="<share_token>")
 
 #### attachments（附件上传）
 
-**附件字段的填写方式与 `fields` 中的普通单元格完全不同**，不能在 `fields` 里传 `file_token` 或其他附件格式。必须将附件字段单独放在 `--json` 的顶层 `attachments` 对象中，值为**本地文件路径数组**（不是 token）：
+**附件字段的填写方式与 `fields` 中的普通单元格完全不同**，不能在 `fields` 里传 `file_token` 或其他附件格式。必须将附件字段单独放在 `json` 的顶层 `attachments` 对象中，值为**本地文件路径数组**（不是 token）：
 
 ```json
 {
@@ -97,12 +96,12 @@ lark_base_form_submit(json='{"fields":{...}}', share_token="<share_token>")
 }
 ```
 
-CLI 收到路径后会自动完成以下流程：
+工具收到路径后会自动完成以下流程：
 1. 校验所有文件（存在性、大小 ≤2GB、常规文件）
 2. 并行上传到 Base Drive Media（并发上限 5，跨字段重复路径自动去重）
 3. 获取 `file_token` 后合并到最终表单提交内容中
 
-> 与 `lark_get_skill(domain="base", section="cell-value")` 中 Record 场景的附件写法不同：Record 写入时附件走独立的 `+record-upload-attachment` 命令；而 `+form-submit` 只需在 `attachments` 中传本地路径，上传由 工具内部自动完成。
+> 与 `lark_get_skill(domain="base", section="cell-value")` 中 Record 场景的附件写法不同：Record 写入时附件走独立的 `lark_base_record_upload_attachment` 命令；而 `lark_base_form_submit` 只需在 `attachments` 中传本地路径，上传由工具内部自动完成。
 
 ### 从分享链接提取 share-token
 
@@ -112,7 +111,7 @@ CLI 收到路径后会自动完成以下流程：
 https://www.example.com/share/base/form/shrbcvST8eZy0vk8zjVZ1CAXNye
 ```
 
-**提取方式：** 取 URL 路径最后一段作为 `--share-token`。
+**提取方式：** 取 URL 路径最后一段作为 `share_token`。
 
 以上述链接为例：
 
@@ -140,12 +139,11 @@ lark_base_form_submit(json='{"fields":{...}}', share_token="shrbcvST8eZy0vk8zjVZ
 ## 提示
 
 - 本命令仅支持通过表单分享链接（share_token）提交，不支持通过 base_token + table_id + view_id 方式提交
-- **当 `--json` 包含 `attachments` 时，必须额外提供 `--base-token`**，因为附件上传到 Base Drive Media 需要指定目标 Base
-- 附件字段只需在 `--json.attachments` 中提供本地路径即可，CLI 自动完成校验、并行上传、Token 获取和合并写入
+- **当 `json` 包含 `attachments` 时，必须额外提供 `base_token`**，因为附件上传到 Base Drive Media 需要指定目标 Base
+- 附件字段只需在 `json.attachments` 中提供本地路径即可，工具自动完成校验、并行上传、Token 获取和合并写入
 - 限流：单应用 20 QPS，单用户 5 QPS
 - 权限要求：`base:form:update`；使用 attachments 时还需 `docs:document.media:upload`
 
 ## 参考
 
 - `lark_get_skill(domain="base")` — 多维表格全部命令
-- `lark_get_skill(domain="base", section="form")` — 表单管理总览

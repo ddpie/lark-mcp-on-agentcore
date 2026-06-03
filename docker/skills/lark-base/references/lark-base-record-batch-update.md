@@ -22,9 +22,9 @@ lark_base_record_batch_update(json='@batch-update.json', base_token="<base_token
 
 `POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_update`
 
-## `--json` 结构
+## json 参数结构
 
-本节只说明 `+record-batch-update` 的外层 JSON 形状；CellValue 统一看 `lark_get_skill(domain="base", section="cell-value")`。
+本节只说明 `lark_base_record_batch_update` 的外层 JSON 形状；CellValue 统一看 `lark_get_skill(domain="base", section="cell-value")`。
 
 对象形态：`{"record_id_list":[...],"patch":{...}}`。
 
@@ -46,5 +46,4 @@ lark_base_record_batch_update(json='@batch-update.json', base_token="<base_token
 
 ## 参考
 
-- `lark_get_skill(domain="base", section="record")` — record 索引页
 - `lark_get_skill(domain="base", section="cell-value")` — CellValue 格式规范

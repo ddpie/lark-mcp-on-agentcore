@@ -1,13 +1,14 @@
-# 飞书多维表格角色权限配置详解
+# Base role permission JSON SSOT
 
-> **返回**: `lark_get_skill(domain="base")` | **相关**: `lark_get_skill(domain="base", section="role-create")` · `lark_get_skill(domain="base", section="role-update")` · `lark_get_skill(domain="base", section="role-get")`
+> **入口指南**: `lark_get_skill(domain="base", section="role-guide")` | **相关命令**: `lark_base_role_create()` · `lark_base_role_update()` · `lark_base_role_get()`
 
-本文档详细说明角色权限（AdvPermBaseRoleConfig）的完整 JSON 结构，供 `+role-create` 和 `+role-update` 构造 `--json` 参数时参考。
+本文档是角色权限 JSON（AdvPermBaseRoleConfig）的单一事实来源（SSOT），供 `lark_base_role_create()` 和 `lark_base_role_update()` 构造 `json` 参数时参考。
 
 ## 📋 目录
 
 - [顶层结构 (AdvPermBaseRoleConfig)](#顶层结构-advpermbaseroleconfig)
 - [角色类型 (RoleType)](#角色类型-roletype)
+- [读取与更新角色](#读取与更新角色)
 - [Base 级权限 (BaseRuleMap)](#base-级权限-baserulemap)
 - [仪表盘权限 (DashboardRule)](#仪表盘权限-dashboardrule)
 - [文档权限 (DocxRule)](#文档权限-docxrule)
@@ -59,8 +60,17 @@
 | `custom_role` | 自定义角色 |
 
 **注意**:
-- 创建接口（`+role-create`）仅支持 `custom_role`
-- 更新接口（`+role-update`）支持  `editor` / `reader` / `custom_role`
+- 创建接口（`lark_base_role_create`）仅支持 `custom_role`
+- 更新接口（`lark_base_role_update`）支持  `editor` / `reader` / `custom_role`
+
+---
+
+## 读取与更新角色
+
+- `lark_base_role_list()` 用于定位角色，返回角色摘要；系统角色和自定义角色都可能出现在列表中。
+- `lark_base_role_get()` 返回完整权限配置。更新前先用它确认当前 `role_name`、`role_type` 和已有权限结构。
+- `lark_base_role_update()` 是 delta merge，只提交需要变更的字段；但 `role_name` 和 `role_type` 仍要带当前值，避免误改角色身份信息。
+- `lark_base_role_delete()` 仅适用于自定义角色；系统角色可以在权限上限内调整配置，但不可删除。
 
 ---
 
@@ -374,7 +384,7 @@
 |------|------|------|------|
 | `field_name` | string | 是 | 字段名。仅限 `can_filter` 为 `true` 的字段。若服务端要求当前用户类条件，可按 API 返回结构处理 |
 | `operator` | string | 是 | 操作符，见下表 |
-| `field_type` | string | 否 | 通常由服务端 filterFiller 补全；Agent 判断字段类型时以 `+field-list` / 字段操作接口的 `type` 为准，常见可筛选类型包括 `select`、`user`、`created_by`、`number` 及部分 `formula` / `lookup` |
+| `field_type` | string | 否 | 通常由服务端 filterFiller 补全；Agent 判断字段类型时以 `lark_base_field_list` / 字段操作接口的 `type` 为准，常见可筛选类型包括 `select`、`user`、`created_by`、`number` 及部分 `formula` / `lookup` |
 | `reference_type` | string | 条件 | 引用类型。`field_type` 为公式或引用字段时必须赋值，其他情况不能赋值 |
 | `filter_values` | []string | 条件 | 筛选值。`operator` 为 `isEmpty` / `isNotEmpty` 时不设置，字段类型为 `user` 时也无需设置，其他情况必须设置。值为选项的 `name` |
 | `field_ui_type` | string | 条件 | 该字段有值时一定要填 |
@@ -505,7 +515,7 @@
 **`user` / `created_by` 类型字段：**
 - 仅允许使用 `contains` 算子
 - 不允许使用 `is`、`isNot` 等精确匹配算子
-- 筛选条件中无需填写具体值（由系统自动匹配当前成员）
+- 这是当前成员匹配模式，筛选条件中无需填写具体成员值；不要在 `filter_values` 中写入姓名或用户 ID
 
 **`select` (`multiple=false`) 类型字段：**
 - `is` 与 `isNot` 算子仅允许用于匹配**单一选项**，不得用于多个值

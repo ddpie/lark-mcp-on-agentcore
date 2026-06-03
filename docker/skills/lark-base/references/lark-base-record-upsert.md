@@ -1,6 +1,6 @@
 # base +record-upsert
 
-创建记录，或在带 `--record-id` 时更新记录。
+创建记录，或在带 `record_id` 时更新记录。
 
 ## 推荐命令
 
@@ -24,14 +24,14 @@ lark_base_record_upsert(json='{"项目名称":"Apollo","状态":"完成","完成
 ## API
 
 - 创建：`POST /open-apis/base/v3/bases/:base_token/tables/:table_id/records`
-- 更新：带 `--record-id` 时改走 `PATCH /records/:record_id`
+- 更新：带 `record_id` 时改走 `PATCH /records/:record_id`
 
-## `--json` 结构
+## json 参数结构
 
-- `--json` 必须是 **JSON object map**，形状是 `Map<FieldNameOrID, CellValue>`。
+- `json` 必须是 **JSON object map**，形状是 `Map<FieldNameOrID, CellValue>`。
 - key 是字段名或字段 ID；value 是该字段的 `CellValue`。
 - 一次请求里同一字段只用一种标识，避免重复写入冲突。
-- 写入前先 `+field-list` 确认字段类型和字段名/ID。
+- 写入前先 `lark_base_field_list` 确认字段类型和字段名/ID。
 - CellValue 统一看 `lark_get_skill(domain="base", section="cell-value")`。
 
 ```json
@@ -50,11 +50,10 @@ lark_base_record_upsert(json='{"项目名称":"Apollo","状态":"完成","完成
 
 ## 坑点
 
-- 有 `--record-id` 就一定更新；不传就一定创建，不会自动查重或按业务键 upsert。
-- select 写入未知选项时平台可能自动新增选项；如果不是要新增选项，先用 `+field-list` / `+field-search-options` 确认真实选项名。
+- 有 `record_id` 就一定更新；不传就一定创建，不会自动查重或按业务键 upsert。
+- select 写入未知选项时平台可能自动新增选项；如果不是要新增选项，先用 `lark_base_field_list` / `lark_base_field_search_options` 确认真实选项名。
 - 这是写入操作，执行前必须确认目标表和字段。
 
 ## 参考
 
-- `lark_get_skill(domain="base", section="record")` — record 索引页
 - `lark_get_skill(domain="base", section="cell-value")` — CellValue 格式规范

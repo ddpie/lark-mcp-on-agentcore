@@ -19,7 +19,7 @@ lark_base_field_update(json='{"name":"负责人","type":"user","multiple":false,
 | `field_id <id_or_name>` | 是 | 字段 ID 或字段名 |
 | `json <body>` | 是 | 字段属性 JSON 对象 |
 
-> 这是**高风险写入操作**。`+field-update` 使用 `PUT` 全量字段定义语义；改变字段类型或关键配置可能影响整列已有数据的解释、展示或可用性。server 对高风险操作需要 `_confirm=true`；如果用户已经明确目标和期望更新，可直接执行并带上 `--yes`。
+> 这是**高风险写入操作**。`lark_base_field_update` 使用 `PUT` 全量字段定义语义；改变字段类型或关键配置可能影响整列已有数据的解释、展示或可用性。server 对高风险操作需要 `_confirm=true`；如果用户已经明确目标和期望更新，可直接执行并带上 `_confirm=true`。
 
 ## API 入参详情
 
@@ -31,7 +31,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 ## JSON 值规范
 
-- `--json` 必须是 **JSON 对象**，顶层直接传字段定义。
+- `json` 必须是 **JSON 对象**，顶层直接传字段定义。
 - 更新语义是 `PUT`（全量字段配置更新），不要只传零散片段；至少显式包含 `name`、`type`，并补齐该类型所需关键配置。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
 - `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
@@ -71,17 +71,17 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 ## 工作流
 
-1. 建议先用 `+field-get` 拉现状，再做最小化修改。
+1. 建议先用 `lark_base_field_get` 拉现状，再做最小化修改。
 2. `formula/lookup` 类型更新前先阅读对应指南。
 3. 如果这次更新会改变字段 `type` 先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
 
 ## 字段类型变更规则
 
-字段类型变更采用白名单机制：**只允许白名单转换**；未命中白名单时，**不建议用 CLI 转换字段类型** 除非用户明确知道风险并同意。
+字段类型变更采用白名单机制：**只允许白名单转换**；未命中白名单时，**不建议用工具转换字段类型** 除非用户明确知道风险并同意。
 
 ### 允许直接转换 type
 
-先 `+field-get` / `+field-list` 看结构，再抽样读值；只有命中以下规则时，转换才是比较安全的。
+先 `lark_base_field_get` / `lark_base_field_list` 看结构，再抽样读值；只有命中以下规则时，转换才是比较安全的。
 
 #### 相对安全
 
@@ -102,7 +102,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 - `created_at`、`created_by`、`updated_at`、`updated_by`、`formula`、`lookup`: 这类字段值由系统或计算逻辑生成，不承载独立存储数据；可以执行类型转换，不必担心破坏原始记录值，但仍要做下游读回验证。
 
-### 一律不要用 CLI 转换
+### 一律不要用工具转换
 
 以下场景全部视为黑名单；默认要求用户改到 Web 页面手动完成，或改走“新建字段 + 数据迁移”。
 
@@ -146,13 +146,12 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 坑点
 
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
-- ⚠️ 这是高风险写入操作，执行时必须带 `--yes`。
+- ⚠️ 这是高风险写入操作，执行时必须带 `_confirm=true`。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
 
 ## 参考
 
-- `lark_get_skill(domain="base", section="field")` — field 索引页
-- `lark_get_skill(domain="base", section="field-get")` — 查字段
-- `lark_get_skill(domain="base", section="shortcut-field-properties")` — shortcut 字段 JSON 规范（推荐）
+- 更新前读取当前字段，确认现有 `type` 和具体配置细节，再决定是原地更新还是新建字段迁移。
+- `lark_get_skill(domain="base", section="field-json")` — 字段 JSON 规范（推荐）
 - `lark_get_skill(domain="base", section="formula-field-guide")` — formula 指南（更新公式前必读）
 - `lark_get_skill(domain="base", section="lookup-field-guide")` — lookup 指南（更新查找引用前必读）
