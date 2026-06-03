@@ -158,6 +158,32 @@ describe('refresh path — preflight protection', () => {
     expect(body.errors[0].phase).toBe('feishu_resp');
   });
 
+  it('records failed (not a crash) when Feishu returns a non-JSON refresh response', async () => {
+    // Same defensive-parse fix as /callback: a non-JSON body (edge WAF block page)
+    // must not throw out of refreshUser. It maps to code -1 → counted as failed,
+    // NOT skipped (it's an anomaly worth alerting, unlike a 20016 revocation).
+    mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
+    const userSecretId = 'lark-mcp-on-agentcore/users/u_nonjson';
+    mockClient.secretsManager.__set(userSecretId, JSON.stringify({
+      access_token: 'old', refresh_token: 'rt-old',
+      expires_at: Math.floor(Date.now() / 1000) + 60,
+      issued_at: Math.floor(Date.now() / 1000) - 7140,
+    }));
+    mockClient.secretsManager.__listNames([userSecretId]);
+
+    vi.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ app_access_token: 'app' })))
+      .mockResolvedValueOnce(new Response('<html><body>blocked</body></html>', { status: 200, headers: { 'content-type': 'text/html' } }));
+
+    const { handler } = await import('../index');
+    const result = await handler({ source: 'aws.events' } as any);
+    const body = JSON.parse(result.body!);
+
+    expect(body.failed).toBe(1);
+    expect(body.skipped).toBe(0);
+    expect(body.errors[0].phase).toBe('feishu_resp');
+  });
+
   it('treats revoked token as deauthorized (skipped, not failed) and schedules secret deletion', async () => {
     mockClient.secretsManager.__set('lark-mcp-on-agentcore/feishu-app', JSON.stringify({ appId: 'a', appSecret: 's' }));
     const userSecretId = 'lark-mcp-on-agentcore/users/u_revoked';

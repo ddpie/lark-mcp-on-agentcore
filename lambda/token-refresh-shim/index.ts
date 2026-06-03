@@ -134,6 +134,28 @@ function detectLang(acceptLang: string): string {
   return 'en';
 }
 
+// Out-of-band sentinel for a non-JSON / unreadable Feishu response. Feishu
+// success is code === 0 and real errors are positive (e.g. 20016); -1 can never
+// collide, and every caller's `code !== 0` check treats it as a clean failure.
+const FEISHU_NON_JSON: { code: number; msg: string; data?: undefined } = { code: -1, msg: 'non_json_response' };
+
+// Feishu (or an edge WAF in front of it) can answer with a non-JSON body — an
+// HTML block page or empty payload — for malformed/hostile inputs, and the body
+// stream can also error mid-read. A bare resp.json() throws on either, which
+// would surface as an unhandled Lambda exception → API Gateway 502 (a DoS vector
+// triggerable by anyone). Parse defensively (read + parse both guarded) and
+// return null so callers can treat it as a failed call.
+async function parseJsonSafe<T>(resp: Response, api: string): Promise<T | null> {
+  let text = '';
+  try {
+    text = await resp.text();
+    return JSON.parse(text) as T;
+  } catch {
+    log('WARN', 'feishu_non_json_response', { api, status: resp.status, bodyPrefix: text.slice(0, 80) });
+    return null;
+  }
+}
+
 async function getAppAccessToken(): Promise<string> {
   await loadAppCredentials();
   const t0 = Date.now();
@@ -143,7 +165,8 @@ async function getAppAccessToken(): Promise<string> {
   });
   const durationMs = Date.now() - t0;
   if (durationMs > 3000) log('WARN', 'feishu_slow', { api: 'app_access_token', durationMs });
-  return ((await resp.json()) as { app_access_token: string }).app_access_token;
+  const parsed = await parseJsonSafe<{ app_access_token: string }>(resp, 'app_access_token');
+  return parsed?.app_access_token ?? '';
 }
 
 async function exchangeCode(code: string, appToken: string) {
@@ -154,7 +177,11 @@ async function exchangeCode(code: string, appToken: string) {
   });
   const durationMs = Date.now() - t0;
   if (durationMs > 3000) log('WARN', 'feishu_slow', { api: 'exchange_code', durationMs });
-  return resp.json() as Promise<{ code: number; msg: string; data?: { access_token: string; refresh_token: string; expires_in: number; open_id: string } }>;
+  type ExchangeResp = { code: number; msg: string; data?: { access_token: string; refresh_token: string; expires_in: number; open_id: string } };
+  const parsed = await parseJsonSafe<ExchangeResp>(resp, 'exchange_code');
+  // Non-JSON (e.g. an edge block page) → synthesize a failure so the caller
+  // returns a structured 400 instead of crashing on resp.json().
+  return parsed ?? FEISHU_NON_JSON;
 }
 
 async function refreshToken(rt: string, appToken: string) {
@@ -165,7 +192,9 @@ async function refreshToken(rt: string, appToken: string) {
   });
   const durationMs = Date.now() - t0;
   if (durationMs > 3000) log('WARN', 'feishu_slow', { api: 'refresh_token', durationMs });
-  return resp.json() as Promise<{ code: number; msg: string; data?: { access_token: string; refresh_token: string; expires_in: number } }>;
+  type RefreshResp = { code: number; msg: string; data?: { access_token: string; refresh_token: string; expires_in: number } };
+  const parsed = await parseJsonSafe<RefreshResp>(resp, 'refresh_token');
+  return parsed ?? FEISHU_NON_JSON;
 }
 
 async function getUserInfo(userAccessToken: string): Promise<string> {
