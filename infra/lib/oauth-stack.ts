@@ -22,6 +22,7 @@ export interface OAuthStackProps extends cdk.StackProps {
   runtimeArn?: string;
   customDomain?: string;
   webAclArn?: string;
+  domainVerification?: string;
 }
 
 const LOG_RETENTION_MAP: Record<string, logs.RetentionDays> = {
@@ -120,6 +121,7 @@ export class OAuthStack extends cdk.Stack {
         OAUTH_CLIENT_ID: oauthClientId,
         OAUTH_CLIENT_SECRET: "SET_AFTER_DEPLOY",
         ALLOWED_DOMAINS: props.customDomain || "",
+        DOMAIN_VERIFICATION: props.domainVerification || "",
       },
       // @aws-sdk/lib-dynamodb is not in the Node.js 20 runtime; bundle it.
       bundling: { externalModules: ["@aws-sdk/client-*"], minify: true, target: "node20" },
@@ -237,6 +239,12 @@ export class OAuthStack extends cdk.Stack {
     api.root.addResource("token").addMethod("POST", oauthIntegration);
     const wellKnown = api.root.addResource(".well-known");
     wellKnown.addResource("oauth-authorization-server").addMethod("GET", oauthIntegration);
+    // AWS Security Agent domain-ownership verification (HTTP route method).
+    // Inert unless DOMAIN_VERIFICATION is set on the OAuth Lambda (deploy.sh).
+    wellKnown
+      .addResource("aws")
+      .addResource("securityagent-domain-verification.json")
+      .addMethod("GET", oauthIntegration);
 
     const mcpResource = api.root.addResource("mcp");
     mcpResource.addMethod("POST", mcpIntegration);

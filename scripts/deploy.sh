@@ -421,6 +421,61 @@ if [ -n "$CUSTOM_DOMAIN" ]; then
   info "Custom domain: ${CUSTOM_DOMAIN}"
 fi
 
+# AWS Security Agent domain-ownership verification (optional, HTTP route method).
+# Users enter the raw token(s) from the console — comma/space-separated for
+# multiple agent spaces; deploy builds the {"tokens":[...]} body the doc requires.
+# Input is normalized to a bare comma-joined form (no spaces) before it is saved
+# to / sourced from deploy-config, so the value is always `source`-safe. Each
+# token is [A-Za-z0-9_-]. Empty = disabled.
+PREV_DV_TOKENS=""
+if [ -f "$DEPLOY_CONFIG" ]; then
+  PREV_DV_TOKENS=$(grep '^DOMAIN_VERIFICATION_TOKENS=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+fi
+if [ -z "${DOMAIN_VERIFICATION_TOKENS+x}" ]; then
+  if [ -n "$PREV_DV_TOKENS" ] && [ -t 0 ]; then
+    echo ""
+    info "$(t domain_verification_existing "$PREV_DV_TOKENS")"
+    pick _DV_ACT "${L[keep]}" "${L[change]}" "${L[clear]}"
+    case "$_DV_ACT" in
+      "${L[clear]}") DOMAIN_VERIFICATION_TOKENS="" ;;
+      "${L[change]}") prompt "${L[domain_verification]}" DOMAIN_VERIFICATION_TOKENS ;;
+      *) DOMAIN_VERIFICATION_TOKENS="$PREV_DV_TOKENS" ;;
+    esac
+  else
+    echo ""
+    prompt "${L[domain_verification]}" DOMAIN_VERIFICATION_TOKENS
+  fi
+fi
+# Validate, normalize, then build the verification JSON body for the Lambda.
+DOMAIN_VERIFICATION=""
+if [ -n "${DOMAIN_VERIFICATION_TOKENS:-}" ]; then
+  # Accept letters/digits/_/-/commas and any whitespace as separators on input...
+  if [[ ! "$DOMAIN_VERIFICATION_TOKENS" =~ ^[A-Za-z0-9_,[:space:]-]+$ ]]; then
+    err "Invalid verification token(s): only letters, digits, '_', '-', commas and spaces allowed"
+    exit 1
+  fi
+  # ...then collapse to a canonical, space-free comma-joined form. Persisting THIS
+  # (not the raw input) is what keeps the bare config write `source`-safe even if
+  # the user typed "a, b" or pasted a newline-separated list. Reject separator-only
+  # input (e.g. ",,") which would otherwise yield a served-but-empty {"tokens":[]}.
+  DOMAIN_VERIFICATION_TOKENS=$(DV_TOKENS="$DOMAIN_VERIFICATION_TOKENS" python3 -c "
+import os, re
+toks = [t for t in re.split(r'[,\s]+', os.environ['DV_TOKENS'].strip()) if t]
+print(','.join(toks))
+")
+  if [ -z "$DOMAIN_VERIFICATION_TOKENS" ]; then
+    err "No valid verification token found (input was only separators)"
+    exit 1
+  fi
+  DOMAIN_VERIFICATION=$(DV_TOKENS="$DOMAIN_VERIFICATION_TOKENS" python3 -c "
+import json, os
+toks = os.environ['DV_TOKENS'].split(',')
+print(json.dumps({'tokens': toks}, separators=(',', ':')))
+")
+  _DV_COUNT=$(printf '%s' "$DOMAIN_VERIFICATION" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['tokens']))")
+  info "AWS Security Agent domain verification: ${_DV_COUNT} token(s) configured"
+fi
+
 # WAF (default: off). Honor SKIP_WAF env override; on non-interactive default off.
 if [ -n "${SKIP_WAF+x}" ]; then
   # Explicit env override
@@ -922,6 +977,7 @@ npm install --silent 2>/dev/null
 cd "${PROJECT_DIR}/infra"
 npm install --silent 2>/dev/null
 export CUSTOM_DOMAIN="${CUSTOM_DOMAIN:-}"
+export DOMAIN_VERIFICATION="${DOMAIN_VERIFICATION:-}"
 CDK_STACKS=(LarkMcpOnAgentCoreRuntime LarkMcpOnAgentCoreOAuth)
 if [ "${SKIP_WAF:-0}" != "1" ]; then
   CDK_STACKS=(LarkMcpOnAgentCoreRuntime LarkMcpOnAgentCoreWaf LarkMcpOnAgentCoreOAuth)
@@ -981,6 +1037,7 @@ if [ -n "$OAUTH_FN" ] && [ -n "$OAUTH_ENDPOINT" ]; then
     OAUTH_SECRET_VAL="$OAUTH_SECRET_VAL" \
     FEISHU_SCOPES="$FEISHU_SCOPES" \
     CUSTOM_DOMAIN="${CUSTOM_DOMAIN:-}" \
+    DOMAIN_VERIFICATION="${DOMAIN_VERIFICATION:-}" \
     python3 -c '
 import json, os
 vars = {
@@ -996,6 +1053,11 @@ vars = {
 }
 if os.environ.get("CUSTOM_DOMAIN"):
   vars["ALLOWED_DOMAINS"] = os.environ["CUSTOM_DOMAIN"]
+# This update-function-configuration REPLACES the whole env set, so every var the
+# Lambda needs must be re-listed here — including DOMAIN_VERIFICATION, else the
+# value CDK set would be wiped. Empty string keeps the verification route inert.
+if os.environ.get("DOMAIN_VERIFICATION"):
+  vars["DOMAIN_VERIFICATION"] = os.environ["DOMAIN_VERIFICATION"]
 print(json.dumps({"Variables": vars}))
 ' > "$ENV_FILE"
   aws lambda update-function-configuration \
@@ -1186,11 +1248,14 @@ except Exception as e:
 
 DEPLOY_STARTED=false
 
-# Save deploy config for next run
+# Save deploy config for next run. We persist the normalized token(s) — a
+# space-free comma-joined string of [A-Za-z0-9_-] tokens, not the built JSON — so
+# the bare write is always safe to `source` back (no spaces/quotes/metachars).
 cat > "$DEPLOY_CONFIG" << CFGEOF
 LARK_LANG=${LARK_LANG}
 REGION=${REGION}
 CUSTOM_DOMAIN=${CUSTOM_DOMAIN:-}
+DOMAIN_VERIFICATION_TOKENS=${DOMAIN_VERIFICATION_TOKENS:-}
 SKIP_WAF=${SKIP_WAF}
 LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-}
 AGENTCORE_IDLE_TIMEOUT=${AGENTCORE_IDLE_TIMEOUT:-600}

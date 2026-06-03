@@ -538,6 +538,40 @@ describe('/.well-known/oauth-authorization-server', () => {
 });
 
 // =============================================================================
+// /.well-known/aws/securityagent-domain-verification.json
+// =============================================================================
+
+describe('/.well-known/aws/securityagent-domain-verification.json', () => {
+  const PATH = '/.well-known/aws/securityagent-domain-verification.json';
+  afterEach(() => { delete process.env.DOMAIN_VERIFICATION; });
+
+  it('404s when DOMAIN_VERIFICATION is unset (inert by default)', async () => {
+    delete process.env.DOMAIN_VERIFICATION;
+    const r = await call({ path: PATH, httpMethod: 'GET' });
+    expect(r.statusCode).toBe(404);
+    expect(r.body).toContain('not_found');
+  });
+
+  it('serves the configured body verbatim with JSON content-type', async () => {
+    const body = '{"tokens":["LtYrhHdc7nH72gaZcV3J-A"]}';
+    process.env.DOMAIN_VERIFICATION = body;
+    const r = await call({ path: PATH, httpMethod: 'GET' });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toBe(body);
+    expect(r.headers?.['Content-Type']).toBe('application/json');
+    // Verbatim passthrough must not corrupt the documented {"tokens":[...]} shape.
+    expect(JSON.parse(r.body!).tokens).toEqual(['LtYrhHdc7nH72gaZcV3J-A']);
+  });
+
+  it('supports multiple tokens (multi agent-space) without code change', async () => {
+    process.env.DOMAIN_VERIFICATION = '{"tokens":["tok-a","tok-b"]}';
+    const r = await call({ path: PATH, httpMethod: 'GET' });
+    expect(r.statusCode).toBe(200);
+    expect(JSON.parse(r.body!).tokens).toEqual(['tok-a', 'tok-b']);
+  });
+});
+
+// =============================================================================
 // Routing: GET /token, unknown paths
 // =============================================================================
 

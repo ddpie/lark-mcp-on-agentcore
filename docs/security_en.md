@@ -74,6 +74,21 @@ Both rules use IP aggregation and return 403 Block when exceeded. WAF enables Cl
 
 When WAF is disabled, no charges are incurred. If WAF was previously enabled and you disable it on redeploy, deploy.sh automatically destroys the WAF stack in us-east-1.
 
+## AWS Security Agent Domain Verification (optional)
+
+To run [AWS Security Agent](https://docs.aws.amazon.com/securityagent/) penetration tests against the deployment, AWS requires HTTP-route proof of domain ownership. When you supply verification token(s) at deploy time (`deploy.sh` prompt, or `DOMAIN_VERIFICATION_TOKENS=` env var; comma- or space-separated for multiple agent spaces), the OAuth Lambda serves them at:
+
+```
+GET /.well-known/aws/securityagent-domain-verification.json  →  {"tokens":["<token>", ...]}
+```
+
+Properties:
+
+- **Unauthenticated GET by design** — domain-ownership verification must be reachable without auth. The route returns only the operator-configured public token(s); it reads no secrets, takes no request input, and performs no I/O.
+- **Inert by default** — when no token is configured the route returns 404, so it adds no surface for deployments that don't use Security Agent.
+- Served as `application/json` with `Cache-Control: no-store`; covered by the same CloudFront + WAF path as every other route.
+- **Removable** — this endpoint exists solely for Security Agent verification. Once verification is complete (or if you don't use Security Agent), clear the token on redeploy to disable it; the route + config can be removed entirely if the feature is no longer needed.
+
 ## Webhook Signature Verification
 
 Alarm webhook pushes to Feishu group bots support two security verification methods:

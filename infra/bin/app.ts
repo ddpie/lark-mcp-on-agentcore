@@ -12,6 +12,7 @@ const env = { account, region };
 
 const runtimeArn = app.node.tryGetContext("runtimeArn") || process.env.RUNTIME_ARN || "";
 const customDomain = process.env.CUSTOM_DOMAIN || "";
+const domainVerification = process.env.DOMAIN_VERIFICATION || "";
 
 // CloudFront-scope WAF must live in us-east-1 regardless of deploy region.
 // Set SKIP_WAF=1 to omit the WAF stack (e.g., for region-locked tenants).
@@ -25,6 +26,7 @@ const oauth = new OAuthStack(app, "LarkMcpOnAgentCoreOAuth", {
   env,
   runtimeArn,
   customDomain,
+  domainVerification,
   webAclArn: waf?.webAclArn,
   crossRegionReferences: !skipWaf,
 });

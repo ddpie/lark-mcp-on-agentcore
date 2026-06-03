@@ -16,6 +16,12 @@ const APP_SECRET_ID = process.env.APP_SECRET_ID || "lark-mcp-on-agentcore/feishu
 const STATE_SECRET_PARAM = process.env.STATE_SECRET_PARAM || '/lark-mcp-on-agentcore/state-secret';
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
 const FEISHU_SCOPES = process.env.FEISHU_SCOPES || '';
+// Verbatim body served at /.well-known/aws/securityagent-domain-verification.json
+// to prove domain ownership to AWS Security Agent (penetration-testing target).
+// Format-agnostic on purpose: the operator pastes whatever the console requires
+// (plain token or a JSON object) so the same code works across tenants and any
+// future format change. Empty (default) ⇒ the route 404s, zero impact when unused.
+const DOMAIN_VERIFICATION = process.env.DOMAIN_VERIFICATION || '';
 const STATE_TTL_SECONDS = 300;
 const MCP_TOKEN_TTL = 86400 * 30; // 30 days
 
@@ -375,6 +381,18 @@ async function handle(event: LambdaEvent) {
   const method = event.httpMethod || event.requestContext?.http?.method || "GET";
   const params = event.queryStringParameters || {};
   const CALLBACK_URL = getCallbackUrl(event);
+
+  // AWS Security Agent domain-ownership verification (HTTP route method).
+  // Serves the operator-supplied verification body verbatim. Returns 404 when
+  // unconfigured so the path is inert for tenants not using Security Agent.
+  if (path.includes("/.well-known/aws/securityagent-domain-verification.json")) {
+    if (!DOMAIN_VERIFICATION) return { statusCode: 404, body: '{"error":"not_found"}' };
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: DOMAIN_VERIFICATION,
+    };
+  }
 
   // OAuth 2.0 Authorization Server Metadata (RFC 8414)
   if (path.includes("/.well-known/oauth-authorization-server")) {
