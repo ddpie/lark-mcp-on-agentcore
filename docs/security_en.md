@@ -6,6 +6,36 @@
 
 The system employs defense-in-depth, implementing security controls at the network edge, transport layer, application layer, and storage layer. Tokens never leave the AWS internal network, OAuth uses PKCE + client_secret dual protection, and HMAC signing prevents CSRF and token forgery.
 
+## User Isolation (Feishu Token · MCP Token · MCP Endpoint)
+
+Identity in this service is **user-only**: every user acts as themselves, and one user can never read another user's data or act under their identity. That guarantee rests on a clean separation between three things people often conflate:
+
+| | What it is | Who holds it | Lifetime |
+|---|---|---|---|
+| **MCP Token** | The Bearer token an MCP client (e.g. Quick Desktop) sends on every request. A signed envelope `base64url(userId:expiresAt:hmac)` — it **carries the identity** but is **not** a Feishu credential. | The MCP client, per connected user | 30 days |
+| **Feishu Token** | The actual OAuth access/refresh token that calls Feishu's APIs. Never leaves AWS; never sent to the client. | Secrets Manager, one secret per user | Auto-refreshed every 30 min |
+| **MCP Endpoint** | The single public URL (`/mcp`) all users share. It is **stateless w.r.t. identity** — it holds no per-user state; identity is resolved fresh from the MCP Token on every request. | Shared by everyone | — |
+
+**The key idea:** the MCP Endpoint is shared, but identity is *not* tied to the connection or the endpoint — it is tied to the **MCP Token** the request carries. The endpoint takes that token, verifies its HMAC signature, extracts the `userId`, and looks up **that user's** Feishu Token in Secrets Manager. There is no ambient "current user" anywhere in the system.
+
+<p align="center">
+  <img src="images/user-isolation-en.svg" alt="User isolation: Feishu Token vs MCP Token vs the shared MCP endpoint" width="860">
+</p>
+
+**Why a user can't cross over to another user:**
+
+- **The userId is signed, not user-supplied.** It lives inside the HMAC-signed MCP Token (`tokenKey`); a client cannot change it without invalidating the signature. Tampering → signature mismatch → 401.
+- **Feishu Tokens are stored per user** at `lark-mcp-on-agentcore/users/{userId}` and only ever read by `userId` extracted from a verified MCP Token. They are **never** sent back to the client.
+- **Switching users (e.g. in Quick Desktop) is just a different MCP Token.** A new user completes OAuth and gets their own MCP Token → the endpoint resolves the new `userId` → reads the new user's Feishu Token. A user who hasn't authorized gets a 403 + re-auth link, never someone else's session.
+- **Runtime isolation is triple-layered** (see `docs/agent/architecture.md`): each MCP session runs in its own AgentCore microVM; each tool call runs in its own child process; the Feishu Token is passed to that child via environment only, never shared between calls or persisted.
+- **Confused-deputy guard:** the incremental-auth flow additionally verifies the consenting Feishu `open_id` belongs to the session owner, so user B cannot graft their Feishu authorization onto user A's session (see the incremental auth token note below).
+
+The sequence below shows how identity is resolved — and the Feishu Token kept isolated — within a single MCP tool call:
+
+<p align="center">
+  <img src="images/isolation-sequence-en.svg" alt="Sequence of one MCP tool call: identity resolved per request, Feishu Token never leaves the server" width="900">
+</p>
+
 ## OAuth 2.0 PKCE Flow
 
 The system implements the full OAuth 2.0 Authorization Code + PKCE (RFC 7636) flow:

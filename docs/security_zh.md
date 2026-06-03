@@ -6,6 +6,36 @@
 
 本系统采用纵深防御策略，在网络边缘、传输层、应用层和存储层都实施安全控制。所有 Token 永远不会离开 AWS 内网，OAuth 流程使用 PKCE + client_secret 双重保护，并通过 HMAC 签名防止 CSRF 和 Token 伪造。
 
+## 用户隔离（飞书 Token · MCP Token · MCP 端点）
+
+本服务的身份模型是**仅用户身份**：每个用户都以自己的身份行事，任何用户都无法读取他人数据或冒用他人身份。这一保证建立在对三个易被混淆的概念的清晰区分之上：
+
+| | 是什么 | 由谁持有 | 有效期 |
+|---|---|---|---|
+| **MCP Token** | MCP 客户端（如 Quick Desktop）每次请求携带的 Bearer token。一个签名信封 `base64url(userId:expiresAt:hmac)`——它**承载身份**，但**不是**飞书凭据。 | MCP 客户端，每个已连接用户各一份 | 30 天 |
+| **飞书 Token** | 真正调用飞书 API 的 OAuth access/refresh token。永不离开 AWS，永不下发给客户端。 | Secrets Manager，每用户一个 secret | 每 30 分钟自动刷新 |
+| **MCP 端点** | 所有用户共用的唯一公开 URL（`/mcp`）。它对身份是**无状态的**——不保存任何用户态，每次请求都从 MCP Token 重新解析身份。 | 全体共用 | — |
+
+**核心思想：** MCP 端点是共享的，但身份**并不**绑定在连接或端点上——身份绑定在请求携带的 **MCP Token** 上。端点拿到该 token，校验其 HMAC 签名，取出 `userId`，再去 Secrets Manager 查**这个用户的**飞书 Token。系统中不存在任何隐式的"当前用户"。
+
+<p align="center">
+  <img src="images/user-isolation.svg" alt="用户隔离：飞书 Token、MCP Token 与共享的 MCP 端点" width="860">
+</p>
+
+**为什么一个用户无法越界到另一个用户：**
+
+- **userId 是签名的，不是用户提交的。** 它存在于 HMAC 签名的 MCP Token 内（`tokenKey`）；客户端无法在不破坏签名的情况下篡改它。篡改 → 签名不匹配 → 401。
+- **飞书 Token 按用户分别存储**于 `lark-mcp-on-agentcore/users/{userId}`，且只会按"从已验证 MCP Token 中取出的 `userId`"读取，**绝不**回传给客户端。
+- **切换用户（如在 Quick Desktop 中）只是换了一个 MCP Token。** 新用户完成 OAuth 后拿到自己的 MCP Token → 端点解析出新的 `userId` → 读取新用户的飞书 Token。未授权的用户会收到 403 + 重新授权链接，绝不会拿到他人的会话。
+- **运行时隔离为三层**（见 `docs/agent/architecture.md`）：每个 MCP 会话运行在独占的 AgentCore microVM 中；每次工具调用运行在独立子进程中；飞书 Token 仅通过环境变量传给该子进程，绝不在调用间共享或持久化。
+- **混淆代理（confused-deputy）防护：** 增量授权流程额外校验同意授权的飞书 `open_id` 确属会话所有者，因此用户 B 无法把自己的飞书授权嫁接到用户 A 的会话上（详见下文增量授权 Token 说明）。
+
+下面的时序图展示在一次 MCP 工具调用中，身份如何被解析、飞书 Token 如何保持隔离：
+
+<p align="center">
+  <img src="images/isolation-sequence.svg" alt="一次 MCP 工具调用的时序：每次请求重新解析身份，飞书 Token 绝不离开服务端" width="900">
+</p>
+
 ## OAuth 2.0 PKCE 流程
 
 系统实现了完整的 OAuth 2.0 Authorization Code + PKCE (RFC 7636) 流程：

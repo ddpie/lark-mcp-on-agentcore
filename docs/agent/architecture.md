@@ -34,6 +34,8 @@ function `createSemaphore`, wired up in `docker/server.js`) is
 **per-session**, not a shared global pool — each session's microVM runs its own
 `server.js` process with its own counter. User isolation is triple-layered:
 microVM boundary → per-call child process → token passed via env, never shared.
+(Human-facing writeup with a diagram — Feishu Token vs MCP Token vs the shared
+identity-less MCP endpoint — is in `docs/security_en.md` → "User Isolation".)
 
 Container lifecycle (relevant when touching startup/shutdown or concurrency):
 `/ping` returns 503 until the app secret has loaded (`docker/server.js`, the
