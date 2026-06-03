@@ -512,6 +512,23 @@ describe('/callback — full Feishu exchange path', () => {
     expect(stored.access_token).toBe('feishu-tok');
   });
 
+  it('returns 400 (not 502) when Feishu returns a non-JSON body for the code exchange', async () => {
+    // Feishu (or an edge WAF in front of it) can answer certain malformed `code`
+    // values with an HTML block page / empty body instead of JSON. The exchange
+    // response parser must not throw on that — otherwise the Lambda crashes and
+    // API Gateway returns 502, a DoS vector triggerable by anyone.
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('app_access_token')) return new Response(JSON.stringify({ app_access_token: 'app-token' }));
+      if (url.includes('oidc/access_token')) return new Response('<html><body>blocked</body></html>', { status: 200, headers: { 'content-type': 'text/html' } });
+      return new Response('{}');
+    });
+    const state = buildState({ r: 'https://quicksight.aws.amazon.com/cb', s: 's', c: 'c' });
+    const r = await call({ path: '/callback', httpMethod: 'GET', queryStringParameters: { code: '<svg onload=alert(1)>', state } });
+    expect(r.statusCode).toBe(400);
+    expect(r.body).toContain('feishu_exchange_failed');
+  });
+
   it('throws when getOpenIdMapping hits DDB error — prevents identity fork', async () => {
     mockFeishu();
     mockClient.dynamodb.__failOpenidGet({ name: 'ThrottlingException', message: 'rate exceeded' });
