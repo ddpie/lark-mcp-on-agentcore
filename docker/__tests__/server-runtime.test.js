@@ -232,6 +232,7 @@ describe('R5: execFile is abortable and its timeout aligns under the Lambda', ()
     execFileBehavior = { mode: 'slow', delayMs: 5000 };
     const ctrl = new AbortController();
     const payload = JSON.stringify({ jsonrpc: '2.0', id: 52, method: 'tools/call', params: { name: 'lark_calendar_agenda', arguments: {} } });
+    // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- localhost test server, no TLS needed
     const aborted = fetch(`http://127.0.0.1:${PORT}/`, {
       method: 'POST', signal: ctrl.signal,
       headers: { 'Content-Type': 'application/json', 'x-user-access-token': 'u-tok' },
