@@ -4,7 +4,7 @@
 
 ## 1. 顶层规则
 
-- `--json` 必须是 JSON 对象。
+- `json` 必须是 JSON 对象。
 - 顶层结构是 `{logic?, conditions?}`。
 - `logic` 默认 `and`；推荐只用 canonical 值 `and` / `or`。
 - `conditions` 默认空数组。
@@ -162,7 +162,7 @@ lark_base_view_set_filter(json='{"logic":"and","conditions":[["状态","intersec
 
 ## 6. 使用建议
 
-- 建议先用 `lark_get_skill(domain="base", section="view-get-filter")` 读取现状，再改。
+- 先读取当前筛选配置，理解现有 `logic` 和 `conditions` 的组合关系；只替换用户要求变更的条件，未提到的条件默认保留。
 - 优先传字段 id，不要依赖字段名。
 - 需要清空全部筛选时，直接传 `{"conditions":[]}`。
 
@@ -176,6 +176,4 @@ lark_base_view_set_filter(json='{"logic":"and","conditions":[["状态","intersec
 
 ## 8. 参考
 
-- `lark_get_skill(domain="base", section="view")`
-- `lark_get_skill(domain="base", section="view-get-filter")`
 - `lark_get_skill(domain="base", section="lookup-field-guide")`

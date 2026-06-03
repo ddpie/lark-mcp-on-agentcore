@@ -7,7 +7,7 @@
 1. 先判断是不是 `formula` / `lookup`。
 2. 如果是：先读对应 guide。
 3. 没读 guide 前，不要直接创建 formula / lookup 字段。
-4. 读完 guide 后，再构造 `--json` 并创建字段。
+4. 读完 guide 后，再构造 `json` 并创建字段。
 5. 如果是跨表 formula / lookup，再补查**目标表**的结构。
 
 ## 推荐命令
@@ -37,7 +37,7 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 ## JSON 值规范
 
-- `--json` 必须是 **JSON 对象**，顶层直接传字段定义，不要再套一层。
+- `json` 必须是 **JSON 对象**，顶层直接传字段定义，不要再套一层。
 - 顶层最少包含：`name`、`type`。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接，如 `协作约定可参考[团队字段约定](https://example.com/field-spec)`。
 - `type` 不同，必填子字段不同：
@@ -86,7 +86,6 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 ## 参考
 
-- `lark_get_skill(domain="base", section="field")` — field 索引页
-- `lark_get_skill(domain="base", section="shortcut-field-properties")` — shortcut 字段 JSON 规范（推荐）
+- `lark_get_skill(domain="base", section="field-json")` — 字段 JSON 规范（推荐）
 - `lark_get_skill(domain="base", section="formula-field-guide")` — formula 指南（创建公式必读）
 - `lark_get_skill(domain="base", section="lookup-field-guide")` — lookup 指南（创建查找引用必读）
