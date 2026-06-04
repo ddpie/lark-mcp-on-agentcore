@@ -381,6 +381,38 @@ find docker/skills -name "*.md" -exec grep -ln "Read 工具\|Read tool" {} \;  #
 cd docker && npx vitest run __tests__/skill-quality.test.js && cd ..
 ```
 
+### Phase 2b: Upstream Semantic Diff Audit
+
+Phase 2 catches **format** violations (grep patterns); this phase catches **content** fidelity
+issues: sections silently dropped, meaning changed, tool names invented, parameters garbled,
+or workflows hallucinated. It compares the adapted output against the upstream source and
+confirms that ALL differences are expected CLI→MCP transformations.
+
+**Method:** For each domain in `READAPT` (or all domains on a full re-adapt), run:
+
+```bash
+git diff --no-index /tmp/lark-cli-$NEW_VER/skills/lark-<domain> docker/skills/lark-<domain> 2>/dev/null || true
+```
+
+Dispatch one audit agent per domain (parallel). Each agent:
+
+1. Reads the transformation rules (this document)
+2. Examines the diff hunk-by-hunk, classifying each as:
+   - ✅ EXPECTED: rule-conformant CLI→MCP transform (tool naming, param snake_case,
+     cross-ref→lark_get_skill, auth removal, description adaptation, pipeline removal, etc.)
+   - ⚠️ SUSPICIOUS: content lost, meaning changed, new content invented, incorrect tool name,
+     broken `lark_get_skill` section value that won't resolve to any file, garbled parameters
+3. Specifically verifies:
+   - Every `lark_get_skill(section="X")` resolves to an existing file
+   - Every `lark_<svc>_<cmd>` corresponds to a real `+shortcut` in the upstream SKILL.md
+   - No content sections/paragraphs silently dropped (compare section headings)
+   - Description frontmatter matches upstream's semantic content (just notation adapted)
+   - No `+shortcut` notation left in actionable context
+   - No `--kebab-case` flags left in function-call parens or descriptive text
+
+**Acceptance criteria:** All domains must report PASS. Issues found → fix (re-dispatch a
+transform agent or fix inline), then re-audit only the affected domain.
+
 ### Phase 3: Review
 
 Dispatch review agents to cover **all** adapted skills (not just spot-check). Group similarly

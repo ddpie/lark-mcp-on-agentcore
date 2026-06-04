@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.46",
-    "extracted_at": "2026-06-03",
+    "lark_cli_version": "1.0.47",
+    "extracted_at": "2026-06-04",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -59,6 +59,41 @@
       "command": "+advperm-enable",
       "scopes": [
         "base:app:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+base-block-create",
+      "scopes": [
+        "base:block:create"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+base-block-delete",
+      "scopes": [
+        "base:block:delete"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+base-block-list",
+      "scopes": [
+        "base:block:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+base-block-move",
+      "scopes": [
+        "base:block:update"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+base-block-rename",
+      "scopes": [
+        "base:block:update"
       ]
     },
     {
@@ -1391,6 +1426,84 @@
     },
     {
       "service": "sheets",
+      "command": "+batch-update",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-batch-clear",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-batch-set-style",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-clear",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-get",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-replace",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-search",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-set",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-set-image",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "drive:file:upload"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cells-set-style",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cols-resize",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+copy-sheet",
       "scopes": [
         "sheets:spreadsheet:write_only",
@@ -1434,6 +1547,20 @@
       "scopes": [
         "sheets:spreadsheet:write_only",
         "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+csv-get",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+csv-put",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
       ]
     },
     {
@@ -1485,10 +1612,88 @@
     },
     {
       "service": "sheets",
+      "command": "+dim-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dim-freeze",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dim-insert",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dim-move",
+      "scopes": [
+        "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dropdown-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dropdown-get",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dropdown-set",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dropdown-update",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+export",
       "scopes": [
         "docs:document:export",
         "drive:file:download"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+filter-create",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+filter-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+filter-update",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
       ]
     },
     {
@@ -1588,6 +1793,34 @@
     },
     {
       "service": "sheets",
+      "command": "+range-copy",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+range-fill",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+range-move",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+range-sort",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+read",
       "scopes": [
         "sheets:spreadsheet:read"
@@ -1599,6 +1832,13 @@
       "scopes": [
         "sheets:spreadsheet:write_only",
         "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+rows-resize",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
       ]
     },
     {
@@ -1615,6 +1855,56 @@
       "scopes": [
         "sheets:spreadsheet:write_only",
         "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-copy",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-create",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-info",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-move",
+      "scopes": [
+        "sheets:spreadsheet:read",
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-rename",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-set-tab-color",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
       ]
     },
     {
@@ -1669,6 +1959,30 @@
       "command": "+update-sheet",
       "scopes": [
         "sheets:spreadsheet:write_only",
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+workbook-create",
+      "scopes": [
+        "sheets:spreadsheet:create",
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+workbook-export",
+      "scopes": [
+        "sheets:spreadsheet:read",
+        "docs:document:export",
+        "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+workbook-info",
+      "scopes": [
         "sheets:spreadsheet:read"
       ]
     },

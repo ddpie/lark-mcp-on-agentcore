@@ -18,24 +18,30 @@ When using bot identity, the reply is sent in the app's name, so make sure the a
 
 When using user identity, the reply is sent as the authorized end user and requires the `im:message.send_as_user` and `im:message` scopes.
 
-## Choose The Right Content Flag
+## Choose The Right Content Parameter
+
+### Default Selection Rule For Agents
+
+- Prefer `markdown` for headings, lists, links, summaries, investigation notes, or Markdown-looking content.
+- Use `text` for exact plain text: logs, code, indentation-sensitive text, or literal Markdown.
+- Use `content` for exact `post` JSON, titles, multiple locales, cards, or unsupported structures.
 
 | Need | Recommended parameter | Why |
 |------|------|------|
-| Reply with plain text exactly as written | `text` | Wrapped directly to `{"text":"..."}` |
-| Reply with simple Markdown and accept conversion | `markdown` | Automatically converted to `post` JSON |
+| Reply with headings, lists, links, summaries, or investigation notes | `markdown` | Best default for lightweight formatting; converted to Feishu `post` JSON |
+| Reply with plain text exactly as written | `text` | Preserves literal text; no Markdown conversion |
 | Precisely control the reply payload | `content` | You provide the exact JSON |
 | Reply with media | `image` / `file` / `video` / `audio` | Shortcut uploads URLs, or cwd-relative local files automatically |
 
 ### `text` vs `markdown`
 
-- Use `text` when the reply should remain plain text and you want exact control over line breaks, spacing, indentation, code samples, or literal Markdown characters.
-- Use `markdown` when you want a lightweight formatted reply and you accept that the tool will normalize and rewrite parts of the content before sending.
+- Use `markdown` for lightweight formatted replies.
+- Use `text` for exact plain text, especially logs, code, indentation, or literal Markdown characters.
 - Use `content` when you need exact `post` JSON, a card, a title, multiple locales, or any structure that `markdown` cannot express reliably.
 
 ## What `markdown` Really Does
 
-`markdown` does **not** send arbitrary raw Markdown to the API.
+`markdown` accepts Markdown-like input and converts it to the Feishu `post` payload required by the reply API.
 
 The tool:
 
@@ -48,9 +54,9 @@ The tool:
 {"zh_cn":{"content":[[{"tag":"md","text":"..."}]]}}
 ```
 
-So `markdown` is a convenience mode, not a full Markdown compatibility layer.
+This makes `markdown` the simplest path for lightweight formatted replies.
 
-### Current Markdown Caveats
+### Markdown Boundaries
 
 - It does **not** promise full CommonMark / GitHub Flavored Markdown support.
 - It always becomes a `post` payload with a single `zh_cn` locale.
@@ -66,7 +72,7 @@ So `markdown` is a convenience mode, not a full Markdown compatibility layer.
 - Local paths (e.g. `![x](./a.png)`) are **not** supported directly in `markdown` and will not be auto-uploaded.
 - Remote URLs (`https://...`) will be auto-downloaded and uploaded at runtime; if the download or upload fails, the image is removed with a warning.
 
-If you need exact output, use `msg_type="post"` with `content=...` instead of `markdown`.
+If you need a title, multiple locales, cards, unsupported rich structures, or byte-for-byte post JSON control, use `msg_type="post"` with `content=...`.
 
 ### Image Constraint for `markdown`
 
@@ -83,10 +89,31 @@ lark_invoke(tool_name="lark_im_images_create", args={data: {"image_type": "messa
 lark_im_messages_reply(message_id="om_xxx", markdown="## Result\n\n![diagram](img_v3_xxxx)\n\nSee above for details.")
 ```
 
+## Preserving Formatting
+
+If the reply contains multiple lines, code blocks, indentation, tabs, or a lot of escaping, prefer literal newlines for either `markdown` or `text`.
+
+### When formatting must be preserved
+
+Use `text`:
+
+```
+lark_im_messages_reply(message_id="om_xxx", text="Received\nI will check this today.\nOwner: alice")
+```
+
+```
+lark_im_messages_reply(message_id="om_xxx", text="```sql\nselect * from jobs;\n```")
+```
+
+This keeps the reply as plain text instead of converting it to a `post`.
+
 ## Commands
 
 ```
-# Reply to a message (plain text, text is recommended for normal replies)
+# Reply with a formatted update
+lark_im_messages_reply(message_id="om_xxx", markdown="## Reply\n\n- item 1\n- item 2")
+
+# Reply with a plain one-line message
 lark_im_messages_reply(message_id="om_xxx", text="Received")
 
 # Equivalent manual JSON
@@ -98,8 +125,10 @@ lark_im_messages_reply(message_id="om_xxx", text="Line 1\nLine 2\n  indented lin
 # Reply inside the thread (message appears in the target thread)
 lark_im_messages_reply(message_id="om_xxx", text="Let's discuss this", reply_in_thread=true)
 
-# Reply with basic Markdown (will be converted to post JSON)
-lark_im_messages_reply(message_id="om_xxx", markdown="## Reply\n\n- item 1\n- item 2")
+# Reply with Markdown containing an image (must pre-upload via images.create)
+lark_invoke(tool_name="lark_im_images_create", args={data: {"image_type": "message"}, file: "./screenshot.png"})
+# Use the returned image_key
+lark_im_messages_reply(message_id="om_xxx", markdown="## Screenshot\n\n![screenshot](img_v3_xxxx)\n\nConfirmed.")
 
 # If you need exact post structure, send JSON directly
 lark_im_messages_reply(message_id="om_xxx", msg_type="post", content="{\"zh_cn\":{\"title\":\"Reply\",\"content\":[[{\"tag\":\"text\",\"text\":\"Detailed content\"}]]}}")
@@ -130,8 +159,8 @@ lark_im_messages_reply(message_id="om_xxx", text="Received", idempotency_key="my
 | `message_id` | Yes | ID of the message being replied to (`om_xxx`) |
 | `msg_type` | No | Message type (default `text`). If you use `text` / `markdown` / media parameters, the effective type is inferred automatically. Explicitly setting a conflicting `msg_type` fails validation |
 | `content` | One content option | Exact reply content as JSON. The JSON must match the effective `msg_type` |
-| `text` | One content option | Plain text reply. Best default when you need exact text and formatting preservation |
-| `markdown` | One content option | Convenience Markdown input. Internally converted to `post` JSON with Feishu-specific normalization |
+| `text` | One content option | Plain text reply. Use when exact text and formatting preservation matter |
+| `markdown` | One content option | Best default for lightweight formatted replies such as headings, lists, links, summaries, and investigation notes. Internally converted to `post` JSON with Feishu-specific normalization |
 | `image` | One content option | Cwd-relative local image path, URL, or `image_key` (`img_xxx`) |
 | `file` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`) |
 | `video` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`); **must be used together with `video_cover`** |
@@ -146,8 +175,9 @@ lark_im_messages_reply(message_id="om_xxx", text="Received", idempotency_key="my
 
 ## Common Mistakes
 
-- Choosing `markdown` when you actually need exact plain text. If exact line breaks and spacing matter, use `text`.
-- Assuming `markdown` supports all Markdown features. It does not; it is converted into a Feishu `post` payload and rewritten first.
+- Choosing `text` for headings, lists, links, summaries, or investigation notes. Use `markdown`.
+- Choosing `markdown` when you actually need exact plain text. If exact line breaks, spacing, logs, code, or literal Markdown characters matter, use `text`.
+- Assuming `markdown` supports every Markdown feature. It is converted into a Feishu `post` payload and normalized first.
 - Putting local image paths inside Markdown like `![x](./a.png)`. `markdown` does not auto-upload those paths.
 - **Using local file paths inside Markdown image syntax** (e.g. `![x](./a.png)`) with `markdown`. Local paths are not auto-uploaded and will not render as an image. Pre-upload via `images.create` to get an `image_key` instead.
 - Using `content` without making the JSON match the effective `msg_type`.

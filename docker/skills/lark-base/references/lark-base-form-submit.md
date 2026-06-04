@@ -31,14 +31,8 @@ lark_base_form_submit(json='{"fields":{...}}', share_token="<share_token>")
 # 基本提交（填写普通字段）
 lark_base_form_submit(json='{"fields":{"服务评分":5,"评价内容":"服务态度好"}}', share_token="<share_token>")
 
-# 带附件提交（需要额外提供 --base-token）
-lark_base_form_submit(share_token="<share_token>", base_token="<base_token>", json='{")
-    "fields": {"服务评分": 5, "评价内容": "好"},
-    "attachments": {
-      "附件字段名": ["./report.pdf", "./photo.png"],
-      "另一个附件字段": ["./doc.docx"]
-    }
-  }'
+# 带附件提交（需要额外提供 base_token）
+lark_base_form_submit(share_token="<share_token>", base_token="<base_token>", json="{\"fields\":{\"服务评分\":5,\"评价内容\":\"好\"},\"attachments\":{\"附件字段名\":[\"./report.pdf\",\"./photo.png\"],\"另一个附件字段\":[\"./doc.docx\"]}}")
 
 # 使用应用身份（bot）
 lark_base_form_submit(json='{"fields":{...}}', share_token="<share_token>")

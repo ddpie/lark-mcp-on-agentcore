@@ -2,11 +2,11 @@
 
 ## Mandatory Read Acknowledgement
 
-When creating or updating a lookup field with `lark_base_field_create/+field-update --json ...` and `type` is `lookup`, you should read this guide first and only then add `--i-have-read-guide` to the command.
+When creating or updating a lookup field with `lark_base_field_create(json="...")` or `lark_base_field_update(json="...")` and `type` is `lookup`, you should read this guide first and only then add `i_have_read_guide=true` to the call.
 
-Do **not** proactively add `--i-have-read-guide` before reading this guide. Without it, the CLI will fail fast and direct you back to this guide.
+Do **not** proactively add `i_have_read_guide=true` before reading this guide. Without it, the tool will fail fast and direct you back to this guide.
 
-When using `+field-update`, also pass `--yes`: field update is a high-risk `PUT` operation because changing a field definition can affect the whole column.
+When using `lark_base_field_update()`, also pass `_confirm=true`: field update is a high-risk `PUT` operation because changing a field definition can affect the whole column.
 
 ## Default strategy
 
@@ -17,14 +17,14 @@ When using `+field-update`, also pass `--yes`: field update is a high-risk `PUT`
 When creating a lookup field, the Agent should:
 
 1. Get all table names: `lark_base_table_list()` — returns `items[].table_name`
-2. Get table structure: `lark_base_table_get(table_id="<table>", table_i=true)` — returns `fields[]`
+2. Get table structure: `lark_base_table_get(table_id="<table>")` — returns `fields[]`
 3. If the lookup references other tables, also get those tables' structures
 4. Determine the four elements: from (source table), select (source field), where (filter), aggregate (aggregation)
 5. Construct the Lookup field JSON and submit it to create or update the field
 
 **Key constraints**:
 
-- Table names and field names must **exactly match** those returned by `+table-list` / `+table-get`
+- Table names and field names must **exactly match** those returned by `lark_base_table_list()` / `lark_base_table_get()`
 - The `from` table must be in the same Base
 
 ---
@@ -293,7 +293,9 @@ When the source table has a Link pointing to the current table:
 Exhibition table: ExhibitionName (primaryField) ← current table
 Artwork table: ArtworkName (primaryField), ← source table (Link is here)
                   Exhibition (Link → Exhibition table)
-json
+```
+
+```json
 {
   "type": "lookup",
   "name": "Artwork Count",
@@ -319,7 +321,9 @@ When the current table has a Link pointing to the source table:
 Supplier table: SupplierName (primaryField), Contact (Text) ← source table
 Inventory table: ProductName (primaryField), ← current table (Link is here)
                  Supplier (Link → Supplier table)
-json
+```
+
+```json
 {
   "type": "lookup",
   "name": "Supplier Contact",
@@ -342,7 +346,9 @@ json
 Project table: ProjectName (primaryField) ← current table
 Order table: OrderID (primaryField), ProjectName (Text), ← source table
                Amount (Number)
-json
+```
+
+```json
 {
   "type": "lookup",
   "name": "Order Total",
@@ -500,7 +506,7 @@ The user says "aggregate order amounts" — use Lookup, not Link. Link establish
 - Where supports only one level of and/or — no nesting
 - Aggregate values are snake_case lowercase: `sum`, `counta`, `unique_counta` (NOT `count`)
 - Operators: `==`, `!=`, `>`, `>=`, `<`, `<=`, `intersects`, `disjoint`, `empty`, `non_empty`
-- Table and field names must exactly match `+table-get` output
+- Table and field names must exactly match `lark_base_table_get()` output
 - `datetime` constant values use string format: `ExactDate(YYYY-MM-DD)` / `ExactDate(YYYY-MM-DD HH:mm)` / `Today` / `Yesterday` / `Tomorrow`
 - `select` constant values use option names;
 - `link` / `user` constant values use `{id}` object arrays

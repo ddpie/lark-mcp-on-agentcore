@@ -66,7 +66,7 @@ lark_im_chat_update(chat_id="oc_xxx", name="Q2 Project Team", description="Owns 
 
 Infer the group owner from context whenever possible (for example, if a bot just created the group, the owner is the bot) and use the matching identity directly. If ownership is unclear, query the group first and confirm `owner_id`.
 
-Identity choice should follow [Group Chat Identity Rules](lark-im-chat-identity.md): if the user explicitly specifies an identity, use it directly; otherwise infer the owner identity from context.
+Identity choice should follow Group Chat Identity Rules (`lark_get_skill(domain="im", section="chat-identity")`): if the user explicitly specifies an identity, use it directly; otherwise infer the owner identity from context.
 
 ## References
 

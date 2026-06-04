@@ -32,7 +32,6 @@ Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、
 | 聚合后输出逐条记录 | `lark_base_data_query()` 得到业务 key 或候选字段组合 -> `lark_base_record_list(filter_json="...")` / `lark_base_record_get()` 回查 | `lark_base_data_query()` 维度行按字段组合去重且不返回 `record_id` |
 | 多表 / 多跳关联 | 以候选数最小的事实表为驱动表，沿业务 key 或 link `record_id` 逐跳回查 | 读出 link 单元格里的关联 `record_id` 后，到被关联表批量 `lark_base_record_get()` 展示字段 |
 | 查询后写入 / 视图化 | 先用本 SOP 得到可复核的目标记录 id 集合 | 再进入记录写入或视图配置；高价值可复用查询可沉淀为持久视图 |
-| 查询后写入 / 视图化 | 先用本 SOP 得到可复核的目标记录 id 集合 | 再进入记录写入或视图配置；高价值可复用查询可沉淀为持久视图 |
 
 ## 2. Execution Patterns
 

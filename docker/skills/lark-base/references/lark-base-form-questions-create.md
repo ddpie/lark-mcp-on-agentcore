@@ -9,10 +9,7 @@
 lark_base_form_questions_create(base_token="<base_token>", table_id="<table_id>", form_id="<form_id>", questions="[{"type":"text","title":"您的姓名是？","required":true}]")
 
 # 添加多个问题（按顺序排列）
-lark_base_form_questions_create(base_token="<base_token>", table_id="<table_id>", form_id="<form_id>", questions="'[")
-    {"type":"text","title":"您的姓名是？","required":true},
-    {"type":"text","title":"您的联系方式是？","required":false}
-  ]'
+lark_base_form_questions_create(base_token="<base_token>", table_id="<table_id>", form_id="<form_id>", questions="[{\"type\":\"text\",\"title\":\"您的姓名是？\",\"required\":true},{\"type\":\"text\",\"title\":\"您的联系方式是？\",\"required\":false}]")
 
 # 添加单选题（带选项）
 lark_base_form_questions_create(base_token="<base_token>", table_id="<table_id>", form_id="<form_id>", questions="[{"type":"select","title":"满意度评价","required":true,"multiple":false,"options":[{"name":"非常满意","hue":"Green"},{"name":"满意","hue":"Blue"},{"name":"一般","hue":"Yellow"}]}]")
@@ -35,9 +32,8 @@ lark_base_form_questions_create(base_token="<base_token>", table_id="<table_id>"
 | `form_id <id>` | 是 | 表单 ID |
 | `questions <json>` | 是 | 问题 JSON 数组，最多 10 个（见下方格式） |
 | `format` | 否 | 输出格式：json（默认）\| pretty \| table \| ndjson \| csv |
-| `as` | 否 | 身份：user（默认）\| bot |
 
-## `--questions` 格式
+## `questions` 格式
 
 每个问题对象支持以下字段：
 
@@ -81,7 +77,7 @@ lark_base_form_questions_create(base_token="<base_token>", table_id="<table_id>"
 > [!CAUTION]
 > 这是**写入操作** — 执行前必须向用户确认。
 
-1. 先用 `+form-questions-list` 查看现有问题
+1. 先用 `lark_base_form_questions_list()` 查看现有问题
 2. 确认要添加的问题内容
 3. 执行命令并报告新建的问题 ID
 

@@ -6,12 +6,12 @@
 
 ## 1. 顶层规则（必须遵守）
 
-- `--json` 必须是 JSON 对象。
-- `+record-upsert`：顶层直接传字段映射：`{"字段名或字段ID": CellValue}`。
-- `+record-batch-create`：`rows` 是 `CellValue[][]`，列顺序由 `fields` 决定。
-- `+record-batch-update`：`patch` 是 `Map<FieldNameOrID, CellValue>`，同一份 `patch` 会应用到所有 `record_id_list`。
+- `json` 必须是 JSON 对象。
+- `lark_base_record_upsert()`：顶层直接传字段映射：`{"字段名或字段ID": CellValue}`。
+- `lark_base_record_batch_create()`：`rows` 是 `CellValue[][]`，列顺序由 `fields` 决定。
+- `lark_base_record_batch_update()`：`patch` 是 `Map<FieldNameOrID, CellValue>`，同一份 `patch` 会应用到所有 `record_id_list`。
 - 一次 payload 里同一字段只用一种 key（字段名或字段 ID），不要重复。
-- 写入前先 `+field-list` 获取字段 `type/style/multiple`，再构造值。
+- 写入前先 `lark_base_field_list()` 获取字段 `type/style/multiple`，再构造值。
 - 需要清空字段时优先传 `null`（字段允许清空时）。
 
 ## 2. 各类型 CellValue
@@ -94,7 +94,7 @@
 
 ### 2.7 link
 
-用对象数组，元素包含 `id`，值为目标记录的 `record_id`。不要传记录标题；先用 `+record-list` / `+record-search` 找到目标记录 ID。
+用对象数组，元素包含 `id`，值为目标记录的 `record_id`。不要传记录标题；先用 `lark_base_record_list()` / `lark_base_record_search()` 找到目标记录 ID。
 
 ```json
 {
@@ -121,9 +121,9 @@
 
 ### 2.9 attachment（不作为普通 CellValue 写入）
 
-- 追加附件：使用 `lark_base_record_upload_attachment(field_id="<field_id>", file="<path>", field_i=true, fil=true)`；可重复 `--file` 一次追加多个附件，不能用普通记录操作接口写附件值。
-- 删除附件：使用 `lark_base_record_remove_attachment(field_id="<field_id>", file_token="<file_token>", field_i=true, file_toke=true)`；可重复 `--file-token` 一次删除同一单元格里的多个附件。
-- 下载附件：使用 `lark_base_record_download_attachment(file_token="<file_token>", output="<dir>", file_toke=true, outpu=true)`；不传 `--file-token` 时下载整行所有附件，也可重复 `--file-token` 只下载指定附件。Base 附件必须用这个命令下载，用其他下载入口可能失败。
+- 追加附件：使用 `lark_base_record_upload_attachment(record_id="<record_id>", field_id="<field_id>", file="<path>")`；可传多个文件路径一次追加多个附件，不能用普通记录操作接口写附件值。
+- 删除附件：使用 `lark_base_record_remove_attachment(record_id="<record_id>", field_id="<field_id>", file_token="<file_token>", _confirm=true)`；可传多个 `file_token` 一次删除同一单元格里的多个附件。
+- 下载附件：使用 `lark_base_record_download_attachment(record_id="<record_id>", file_token="<file_token>", output="<dir>")`；不传 `file_token` 时下载整行所有附件，也可传多个 `file_token` 只下载指定附件。Base 附件必须用这个命令下载，用其他下载入口可能失败。
 
 ## 3. 只读字段（不要写）
 

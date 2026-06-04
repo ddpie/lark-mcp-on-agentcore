@@ -109,6 +109,6 @@ Shortcut 是对常用操作的高级封装。
 ## 延伸
 
 - 查已结束会议、参会人快照、搜索历史会议 → `lark_get_skill(domain="vc")`
-- 会议纪要、逐字稿 → `lark_get_skill(domain="vc")` 的 `+notes`
+- 会议纪要、逐字稿 → `lark_get_skill(domain="vc")` 的 `lark_vc_notes`
 - 妙记产物（AI 总结 / 转写 / 章节）→ `lark_get_skill(domain="minutes")`
 - 会后把产物发到群 / 私聊 → `lark_get_skill(domain="im")`

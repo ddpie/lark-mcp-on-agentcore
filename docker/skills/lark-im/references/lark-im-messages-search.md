@@ -223,4 +223,4 @@ lark_im_messages_search(query="", chat_id="oc_xxx", sender="ou_me", start="2026-
 ## References
 
 - [lark-im](../SKILL.md) - all message-related commands
-- [lark-im-threads-messages-list](lark-im-threads-messages-list.md) - inspect thread replies
+- `lark_get_skill(domain="im", section="threads-messages-list")` - inspect thread replies

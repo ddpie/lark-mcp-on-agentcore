@@ -2,11 +2,11 @@
 
 ## Mandatory Read Acknowledgement
 
-When creating or updating a formula field with `lark_base_field_create/+field-update --json ...` and `type` is `formula`, you should read this guide first and only then add `--i-have-read-guide` to the command.
+When creating or updating a formula field with `lark_base_field_create(json="...")` or `lark_base_field_update(json="...")` and `type` is `formula`, you should read this guide first and only then add `i_have_read_guide=true` to the call.
 
-Do **not** proactively add `--i-have-read-guide` before reading this guide. Without it, the CLI will fail fast and direct you back to this guide.
+Do **not** proactively add `i_have_read_guide=true` before reading this guide. Without it, the tool will fail fast and direct you back to this guide.
 
-When using `+field-update`, also pass `--yes`: field update is a high-risk `PUT` operation because changing a field definition can affect the whole column.
+When using `lark_base_field_update()`, also pass `_confirm=true`: field update is a high-risk `PUT` operation because changing a field definition can affect the whole column.
 
 ## Default strategy
 
@@ -17,7 +17,7 @@ When using `+field-update`, also pass `--yes`: field update is a high-risk `PUT`
 When creating a formula field, the Agent should:
 
 1. Get all table names: `lark_base_table_list()` — returns `items[].table_name`
-2. Get table structure: `lark_base_table_get(table_id="<table>", table_i=true)` — returns `fields[]`
+2. Get table structure: `lark_base_table_get(table_id="<table>")` — returns `fields[]`
 3. If the formula references other tables, also get those tables' structures
 4. Write the formula expression following this guide
 5. Construct the Formula field JSON and submit it to create or update the field
@@ -25,7 +25,7 @@ When creating a formula field, the Agent should:
 **Key constraints**:
 
 - The JSON must include `"type": "formula"` — this field is required
-- Table names and field names in the formula must **exactly match** those returned by `+table-list` / `+table-get`
+- Table names and field names in the formula must **exactly match** those returned by `lark_base_table_list()` / `lark_base_table_get()`
 - The `expression` value is a string containing the formula expression; double quotes inside the expression must be properly escaped in JSON (e.g. `\"text\"`)
 
 ---
@@ -218,7 +218,7 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 
 2. **Function whitelist**: Only use functions listed in Section 8. No unlisted functions.
 
-3. **Exact name matching**: Table names and field names in formulas must **exactly match** those returned by `+table-get` — no renaming or adding spaces.
+3. **Exact name matching**: Table names and field names in formulas must **exactly match** those returned by `lark_base_table_get()` — no renaming or adding spaces.
 
 4. **Operator whitelist**: Only use operators listed in Section 4.
 
@@ -616,7 +616,7 @@ Reason: NOW, TODAY, PI and other zero-argument functions must include parenthese
 
 ### Example 1: Employee sales summary
 
-**Table structure** (from `+table-get`):
+**Table structure** (from `lark_base_table_get()`):
 
 - Employees: EmployeeID (Text), Name (Text), Department (Text)
 - Sales: ContractID (Number), SalespersonID (Text), Quantity (Number), Total (Number)
@@ -730,7 +730,7 @@ When the user describes their formula need in natural language, follow these rul
 - Only use functions and operators listed in this document
 - FILTER/SUMIF/COUNTIF/MAP must not be nested inside each other's conditions (chained calls are not nesting)
 - Do not use LOOKUP — use FILTER exclusively
-- Table and field names must exactly match `+table-get` output
+- Table and field names must exactly match `lark_base_table_get()` output
 - Strings must use double quotes `"`
 - Format dates with TEXT before concatenating, to control output format
 - SORTBY can only be chained and must include an output column

@@ -9,10 +9,7 @@
 lark_base_form_questions_update(base_token="<base_token>", table_id="<table_id>", form_id="<form_id>", questions="[{"id":"q_001","title":"您的真实姓名是？"}]")
 
 # 同时更新多个问题
-lark_base_form_questions_update(base_token="<base_token>", table_id="<table_id>", form_id="<form_id>", questions="'[")
-    {"id":"q_001","title":"姓名（必填）","required":true},
-    {"id":"q_002","title":"联系方式","required":false}
-  ]'
+lark_base_form_questions_update(base_token="<base_token>", table_id="<table_id>", form_id="<form_id>", questions="[{\"id\":\"q_001\",\"title\":\"姓名（必填）\",\"required\":true},{\"id\":\"q_002\",\"title\":\"联系方式\",\"required\":false}]")
 
 # 更新问题描述（纯文本）
 lark_base_form_questions_update(base_token="<base_token>", table_id="<table_id>", form_id="<form_id>", questions="[{"id":"q_001","description":"请填写您的真实姓名"}]")
@@ -29,9 +26,8 @@ lark_base_form_questions_update(base_token="<base_token>", table_id="<table_id>"
 | `form_id <id>` | 是 | 表单 ID |
 | `questions <json>` | 是 | 问题更新 JSON 数组，最多 10 个（见下方格式） |
 | `format` | 否 | 输出格式：json（默认）\| pretty \| table \| ndjson \| csv |
-| `as` | 否 | 身份：user（默认）\| bot |
 
-## `--questions` 格式
+## `questions` 格式
 
 每个问题对象必须包含 `id`，其余字段按需传入：
 
@@ -63,7 +59,7 @@ lark_base_form_questions_update(base_token="<base_token>", table_id="<table_id>"
 > [!CAUTION]
 > 这是**写入操作** — 执行前必须向用户确认。
 
-1. 先用 `+form-questions-list` 获取现有问题及其 `id`
+1. 先用 `lark_base_form_questions_list()` 获取现有问题及其 `id`
 2. 构造包含 `id` 的更新数组
 3. 执行命令并报告更新结果
 

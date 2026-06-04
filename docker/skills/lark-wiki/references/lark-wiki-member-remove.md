@@ -7,7 +7,7 @@ Remove a member from a wiki space. OpenAPI: `DELETE /open-apis/wiki/v2/spaces/:s
 ## Usage
 
 ```
-lark_wiki_member_remove(space_id="<space_id>", member_id="<open_id|email|user_id|...>", member_type="openid", member_role="admin")
+lark_wiki_member_remove(space_id="<space_id>", member_id="<open_id|email|user_id|app_id|...>", member_type="openid", member_role="admin")
 
 # Personal library (resolves my_library first)
 lark_wiki_member_remove(space_id="my_library", member_id="ou_xxx", member_type="openid", member_role="member")
@@ -19,7 +19,7 @@ lark_wiki_member_remove(space_id="my_library", member_id="ou_xxx", member_type="
 |-----------|------|----------|---------|-------------|
 | `space_id` | string | **Yes** | — | Wiki space ID; use `my_library` for the personal document library |
 | `member_id` | string | **Yes** | — | Member ID; interpretation is decided by `member_type` |
-| `member_type` | enum | **Yes** | — | Must **match the original grant**: `openchat` / `userid` / `email` / `opendepartmentid` / `openid` / `unionid` |
+| `member_type` | enum | **Yes** | — | Must **match the original grant**: `openchat` / `userid` / `email` / `opendepartmentid` / `openid` / `unionid` / `appid` |
 | `member_role` | enum | **Yes** | — | Must **match the original grant**: `admin` / `member` |
 
 ## Output

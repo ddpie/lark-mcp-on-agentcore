@@ -86,7 +86,7 @@ lark_im_threads_messages_list(thread="omt_xxx", page_token="<PAGE_TOKEN>")
 
 Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `[Image: img_xxx]`; resource binaries are **not** downloaded automatically.
 
-Other resource types (files, audio, video) still need to be downloaded manually through `lark_im_messages_resources_download`. See [lark-im-messages-resources-download](lark-im-messages-resources-download.md).
+Other resource types (files, audio, video) still need to be downloaded manually through `lark_im_messages_resources_download`. See `lark_get_skill(domain="im", section="messages-resources-download")`.
 
 ## Common Errors and Troubleshooting
 
@@ -99,4 +99,4 @@ Other resource types (files, audio, video) still need to be downloaded manually 
 ## References
 
 - [lark-im](../SKILL.md) - all message-related commands
-- [lark-im-chat-messages-list](lark-im-chat-messages-list.md) - fetch conversation messages (source of `thread_id`)
+- `lark_get_skill(domain="im", section="chat-messages-list")` - fetch conversation messages (source of `thread_id`)
