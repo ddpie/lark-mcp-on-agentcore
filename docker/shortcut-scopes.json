@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.47",
+    "lark_cli_version": "1.0.48",
     "extracted_at": "2026-06-04",
     "source": "https://github.com/larksuite/cli"
   },
@@ -803,6 +803,13 @@
     },
     {
       "service": "drive",
+      "command": "+cover",
+      "scopes": [
+        "drive:file:download"
+      ]
+    },
+    {
+      "service": "drive",
       "command": "+create-folder",
       "scopes": [
         "space:folder:create"
@@ -867,6 +874,13 @@
       "command": "+move",
       "scopes": [
         "space:document:move"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+preview",
+      "scopes": [
+        "drive:file:download"
       ]
     },
     {

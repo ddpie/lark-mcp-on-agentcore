@@ -38,7 +38,7 @@ lark_invoke(tool_name="lark_slides_xml_presentation_slide_get", args={
 
 ## 注意事项
 
-1. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。
+1. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table、chart、whiteboard 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。
 
 ## 相关命令
 

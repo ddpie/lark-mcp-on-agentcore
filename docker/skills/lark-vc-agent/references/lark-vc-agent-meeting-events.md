@@ -225,7 +225,7 @@ lark_vc_meeting_events(meeting_id="<meeting.id>", page_token="<last_page_token>"
 ## 参考
 
 - `lark_get_skill(domain="vc-agent", section="meeting-join")` — 先真实入会
-- `lark_get_skill(domain="vc-agent", section="meeting-leave")` — 完成任务后离会
+- `lark_get_skill(domain="vc-agent", section="meeting-leave")` — 用户明确要求时离会
 - `lark_get_skill(domain="vc", section="search")` — 搜索历史会议（获取 meeting_id）
 - `lark_get_skill(domain="vc", section="recording")` — 查询 minute_token
 - `lark_get_skill(domain="vc", section="notes")` — 获取会议纪要

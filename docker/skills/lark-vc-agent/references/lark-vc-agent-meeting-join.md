@@ -80,14 +80,14 @@ lark_vc_meeting_join(meeting_number="123456789", format="json")
 
 ## Agent 组合场景
 
-### 场景 1：加入会议 → 离开会议（最小闭环）
+### 场景 1：加入会议 → 监听会中事件
 
 ```
 # 第 1 步：加入会议，记录返回的 meeting.id
 lark_vc_meeting_join(meeting_number="123456789")
 
-# 第 2 步：完成任务后，使用上一步返回的 meeting.id 离开会议
-lark_vc_meeting_leave(meeting_id="<meeting.id>")
+# 第 2 步：使用返回的 meeting.id 查询会中事件
+lark_vc_meeting_events(meeting_id="<meeting.id>", page_all=true, format="pretty")
 ```
 
 ### 场景 2：加入会议 → 会后拉取纪要 / 录制
@@ -96,13 +96,10 @@ lark_vc_meeting_leave(meeting_id="<meeting.id>")
 # 第 1 步：加入并参会
 lark_vc_meeting_join(meeting_number="123456789")
 
-# 第 2 步：离会
-lark_vc_meeting_leave(meeting_id="<meeting.id>")
-
-# 第 3 步：会议结束后，查询录制（拿到 minute_token）
+# 第 2 步：会议结束后，查询录制（拿到 minute_token）
 lark_vc_recording(meeting_ids="<meeting.id>")
 
-# 第 4 步：查询会议纪要（总结 / 待办 / 章节 / 逐字稿）
+# 第 3 步：查询会议纪要（总结 / 待办 / 章节 / 逐字稿）
 lark_vc_notes(meeting_ids="<meeting.id>")
 ```
 
@@ -119,7 +116,7 @@ lark_vc_notes(meeting_ids="<meeting.id>")
 ## 提示
 
 - 仅在 Agent 需要**真实加入**会议（例如参会机器人、会中助手）时使用；只拉取会议数据不需要入会。
-- 入会会让机器人立即出现在参会列表；若要回退，直接 `lark_vc_meeting_leave` 即可。
+- 入会会让机器人立即出现在参会列表；若用户要求退出 / 离开 / 结束参会，直接 `lark_vc_meeting_leave` 即可。
 - 执行成功后，立即记录返回的 `meeting.id`，用于后续 `lark_vc_meeting_leave` / `lark_vc_meeting_events`。
 
 ## 参考
