@@ -1461,6 +1461,13 @@
     },
     {
       "service": "sheets",
+      "command": "+cells-merge",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+cells-replace",
       "scopes": [
         "sheets:spreadsheet:write_only"
@@ -1497,7 +1504,70 @@
     },
     {
       "service": "sheets",
+      "command": "+cells-unmerge",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+chart-create",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+chart-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+chart-list",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+chart-update",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+cols-resize",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cond-format-create",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cond-format-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cond-format-list",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+cond-format-update",
       "scopes": [
         "sheets:spreadsheet:write_only"
       ]
@@ -1626,6 +1696,20 @@
     },
     {
       "service": "sheets",
+      "command": "+dim-group",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dim-hide",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+dim-insert",
       "scopes": [
         "sheets:spreadsheet:write_only"
@@ -1637,6 +1721,20 @@
       "scopes": [
         "sheets:spreadsheet:write_only",
         "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dim-ungroup",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+dim-unhide",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
       ]
     },
     {
@@ -1691,7 +1789,42 @@
     },
     {
       "service": "sheets",
+      "command": "+filter-list",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+filter-update",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+filter-view-create",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+filter-view-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+filter-view-list",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+filter-view-update",
       "scopes": [
         "sheets:spreadsheet:write_only"
       ]
@@ -1701,6 +1834,34 @@
       "command": "+find",
       "scopes": [
         "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+float-image-create",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+float-image-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+float-image-list",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+float-image-update",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
       ]
     },
     {
@@ -1793,6 +1954,34 @@
     },
     {
       "service": "sheets",
+      "command": "+pivot-create",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+pivot-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+pivot-list",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+pivot-update",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+range-copy",
       "scopes": [
         "sheets:spreadsheet:write_only"
@@ -1880,6 +2069,13 @@
     },
     {
       "service": "sheets",
+      "command": "+sheet-hide",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+sheet-info",
       "scopes": [
         "sheets:spreadsheet:read"
@@ -1903,6 +2099,41 @@
     {
       "service": "sheets",
       "command": "+sheet-set-tab-color",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-unhide",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sparkline-create",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sparkline-delete",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sparkline-list",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sparkline-update",
       "scopes": [
         "sheets:spreadsheet:write_only"
       ]
