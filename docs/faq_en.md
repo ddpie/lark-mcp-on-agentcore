@@ -44,6 +44,15 @@ A: The script is idempotent — just re-run. For a clean start: `cd infra && npx
 
 A: Use the Feishu app's "Availability" settings. Only users in scope can complete OAuth.
 
+**Q: If the OAuth Client Secret leaks, can Feishu users outside this organization use the service to operate their own Feishu?**
+
+A: No. There are **two independent gates**, and the Client Secret only reaches the first:
+
+- **Gate 1 (our `/token` endpoint, where the Client Secret applies):** verifies the request comes from a client type we recognize.
+- **Gate 2 (Feishu's OAuth consent, which the Client Secret cannot reach):** to even arrive at Gate 1, the user must **first authorize on Feishu** to obtain a one-time auth code. This project uses a Feishu **custom app (internal)**, which only allows authorization by members inside the single organization that created it, within its "Availability" scope. A Feishu account outside that organization cannot obtain a valid auth code on the Feishu side, so even holding the Client Secret, `/token` fails for lack of a valid auth code.
+
+In other words, **who can authorize** is decided by the Feishu app's type and availability scope, **not by the Client Secret**. One boundary to note: if the app is later changed to a **marketplace / multi-tenant app** and installed by other organizations, that organizational boundary opens up per Feishu's publishing config — still unrelated to the Client Secret. For a comparison of each credential's blast radius, see [Security · Credential Leak Impact](security_en.md#credential-leak-impact).
+
 **Q: Can it proactively send messages / broadcast notifications, or trigger automatically when a new message arrives (bot / events)?**
 
 A: No. This service only calls Feishu synchronously under each user's **own identity** — it does not use application (bot) identity or subscribe to real-time events. Proactive push, broadcast notifications, unattended scheduled jobs, and auto-replies are all out of scope. This is a deliberate trade-off of the per-user isolation positioning (see README [Scope & Limitations](../README.md#scope--limitations)). If you need bot/event capabilities, build a separate dedicated Feishu bot service.

@@ -49,6 +49,25 @@
 
 PKCE 防止授权码被中间人截获后直接兑换 Token — 即使攻击者拿到了授权码，没有原始 code_verifier 也无法获取 access_token。系统只接受 S256 方法，拒绝 plain 方法。
 
+下面的时序图展示一次完整的授权与兑换流程，并标出 `/token` 端点的四道校验——其中**绑定身份的关键是 PKCE 的 `code_verifier`，而 `client_secret` 只是其中一层纵深防御**：
+
+<p align="center">
+  <img src="images/oauth-pkce-sequence.svg" alt="OAuth 2.0 授权码 + PKCE 时序：/token 端点的四道校验，code_verifier 绑定身份" width="900">
+</p>
+
+## 凭据泄露影响对比
+
+本系统涉及多种「密钥」，名字相近但爆炸半径相差极大。下表按**单独泄露**的后果排序，便于在应急时快速判断优先级：
+
+| 凭据 | 存放位置 | 单独泄露的后果 | 严重性 | 处置 |
+|---|---|---|---|---|
+| **OAuth Client Secret** | SSM `oauth-client-secret` → OAuth Lambda 环境变量；客户端配置中也有一份 | **有限。** 它是全体客户端共用的静态值，是 `/token` 兑换的四道校验之一，但**不绑定身份**。攻击者没有受害者本次流程的一次性 auth code 与 PKCE `code_verifier`，仍换不出任何人的 MCP Token，更拿不到飞书数据。主要影响是削弱一层纵深防御（配合 auth code 泄露时，防线只剩 PKCE）。 | 低 | `./scripts/ops.sh rotate-secret`；之后所有 MCP 客户端需更新 Client Secret 配置。已发放的 MCP Token 不受影响 |
+| **某用户的 MCP Token** | 该用户的 MCP 客户端 | **限于单个用户。** 持有者可在 30 天有效期内以该用户身份调用 MCP。无法越权到其他用户（每次请求按签名内的 `userId` 解析），也无法导出飞书 Token（绝不下发）。 | 中 | `./scripts/ops.sh revoke <userId>`；或轮换 `state-secret` 使全部 Token 失效 |
+| **飞书 App Secret** | Secrets Manager；容器启动后异步拉取 | **应用级。** 配合 App ID 可代表整个飞书自建应用行事，影响所有用户的 OAuth 与 API 调用。 | 高 | 在飞书开放平台重置 App Secret，更新 Secrets Manager，重新部署 |
+| **STATE_SECRET 根密钥** | SSM `state-secret`（SecureString） | **灾难性。** 它派生出 MCP Token / OAuth state / 增量授权 Token 的全部签名密钥，泄露后可**伪造任意用户的 MCP Token**，从而以任意用户身份调用。 | 严重 | 立即轮换 `/lark-mcp-on-agentcore/state-secret`；所有用户须重新连接（所有已发放 Token 同时失效） |
+
+**一句话总结：** 真正能让攻击者「以他人身份行事」的是 **STATE_SECRET 根密钥**（伪造 Token）和**飞书 App Secret**（应用级），而 **Client Secret 单独泄露危害有限**——它是配置秘密而非身份凭据。无论严重性高低，发现泄露都应尽快轮换对应密钥。
+
 ## HMAC Token 签名（域分离密钥）
 
 系统从一个根密钥（存储在 SSM Parameter Store SecureString 中）派生出三个独立的 HMAC-SHA256 签名密钥：

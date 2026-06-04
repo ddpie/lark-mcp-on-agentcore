@@ -49,6 +49,25 @@ The system implements the full OAuth 2.0 Authorization Code + PKCE (RFC 7636) fl
 
 PKCE prevents authorization code interception attacks — even if an attacker captures the auth code, they cannot exchange it for tokens without the original code_verifier. Only S256 is accepted; plain method is rejected.
 
+The sequence below shows a full authorization-and-exchange flow and the four checks at the `/token` endpoint — where **the PKCE `code_verifier` is the identity-binding check, while `client_secret` is just one defense-in-depth layer**:
+
+<p align="center">
+  <img src="images/oauth-pkce-sequence-en.svg" alt="OAuth 2.0 Authorization Code + PKCE sequence: the four checks at /token, code_verifier binds identity" width="900">
+</p>
+
+## Credential Leak Impact
+
+The system involves several "secrets" with similar names but vastly different blast radii. The table below is ordered by the consequence of an **isolated leak**, to help triage priority during an incident:
+
+| Credential | Where it lives | Consequence of an isolated leak | Severity | Remediation |
+|---|---|---|---|---|
+| **OAuth Client Secret** | SSM `oauth-client-secret` → OAuth Lambda env var; also a copy in client config | **Limited.** A static value shared by all clients, it is one of the four checks at `/token` but does **not** bind identity. Without the victim's one-time auth code and PKCE `code_verifier` from that flow, an attacker still cannot mint anyone's MCP token, let alone reach Feishu data. The main impact is weakening one defense-in-depth layer (if an auth code also leaks, only PKCE remains). | Low | `./scripts/ops.sh rotate-secret`; afterwards all MCP clients must update their Client Secret config. Issued MCP tokens are unaffected |
+| **A user's MCP Token** | That user's MCP client | **Scoped to one user.** The holder can call MCP as that user within the 30-day validity. Cannot cross over to other users (identity is resolved per request from the signed `userId`), and cannot export the Feishu token (never handed out). | Medium | `./scripts/ops.sh revoke <userId>`; or rotate `state-secret` to invalidate all tokens |
+| **Feishu App Secret** | Secrets Manager; fetched asynchronously after container start | **Application-wide.** With the App ID, it can act as the entire Feishu custom app, affecting every user's OAuth and API calls. | High | Reset the App Secret on the Feishu Open Platform, update Secrets Manager, redeploy |
+| **STATE_SECRET root key** | SSM `state-secret` (SecureString) | **Catastrophic.** It derives all signing keys for MCP tokens / OAuth state / incremental-auth tokens; a leak lets an attacker **forge any user's MCP token** and thus act as any user. | Critical | Rotate `/lark-mcp-on-agentcore/state-secret` immediately; all users must reconnect (all issued tokens invalidate at once) |
+
+**In one line:** What truly lets an attacker "act as someone else" is the **STATE_SECRET root key** (token forgery) and the **Feishu App Secret** (application-wide); an **isolated Client Secret leak has limited impact** — it is a config secret, not an identity credential. Regardless of severity, rotate the affected secret as soon as a leak is discovered.
+
 ## HMAC Token Signing (Domain-Separated Keys)
 
 Three independent HMAC-SHA256 signing keys are derived from a single root secret (stored in SSM Parameter Store as SecureString):
