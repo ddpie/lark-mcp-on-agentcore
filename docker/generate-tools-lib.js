@@ -22,10 +22,14 @@ const STRING_TYPE_TOKENS = new Set(['string', 'stringArray', 'stringSlice', 'str
 // Resolve a flag's JSON-schema type from the text following its name (`rest`).
 // A leading known type token decides string vs number; no recognized token
 // means cobra omitted it, i.e. the flag is a boolean switch.
+// Special case: lark-cli uses `--flag --other-flag <desc>` to show XOR mutual-
+// exclusivity. The second `--xxx` is NOT a type token — treat as string.
+// Exception: `--flag --flag=false` (contains `=`) is a boolean negation hint.
 function flagTypeFromRest(rest) {
   const firstToken = rest.match(/^(\S+)/)?.[1];
   if (firstToken && NUMBER_TYPE_TOKENS.has(firstToken)) return 'number';
   if (firstToken && STRING_TYPE_TOKENS.has(firstToken)) return 'string';
+  if (firstToken && firstToken.startsWith('--') && !firstToken.includes('=')) return 'string';
   return 'boolean';
 }
 
