@@ -274,11 +274,42 @@ if [ -z "$ACCOUNT_ID" ]; then
     exit 1
   fi
 fi
+# Select region BEFORE checking Secrets Manager so we query the right region.
 REGION=$(aws configure get region 2>/dev/null || echo "us-west-2")
-# Override with saved region from previous deploy if available
+PREV_REGION=""
 if [ -f "$DEPLOY_CONFIG" ]; then
-  SAVED_REGION=$(grep '^REGION=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
-  [ -n "$SAVED_REGION" ] && REGION="$SAVED_REGION"
+  PREV_REGION=$(grep '^REGION=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+fi
+REGION_SELECTED=""
+if [ -n "$PREV_REGION" ] && [ -t 0 ]; then
+  info "$(t region_existing "$PREV_REGION")"
+  if confirm "${L[region_keep]}"; then
+    REGION="$PREV_REGION"
+    REGION_SELECTED=1
+  fi
+elif [ -n "$PREV_REGION" ]; then
+  REGION="$PREV_REGION"
+  REGION_SELECTED=1
+fi
+if [ -z "$REGION_SELECTED" ]; then
+  echo ""
+  echo "  ${L[select_region]}"
+  echo ""
+  pick _REGION_PICK \
+    "ap-northeast-1   Tokyo" \
+    "us-west-2        Oregon" \
+    "us-east-1        Virginia" \
+    "ap-southeast-1   Singapore" \
+    "ap-southeast-2   Sydney" \
+    "ap-south-1       Mumbai" \
+    "eu-west-1        Ireland" \
+    "eu-central-1     Frankfurt" \
+    "me-central-1     UAE" \
+    "${L[manual_input]}"
+  REGION=$(echo "$_REGION_PICK" | awk '{print $1}')
+  if [ "$REGION" = "${L[manual_input]}" ]; then
+    ask "${L[ask_region]}" REGION
+  fi
 fi
 info "AWS Account: ${ACCOUNT_ID}"
 info "Region: ${REGION}"
@@ -785,42 +816,6 @@ if [ -n "$ALARM_WEBHOOK_URL" ] && [ -t 0 ]; then
 fi
 export ALARM_WEBHOOK_SECRET="${ALARM_WEBHOOK_SECRET:-}"
 export ALARM_WEBHOOK_KEYWORD="${ALARM_WEBHOOK_KEYWORD:-}"
-
-# 选择区域 — remember previous choice
-PREV_REGION=""
-if [ -f "$DEPLOY_CONFIG" ]; then
-  PREV_REGION=$(grep '^REGION=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
-fi
-REGION_SELECTED=""
-if [ -n "$PREV_REGION" ] && [ -t 0 ]; then
-  echo ""
-  info "$(t region_existing "$PREV_REGION")"
-  if confirm "${L[region_keep]}"; then
-    REGION="$PREV_REGION"
-    REGION_SELECTED=1
-  fi
-fi
-if [ -z "$REGION_SELECTED" ]; then
-  echo ""
-  echo "  ${L[select_region]}"
-  echo ""
-  pick _REGION_PICK \
-    "ap-northeast-1   Tokyo" \
-    "us-west-2        Oregon" \
-    "us-east-1        Virginia" \
-    "ap-southeast-1   Singapore" \
-    "ap-southeast-2   Sydney" \
-    "ap-south-1       Mumbai" \
-    "eu-west-1        Ireland" \
-    "eu-central-1     Frankfurt" \
-    "me-central-1     UAE" \
-    "${L[manual_input]}"
-  # Extract region code (first word)
-  REGION=$(echo "$_REGION_PICK" | awk '{print $1}')
-  if [ "$REGION" = "${L[manual_input]}" ]; then
-    ask "${L[ask_region]}" REGION
-  fi
-fi
 
 # CDK Bootstrap (deploy region + us-east-1 for the CloudFront-scope WAF)
 ensure_bootstrap() {
