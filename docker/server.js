@@ -178,13 +178,13 @@ if (fs.existsSync(SKILLS_DIR)) {
 
 const LIST_SKILLS_TOOL = {
   name: 'lark_list_skills',
-  description: '[read] [REQUIRED FIRST STEP] You MUST call this tool at the start of every conversation before using any other Lark tool. Returns the list of domain guides — you must then call lark_get_skill for the relevant domain before proceeding. Do NOT skip this step. Do NOT guess how tools work without reading the guide first.',
+  description: 'List available domain guides. Call this first to see which domains (calendar, im, drive, etc.) have guides, then call lark_get_skill for the relevant one.',
   inputSchema: { type: 'object', properties: {} },
 };
 
 const GET_SKILL_TOOL = {
   name: 'lark_get_skill',
-  description: '[read] [REQUIRED BEFORE ANY LARK TOOL CALL] You MUST call this to read the domain guide BEFORE calling any lark_* tool. The guide contains mandatory rules for parameter formats, required call sequences, preconditions, and error handling. Calling Lark tools without reading the guide first will result in errors. Example: before any calendar operation, call lark_get_skill(domain="calendar") first.',
+  description: 'Read a domain guide before calling tools in that domain. The guide specifies parameter formats, call sequences, and preconditions.',
   inputSchema: {
     type: 'object',
     required: ['domain'],
@@ -364,6 +364,12 @@ async function handleRequest(req, res, body) {
         protocolVersion: '2024-11-05',
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'lark-mcp-on-agentcore', version: '2.0.0' },
+        instructions: [
+          'WORKFLOW: call lark_list_skills → pick the domain matching user intent → call lark_get_skill(domain) to read the guide → then call tools following the guide. Do not skip the guide — it contains required parameter formats and call sequences.',
+          'DISCOVERY: 28 high-frequency tools are directly available. For anything else, use lark_discover(query) to find the tool, then lark_invoke(tool_name, args) to call it.',
+          'PERMISSION ERROR: when a tool returns authorize_url, STOP immediately. Show the user a clickable link: "This action needs additional permission — please open: <url>". Do NOT retry or call other tools until the user confirms authorization is complete.',
+          'LANGUAGE: respond in the same language the user writes in.',
+        ].join('\n'),
       },
     });
     return;

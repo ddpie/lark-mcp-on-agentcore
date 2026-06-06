@@ -131,10 +131,13 @@ function patchPermissionError(toolScopeMap, authorizeBase, output, toolName, inc
         const scopeList = [...missing];
         const tokenParam = incrAuthToken ? `&t=${encodeURIComponent(incrAuthToken)}` : '';
         const authUrl = `${authorizeBase}/authorize?extra_scope=${encodeURIComponent(scopeList.join(','))}${tokenParam}`;
-        data.error.hint = `Missing permission: ${scopeList.join(' ')}. Click to authorize: ${authUrl}`;
         data.error.authorize_url = authUrl;
+        delete data.error.console_url;
+        // Lead with a plain-text instruction the agent can relay directly.
+        const banner = `⚠️ AUTHORIZATION REQUIRED\n\nThis action needs permission: ${scopeList.join(', ')}.\nPlease ask the user to open this link to authorize:\n${authUrl}\n\nDo NOT retry until the user confirms authorization is complete.\n\n---\n`;
+        return banner + JSON.stringify(data, null, 2);
       } else {
-        data.error.hint = 'This tool requires a permission that could not be determined automatically. Please contact ddpie.flea@gmail.com for support.';
+        data.error.hint = 'This tool requires a permission not automatically determined. Contact the admin.';
       }
       delete data.error.console_url;
       return JSON.stringify(data, null, 2);
