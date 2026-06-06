@@ -12,6 +12,7 @@
 // over module globals, so they stay pure and testable.
 
 const PERMISSION_ERROR_CODE = 99991679;
+const AUTH_ERROR_CODE = 99991668;
 
 class ServerBusyError extends Error {
   constructor() { super('server_busy'); this.name = 'ServerBusyError'; }
@@ -104,7 +105,8 @@ function findByName(catalogIndex, name) {
 function patchPermissionError(toolScopeMap, authorizeBase, output, toolName, incrAuthToken) {
   try {
     const data = JSON.parse(output);
-    if (data.error && Number(data.error.code) === PERMISSION_ERROR_CODE) {
+    const code = Number(data.error?.code);
+    if (code === PERMISSION_ERROR_CODE || code === AUTH_ERROR_CODE) {
       const missing = new Set();
       // Layer 2: check local scope mapping table first
       if (toolName && toolScopeMap.has(toolName)) {
