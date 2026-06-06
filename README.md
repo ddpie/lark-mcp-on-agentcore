@@ -46,6 +46,23 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 > 重复部署或升级版本时自动填入上次配置，按需修改。
 
+## 连接
+
+部署完成后，在任意支持远程 MCP 的客户端中添加：
+
+```json
+{
+  "mcpServers": {
+    "feishu": {
+      "type": "http",
+      "url": "https://<your-domain>/mcp"
+    }
+  }
+}
+```
+
+保存后按提示在浏览器完成飞书授权即可——无需 Client Secret。详见 [连接客户端](docs/connect-mcp-clients_zh.md)。
+
 ## 架构
 
 支持远程 MCP 的客户端（如 Quick Desktop）发起请求 → CloudFront → API Gateway → Middleware Lambda（验证 MCP Token + SigV4 签名）→ AgentCore Runtime（MCP 服务容器处理飞书 API 调用）。OAuth Lambda 负责用户授权和 Token 自动刷新（每 30 分钟），EventBridge 定时触发。所有 Token 加密存储在 Secrets Manager 中。
@@ -228,6 +245,23 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 Check deps → Feishu credentials → Region / WAF / Log retention / Alarm presets / Webhook → Confirm → Auto deploy
 
 > Re-deploys and upgrades pre-fill previous config; change only what you need.
+
+## Connect
+
+After deploy, add this to any remote-MCP client:
+
+```json
+{
+  "mcpServers": {
+    "feishu": {
+      "type": "http",
+      "url": "https://<your-domain>/mcp"
+    }
+  }
+}
+```
+
+Save and authorize in the browser when prompted — no Client Secret needed. See [Connect clients](docs/connect-mcp-clients_en.md).
 
 ## Architecture
 
