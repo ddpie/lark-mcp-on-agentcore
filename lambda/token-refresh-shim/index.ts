@@ -374,10 +374,11 @@ async function handle(event: LambdaEvent) {
         return;
       }
       if (result.code !== 0 || !result.data) {
-        // 20016 = user explicitly revoked authorization on Feishu.
-        // Treat as deauthorized (skip, not fail) to avoid noisy alerts for intentional revocations.
-        // Other codes (20012 expired, 20017 invalid) may indicate abnormal consumption and should still alert.
-        const REVOKED_CODES = new Set([20016]);
+        // Terminal refresh failures — token cannot be recovered, auto-delete the secret.
+        // 20016 = user revoked authorization on Feishu
+        // 20017 = refresh_token invalid (corrupted or abnormally consumed)
+        // 20064 = refresh_token expired (30-day inactivity)
+        const REVOKED_CODES = new Set([20016, 20017, 20064]);
         if (REVOKED_CODES.has(result.code)) {
           log('INFO', 'user_deauthorized', { userIdHash: hashUserId(userId), code: result.code, msg: result.msg });
           try {
