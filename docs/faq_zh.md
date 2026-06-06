@@ -2,6 +2,16 @@
 
 # 常见问题
 
+**Q: 如何连接 Kiro / Claude Code / Codex（与 Amazon Quick 有何不同）？**
+
+A: 两条路径：
+- **Kiro / Claude Code / Codex** — 只需 MCP 端点 URL，无需 secret。配置一段 JSON 后浏览器授权即可。详见 [connect-mcp-clients_zh.md](connect-mcp-clients_zh.md)。
+- **Amazon Quick** — 用部署输出的 Client ID + Secret 手动配置。见 [quick-desktop-setup_zh.md](quick-desktop-setup_zh.md)。
+
+**Q: 自助注册客户端连不上 / 注册被拒？**
+
+A: 确认 URL 是 `/mcp` 端点（非 `/authorize`）。当前客户端均走 loopback，无需白名单。自定义 scheme（如 `cursor://`）不支持。
+
 **Q: Quick Desktop 连接时认证失败？**
 
 A: 检查飞书应用安全设置中的重定向 URL 是否包含部署输出的 Redirect URL。

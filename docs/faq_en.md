@@ -2,6 +2,16 @@
 
 # FAQ
 
+**Q: How do I connect Kiro / Claude Code / Codex (vs. Amazon Quick)?**
+
+A: Two paths:
+- **Kiro / Claude Code / Codex** — just the MCP endpoint URL, no secret. One JSON block, browser authorize, done. See [connect-mcp-clients_en.md](connect-mcp-clients_en.md).
+- **Amazon Quick** — shared Client ID + Secret from deploy output. See [quick-desktop-setup_en.md](quick-desktop-setup_en.md).
+
+**Q: A self-registering client fails to connect / registration is rejected?**
+
+A: Confirm the URL is the `/mcp` endpoint (not `/authorize`). All current clients use loopback — no allowlist needed. Custom schemes (e.g. `cursor://`) are not supported.
+
 **Q: Authentication fails when connecting from Quick Desktop?**
 
 A: Verify the Redirect URL from deploy output is added to your Feishu app's Security Settings.

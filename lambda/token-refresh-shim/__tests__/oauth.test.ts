@@ -227,7 +227,8 @@ describe('/token — client_secret enforcement', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
     });
     expect(result.statusCode).toBe(401);
-    expect(result.body).toContain('client_secret required');
+    // v3 DCR dispatch: no DCR client_id AND no secret → branch C (invalid_client).
+    expect(result.body).toContain('invalid_client');
     // Code DB must not be touched — wrong secret should not burn the code.
     expect(mockClient.dynamodb.__hasCode('any')).toBe(false);
   });
@@ -550,7 +551,7 @@ describe('/.well-known/oauth-authorization-server', () => {
     expect(body.authorization_endpoint).toContain('/authorize');
     expect(body.token_endpoint).toContain('/token');
     expect(body.code_challenge_methods_supported).toEqual(['S256']);
-    expect(body.token_endpoint_auth_methods_supported).toEqual(['client_secret_post']);
+    expect(body.token_endpoint_auth_methods_supported).toEqual(['none', 'client_secret_post']);
   });
 });
 

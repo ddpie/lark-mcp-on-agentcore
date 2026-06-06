@@ -94,6 +94,14 @@ describe('middleware boundary — extreme inputs', () => {
     expect(r.statusCode).toBe(401);
   });
 
+  it('401 WWW-Authenticate carries resource_metadata pointing at the PRM doc', async () => {
+    const r = await call({ headers: { authorization: '' }, body: '{}' });
+    expect(r.statusCode).toBe(401);
+    expect(r.headers!['WWW-Authenticate']).toBe(
+      'Bearer resource_metadata="https://test.cloudfront.net/.well-known/oauth-protected-resource"'
+    );
+  });
+
   it('Authorization header with "Bearer" and spaces only → 401', async () => {
     const r = await call({ headers: { authorization: 'Bearer    ' }, body: '{}' });
     expect(r.statusCode).toBe(401);

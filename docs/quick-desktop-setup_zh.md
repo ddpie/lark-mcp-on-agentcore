@@ -2,7 +2,7 @@
 
 # Quick Desktop 配置
 
-部署完成后，按以下步骤在 Quick Desktop 中添加飞书 MCP 连接。
+部署完成后，按以下步骤在 Amazon Quick（Quick Desktop）中添加飞书 MCP 连接。（Kiro / Claude Code / Codex 这类自助注册、无需 Client Secret 的客户端，请改看 [connect-mcp-clients_zh.md](connect-mcp-clients_zh.md)。）
 
 ## 第 1 步：创建 Connector
 

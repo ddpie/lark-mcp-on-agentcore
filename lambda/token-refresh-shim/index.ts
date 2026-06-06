@@ -33,6 +33,8 @@ const ssm = new SSMClient({});
 let stateKey: Buffer | null = null;
 let tokenKey: Buffer | null = null;
 let incrKey: Buffer | null = null;
+// DCR client_id signing — no rotation; revoke via STATE_SECRET root rotate.
+let dcrKey: Buffer | null = null;
 
 function deriveKey(secret: string, domain: string): Buffer {
   return createHmac('sha256', secret).update(domain).digest();
@@ -45,6 +47,33 @@ async function loadSigningKeys() {
   stateKey = deriveKey(raw, 'oauth-state-v1');
   tokenKey = deriveKey(raw, 'mcp-token-v1');
   incrKey = deriveKey(raw, 'mcp-incr-auth-v1');
+  dcrKey = deriveKey(raw, 'mcp-dcr-client-v1');
+}
+
+// Opaque signed nonce: base64url(payloadJson + ":" + hmac("dcr:"+payloadJson)).
+function signClientId(): string {
+  const payloadJson = JSON.stringify({ n: randomBytes(16).toString('hex'), iat: Math.floor(Date.now() / 1000) });
+  const sig = createHmac('sha256', dcrKey!).update('dcr:' + payloadJson).digest('hex');
+  return Buffer.from(`${payloadJson}:${sig}`).toString('base64url');
+}
+
+function verifyClientId(clientId: string): boolean {
+  try {
+    const decoded = Buffer.from(clientId, 'base64url').toString();
+    const lastColon = decoded.lastIndexOf(':');
+    if (lastColon < 0) return false;
+    const payloadJson = decoded.slice(0, lastColon);
+    const sig = decoded.slice(lastColon + 1);
+    const expected = createHmac('sha256', dcrKey!).update('dcr:' + payloadJson).digest('hex');
+    const sigBuf = Buffer.from(sig, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return false;
+    const payload = JSON.parse(payloadJson);
+    if (typeof payload.n !== 'string') return false;
+    const iat = payload.iat;
+    if (typeof iat !== 'number' || isNaN(iat) || iat < 0 || iat > Date.now() / 1000 + 300) return false;
+    return true;
+  } catch { return false; }
 }
 let appId = '';
 let appSecret = '';
@@ -423,9 +452,14 @@ async function handle(event: LambdaEvent) {
     };
   }
 
+  // Pin discovery issuer to CALLBACK_URL — never trust the Host header.
+  const pinnedBase = (CALLBACK_URL_ENV && CALLBACK_URL_ENV !== 'SET_AFTER_DEPLOY')
+    ? CALLBACK_URL_ENV.replace(/\/callback$/, '') : '';
+
   // OAuth 2.0 Authorization Server Metadata (RFC 8414)
   if (path.includes("/.well-known/oauth-authorization-server")) {
-    const baseUrl = CALLBACK_URL.replace(/\/callback$/, '');
+    if (!pinnedBase) return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: '{"error":"server_misconfigured"}' };
+    const baseUrl = pinnedBase;
     return {
       statusCode: 200,
       headers: { "Content-Type": "application/json" },
@@ -433,10 +467,70 @@ async function handle(event: LambdaEvent) {
         issuer: baseUrl,
         authorization_endpoint: `${baseUrl}/authorize`,
         token_endpoint: `${baseUrl}/token`,
+        registration_endpoint: `${baseUrl}/register`,
         response_types_supported: ["code"],
         grant_types_supported: ["authorization_code"],
         code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["client_secret_post"],
+        // "none" = public DCR clients (PKCE only); CIMD omitted to force DCR.
+        token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+      }),
+    };
+  }
+
+  // RFC 9728 Protected Resource Metadata
+  if (path.includes("/.well-known/oauth-protected-resource")) {
+    if (!pinnedBase) return { statusCode: 500, headers: { "Content-Type": "application/json" }, body: '{"error":"server_misconfigured"}' };
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        resource: `${pinnedBase}/mcp`,
+        authorization_servers: [pinnedBase],
+      }),
+    };
+  }
+
+  // /register — RFC 7591 Dynamic Client Registration (open, public clients only)
+  if (path.includes("/register") && method === "POST") {
+    const jsonErr = (error: string) => ({ statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ error }) });
+    let reqBody: any;
+    try {
+      const raw = event.isBase64Encoded ? Buffer.from(event.body || '', 'base64').toString() : event.body || '';
+      reqBody = JSON.parse(raw);
+    } catch {
+      return jsonErr("invalid_client_metadata");
+    }
+    const redirectUris = reqBody?.redirect_uris;
+    if (!Array.isArray(redirectUris) || redirectUris.length === 0 || redirectUris.length > 5
+        || !redirectUris.every((u: unknown) => typeof u === 'string')) {
+      log('WARN', 'dcr_register_failed', { reason: 'invalid_metadata' });
+      return jsonErr("invalid_client_metadata");
+    }
+    // Exact-host allowlist (no subdomain wildcard), https-or-loopback.
+    for (const uri of redirectUris) {
+      let u: URL;
+      try { u = new URL(uri); } catch { return jsonErr("invalid_redirect_uri"); }
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') return jsonErr("invalid_redirect_uri");
+      if (u.username || u.password || u.hash) return jsonErr("invalid_redirect_uri");
+      const host = u.hostname;
+      const isLocal = host === 'localhost' || host === '127.0.0.1';
+      const isQuickSight = host === 'quicksight.aws.amazon.com';
+      const isAllowed = ALLOWED_DOMAINS.includes(host);
+      if (!isLocal && !isQuickSight && !isAllowed) return jsonErr("invalid_redirect_uri");
+      if (!isLocal && u.protocol !== 'https:') return jsonErr("invalid_redirect_uri");
+    }
+    const clientId = signClientId();
+    log('INFO', 'dcr_register_ok', {});
+    return {
+      statusCode: 201,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: clientId,
+        redirect_uris: redirectUris,
+        token_endpoint_auth_method: "none",
+        grant_types: ["authorization_code"],
+        response_types: ["code"],
+        client_id_issued_at: Math.floor(Date.now() / 1000),
       }),
     };
   }
@@ -450,14 +544,17 @@ async function handle(event: LambdaEvent) {
     const codeChallenge = params.code_challenge || '';
     const codeChallengeMethod = params.code_challenge_method || '';
     // userId is ONLY accepted via the HMAC-signed `t=` token (incremental auth).
-    // Raw `user_id` query param is rejected — accepting it would let an attacker
-    // trick a victim into authorizing under an attacker-chosen id and overwrite
-    // the victim's stored Feishu tokens (confused-deputy via legacy flow).
+    // Raw `user_id` query param is rejected (confused-deputy prevention).
     let userId = '';
     // extra_scope is comma-separated (no spaces). Each scope must be in the
     // allowlist to prevent a phishing link from broadening the consent screen.
     const extraScopeRaw = (params.extra_scope || '').slice(0, 1000);
     const incrToken = params.t || '';
+
+    // Mutually exclusive: t= carries a userId, redirect_uri starts a new flow.
+    if (incrToken && redirectUri) {
+      return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_request","error_description":"t and redirect_uri are mutually exclusive"}' };
+    }
 
     // Verify signed incremental-auth token (carries the original userId)
     if (incrToken) {
@@ -493,8 +590,8 @@ async function handle(event: LambdaEvent) {
       extraScope = parts.join(' ');
     }
 
-    // Validate code_challenge_method if provided
-    if (codeChallenge && codeChallengeMethod && codeChallengeMethod !== 'S256') {
+    // Require S256 explicitly (absent method = plain per RFC 7636, not accepted).
+    if (codeChallenge && codeChallengeMethod !== 'S256') {
       return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_request","error_description":"only S256 code_challenge_method supported"}' };
     }
 
@@ -611,7 +708,7 @@ async function handle(event: LambdaEvent) {
       return { statusCode: 302, headers: { Location: redirectBack } };
     }
 
-    // Legacy flow: show success page + auto-redirect back to Quick Desktop via custom URL scheme.
+    // Quick Desktop flow: show success page + auto-redirect via custom URL scheme.
     const userName = await getUserInfo(result.data.access_token);
     const displayName = userName || `${stableUserId.slice(0, 8)}…`;
     const acceptLang = event.headers?.['accept-language'] || event.headers?.['Accept-Language'] || '';
@@ -630,18 +727,34 @@ async function handle(event: LambdaEvent) {
       const authCode = body.code || '';
       const codeVerifier = body.code_verifier || '';
       const clientSecret = body.client_secret || '';
+      const clientId = body.client_id || '';
 
-      // Verify client_secret BEFORE consuming the auth code. Otherwise a wrong
-      // secret would still single-use-burn the victim's code.
-      if (!clientSecret) {
-        log('WARN', 'token_missing_client_secret');
-        return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"client_secret required"}' };
-      }
-      const provided = Buffer.from(clientSecret);
-      const expected = Buffer.from(OAUTH_CLIENT_SECRET);
-      if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
-        log('WARN', 'token_bad_client_secret');
-        return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"bad client credentials"}' };
+      // Client auth dispatch (before consuming code to avoid burning it on failure):
+      //   A. valid DCR client_id → public, secret forbidden, PKCE mandatory
+      //   B. else valid shared secret → confidential
+      //   C. else → 401
+      if (clientId && verifyClientId(clientId)) {
+        // Branch A — DCR public client.
+        if (clientSecret) {
+          log('WARN', 'token_dcr_secret_forbidden');
+          return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"public client must not present a client_secret"}' };
+        }
+        if (!codeVerifier) {
+          log('WARN', 'token_dcr_missing_verifier');
+          return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"code_verifier required for public client"}' };
+        }
+      } else if (clientSecret) {
+        // Branch B — shared-secret client (Amazon Quick).
+        const provided = Buffer.from(clientSecret);
+        const expected = Buffer.from(OAUTH_CLIENT_SECRET);
+        if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+          log('WARN', 'token_bad_client_secret');
+          return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"bad client credentials"}' };
+        }
+      } else {
+        // Branch C — neither a valid DCR client_id nor a client_secret.
+        log('WARN', 'token_no_client_auth');
+        return { statusCode: 401, headers: { "Content-Type": "application/json" }, body: '{"error":"invalid_client","error_description":"client authentication required"}' };
       }
 
       const stored = await retrieveAndDeleteCode(authCode);

@@ -112,14 +112,14 @@ describe('mcp-middleware — auth', () => {
     const r = await call({ headers: {}, body: '{}' });
     expect(r.statusCode).toBe(401);
     expect(r.headers?.['Cache-Control']).toBe('no-store');
-    expect(r.headers?.['WWW-Authenticate']).toBe('Bearer');
+    expect(r.headers?.['WWW-Authenticate']).toBe('Bearer resource_metadata="https://test.cloudfront.net/.well-known/oauth-protected-resource"');
     expect(JSON.parse(r.body!).error).toBe('unauthorized');
   });
 
   it('rejects malformed bearer token (401)', async () => {
     const r = await call({ headers: { authorization: 'Bearer not.a.real.token' }, body: '{}' });
     expect(r.statusCode).toBe(401);
-    expect(r.headers?.['WWW-Authenticate']).toBe('Bearer');
+    expect(r.headers?.['WWW-Authenticate']).toBe('Bearer resource_metadata="https://test.cloudfront.net/.well-known/oauth-protected-resource"');
     expect(JSON.parse(r.body!).error).toBe('unauthorized');
   });
 
@@ -211,6 +211,15 @@ describe('mcp-middleware — Feishu token retrieval', () => {
     expect(r.statusCode).toBe(403);
     const body = JSON.parse(r.body!);
     expect(body.authorize_url).toBe('');
+    process.env.AUTHORIZE_BASE = origBase;
+  });
+
+  it('401 falls back to a bare Bearer challenge when AUTHORIZE_BASE is unset', async () => {
+    const origBase = process.env.AUTHORIZE_BASE;
+    process.env.AUTHORIZE_BASE = '';
+    const r = await call({ headers: {}, body: '{}' });
+    expect(r.statusCode).toBe(401);
+    expect(r.headers?.['WWW-Authenticate']).toBe('Bearer');
     process.env.AUTHORIZE_BASE = origBase;
   });
 });
