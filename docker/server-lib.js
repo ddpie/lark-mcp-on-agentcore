@@ -132,12 +132,10 @@ function patchPermissionError(toolScopeMap, authorizeBase, output, toolName, inc
         const tokenParam = incrAuthToken ? `&t=${encodeURIComponent(incrAuthToken)}` : '';
         const authUrl = `${authorizeBase}/authorize?extra_scope=${encodeURIComponent(scopeList.join(','))}${tokenParam}`;
         data.error.authorize_url = authUrl;
-        delete data.error.console_url;
-        // Lead with a plain-text instruction the agent can relay directly.
-        const banner = `⚠️ AUTHORIZATION REQUIRED\n\nThis action needs permission: ${scopeList.join(', ')}.\nPlease ask the user to open this link to authorize:\n${authUrl}\n\nDo NOT retry until the user confirms authorization is complete.\n\n---\n`;
-        return banner + JSON.stringify(data, null, 2);
+        data.error.required_scopes = scopeList;
+        data.error.user_action = `Ask the user to open authorize_url to grant: ${scopeList.join(', ')}. Do not retry until authorized.`;
       } else {
-        data.error.hint = 'This tool requires a permission not automatically determined. Contact the admin.';
+        data.error.user_action = 'This tool requires a permission not automatically determined. Contact the admin.';
       }
       delete data.error.console_url;
       return JSON.stringify(data, null, 2);
