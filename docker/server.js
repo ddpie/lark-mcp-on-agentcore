@@ -202,19 +202,13 @@ const findByName = (name) => findByNameLib(catalogIndex, name);
 const patchPermissionError = (output, toolName, incrAuthToken) =>
   patchPermissionErrorLib(toolScopeMap, AUTHORIZE_BASE, output, toolName, incrAuthToken);
 
-function buildReauthResponse(incrAuthToken) {
-  const authUrl = (AUTHORIZE_BASE && incrAuthToken)
-    ? `${AUTHORIZE_BASE}/authorize?t=${encodeURIComponent(incrAuthToken)}` : '';
-  const link = authUrl
-    ? `\nAsk the user to re-authorize: ${authUrl}`
-    : '\nAsk the user to reconnect their MCP client to re-authorize.';
+function buildReauthResponse(_incrAuthToken) {
   return JSON.stringify({
     ok: false,
     error: {
       type: 'auth',
       message: 'Feishu authorization revoked or expired.',
-      user_action: `Session expired.${link} Do not retry until re-authorized.`,
-      authorize_url: authUrl || undefined,
+      user_action: 'Session expired. Ask the user to disconnect and reconnect this MCP server in their client to re-authorize with full permissions. Do not retry.',
     },
   }, null, 2);
 }
