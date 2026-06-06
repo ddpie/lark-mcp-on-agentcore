@@ -61,7 +61,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 }
 ```
 
-保存后按提示在浏览器完成飞书授权即可——无需 Client Secret。详见 [连接客户端](docs/connect-mcp-clients_zh.md)。
+保存后按提示在浏览器完成飞书授权即可。详见 [连接客户端](docs/connect-mcp-clients_zh.md)。
 
 ## 架构
 
@@ -261,7 +261,7 @@ After deploy, add this to any remote-MCP client:
 }
 ```
 
-Save and authorize in the browser when prompted — no Client Secret needed. See [Connect clients](docs/connect-mcp-clients_en.md).
+Save and authorize in the browser when prompted. See [Connect clients](docs/connect-mcp-clients_en.md).
 
 ## Architecture
 
