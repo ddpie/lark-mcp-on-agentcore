@@ -134,10 +134,9 @@ const catalogIndex = buildCatalogIndex(allToolDefs);
 
 const DISCOVER_TOOL = {
   name: 'lark_discover',
-  description: '[read] Discover lark-cli tools not in the high-frequency set. Use when registered tools cannot fulfill the need.',
+  description: '[read] Discover lark-cli tools not in the high-frequency set. Use when registered tools cannot fulfill the need. Provide at least one of query or category.',
   inputSchema: {
     type: 'object',
-    anyOf: [{ required: ['query'] }, { required: ['category'] }],
     properties: {
       query: { type: 'string', description: 'Natural language or keyword, e.g. "create wiki space"' },
       category: { type: 'string', description: 'Filter by service: im, calendar, docs, base, sheets, drive, task, contact, wiki, mail, vc, minutes, okr, slides, whiteboard, markdown' },
