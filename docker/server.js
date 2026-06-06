@@ -274,10 +274,14 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     // than leaking it until the timeout.
     const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, LARK_CLI_TIMEOUT_MS, abortSignal), abortSignal);
     const output = stdout.trim() || '{"ok":true,"data":null}';
+    const patched = patchPermissionError(output, toolName, incrAuthToken);
+    if (patched !== output) {
+      return { content: [{ type: 'text', text: patched }], isError: true };
+    }
     if (isAuthError(output)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
     }
-    return { content: [{ type: 'text', text: patchPermissionError(output, toolName, incrAuthToken) }] };
+    return { content: [{ type: 'text', text: output }] };
   } catch (err) {
     if (err instanceof ServerBusyError) {
       return { content: [{ type: 'text', text: '{"error":"server_busy","message":"Too many concurrent requests, retry shortly"}' }], isError: true };
@@ -295,10 +299,14 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
       return { content: [{ type: 'text', text: '{"error":"output_too_large","message":"lark-cli output exceeded the buffer limit; narrow the query (e.g. pagination/filters)"}' }], isError: true };
     }
     const message = err.stdout?.trim() || err.stderr?.trim() || err.message;
+    const patchedErr = patchPermissionError(message, toolName, incrAuthToken);
+    if (patchedErr !== message) {
+      return { content: [{ type: 'text', text: patchedErr }], isError: true };
+    }
     if (isAuthError(message)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
     }
-    return { content: [{ type: 'text', text: patchPermissionError(message, toolName, incrAuthToken) }], isError: true };
+    return { content: [{ type: 'text', text: message }], isError: true };
   }
 }
 
