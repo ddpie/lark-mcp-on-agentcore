@@ -237,14 +237,24 @@ export class OAuthStack extends cdk.Stack {
     api.root.addResource("authorize").addMethod("GET", oauthIntegration);
     api.root.addResource("callback").addMethod("GET", oauthIntegration);
     api.root.addResource("token").addMethod("POST", oauthIntegration);
+    api.root.addResource("register").addMethod("POST", oauthIntegration); // RFC 7591 DCR
     const wellKnown = api.root.addResource(".well-known");
     wellKnown.addResource("oauth-authorization-server").addMethod("GET", oauthIntegration);
+    wellKnown.addResource("oauth-protected-resource").addMethod("GET", oauthIntegration); // RFC 9728 PRM
     // AWS Security Agent domain-ownership verification (HTTP route method).
     // Inert unless DOMAIN_VERIFICATION is set on the OAuth Lambda (deploy.sh).
     wellKnown
       .addResource("aws")
       .addResource("securityagent-domain-verification.json")
       .addMethod("GET", oauthIntegration);
+
+    // /register is unauthenticated — throttle tighter than the global stage limit.
+    const registerRate = parseInt(process.env.REGISTER_RATE_LIMIT || "5", 10);
+    const registerBurst = parseInt(process.env.REGISTER_BURST_LIMIT || "10", 10);
+    (api.deploymentStage.node.defaultChild as apigateway.CfnStage).addPropertyOverride("MethodSettings", [
+      { HttpMethod: "*", ResourcePath: "/*", ThrottlingRateLimit: parseInt(process.env.APIGW_RATE_LIMIT || "50", 10), ThrottlingBurstLimit: parseInt(process.env.APIGW_BURST_LIMIT || "100", 10) },
+      { HttpMethod: "POST", ResourcePath: "/register", ThrottlingRateLimit: registerRate, ThrottlingBurstLimit: registerBurst },
+    ]);
 
     const mcpResource = api.root.addResource("mcp");
     mcpResource.addMethod("POST", mcpIntegration);

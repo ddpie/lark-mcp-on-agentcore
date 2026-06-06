@@ -2,7 +2,7 @@
 
 # Quick Desktop Setup
 
-After deployment, add the Feishu MCP connection in Quick Desktop with the steps below.
+After deployment, add the Feishu MCP connection in Amazon Quick (Quick Desktop) with the steps below. (For Kiro / Claude Code / Codex, which self-register without a Client Secret, see [connect-mcp-clients_en.md](connect-mcp-clients_en.md) instead.)
 
 ## Step 1: Create Connector
 

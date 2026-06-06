@@ -11,7 +11,7 @@
 | `status` | System overview | Shows authorized user count and EventBridge token refresh rule status (ENABLED/DISABLED) |
 | `list-users` | List authorized users | Calls `secretsmanager list-secrets` to list all secrets under `lark-mcp-on-agentcore/users/` (with name and last-updated time) |
 | `revoke <user_id>` | Revoke user authorization | After interactive confirmation, force-deletes the user's secret (`--force-delete-without-recovery`); their MCP and Feishu tokens are immediately invalidated |
-| `rotate-secret` | Rotate OAuth Client Secret | Generates new 256-bit hex secret -> writes to SSM -> updates OAuth Lambda env vars. **Note**: existing MCP tokens remain valid (STATE_SECRET unchanged), but Quick Desktop connector must be updated with new Client Secret |
+| `rotate-secret` | Rotate OAuth Client Secret | Generates new 256-bit hex secret -> writes to SSM -> updates OAuth Lambda env vars. **Note**: existing MCP tokens remain valid (STATE_SECRET unchanged); Amazon Quick (Quick Desktop) connector must be updated with the new Client Secret. Self-registering clients (Kiro, Claude Code, Codex) never use this secret and are unaffected |
 | `refresh-all` | Manually trigger token refresh | Directly invokes OAuth Lambda with `{"source":"aws.events"}` to simulate EventBridge, outputs JSON result (refreshed/failed/skipped/total) |
 | `logs` | View Lambda logs | Uses `aws logs tail` to show OAuth Lambda logs from the last hour (last 20 lines) |
 | `destroy` | Delete AgentCore Runtime | Only deletes Runtime + Endpoint (non-CDK resources); does not destroy infrastructure. For full teardown use `teardown.sh` |
@@ -39,6 +39,10 @@ deploy.sh is an interactive deployment script handling the full flow from enviro
 8. Alarm threshold preset selection (Standard/Relaxed/Strict/Custom)
 9. Feishu alarm webhook URL + signature secret + keyword
 10. Deploy region selection
+
+**Connecting MCP clients (two paths):**
+- **Kiro / Claude Code / Codex** — self-register (DCR), no secret, loopback callbacks. See [connect-mcp-clients_en.md](connect-mcp-clients_en.md).
+- **Amazon Quick** — shared Client ID + Secret from deploy output. See [quick-desktop-setup_en.md](quick-desktop-setup_en.md).
 
 **Step 1/5: CDK Deploy**
 - Creates/updates Feishu app credentials in Secrets Manager

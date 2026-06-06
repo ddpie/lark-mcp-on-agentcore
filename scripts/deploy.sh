@@ -452,6 +452,39 @@ if [ -n "$CUSTOM_DOMAIN" ]; then
   info "Custom domain: ${CUSTOM_DOMAIN}"
 fi
 
+# Extra OAuth redirect hosts (comma-separated), for non-loopback clients whose
+# callback host needs allowlisting. Current clients (Kiro/Claude Code/Codex) all
+# use loopback so this is typically empty. Merged with CUSTOM_DOMAIN.
+PREV_EXTRA=""
+if [ -f "$DEPLOY_CONFIG" ]; then
+  PREV_EXTRA=$(grep '^EXTRA_ALLOWED_DOMAINS=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+fi
+if [ -z "${EXTRA_ALLOWED_DOMAINS+x}" ]; then
+  if [ -n "$PREV_EXTRA" ] && [ -t 0 ]; then
+    echo ""
+    info "$(t extra_domains_existing "$PREV_EXTRA")"
+    pick _EXTRA_ACT "${L[keep]}" "${L[change]}" "${L[clear]}"
+    case "$_EXTRA_ACT" in
+      "${L[clear]}") EXTRA_ALLOWED_DOMAINS="" ;;
+      "${L[change]}") prompt "${L[extra_domains]}" EXTRA_ALLOWED_DOMAINS ;;
+      *) EXTRA_ALLOWED_DOMAINS="$PREV_EXTRA" ;;
+    esac
+  elif [ -t 0 ]; then
+    echo ""
+    prompt "${L[extra_domains]}" EXTRA_ALLOWED_DOMAINS
+  else
+    EXTRA_ALLOWED_DOMAINS="${PREV_EXTRA}"
+  fi
+fi
+EXTRA_ALLOWED_DOMAINS="${EXTRA_ALLOWED_DOMAINS// /}"
+if [ -n "$EXTRA_ALLOWED_DOMAINS" ]; then
+  if [[ ! "$EXTRA_ALLOWED_DOMAINS" =~ ^[a-zA-Z0-9._,-]+$ ]]; then
+    err "Invalid EXTRA_ALLOWED_DOMAINS (comma-separated hosts): ${EXTRA_ALLOWED_DOMAINS}"
+    exit 1
+  fi
+  info "Extra allowed redirect hosts: ${EXTRA_ALLOWED_DOMAINS}"
+fi
+
 # AWS Security Agent domain-ownership verification (optional, HTTP route method).
 # Users enter the raw token(s) from the console — comma/space-separated for
 # multiple agent spaces; deploy builds the {"tokens":[...]} body the doc requires.
@@ -972,6 +1005,7 @@ npm install --silent 2>/dev/null
 cd "${PROJECT_DIR}/infra"
 npm install --silent 2>/dev/null
 export CUSTOM_DOMAIN="${CUSTOM_DOMAIN:-}"
+export EXTRA_ALLOWED_DOMAINS="${EXTRA_ALLOWED_DOMAINS:-}"
 export DOMAIN_VERIFICATION="${DOMAIN_VERIFICATION:-}"
 CDK_STACKS=(LarkMcpOnAgentCoreRuntime LarkMcpOnAgentCoreOAuth)
 if [ "${SKIP_WAF:-0}" != "1" ]; then
@@ -1032,6 +1066,7 @@ if [ -n "$OAUTH_FN" ] && [ -n "$OAUTH_ENDPOINT" ]; then
     OAUTH_SECRET_VAL="$OAUTH_SECRET_VAL" \
     FEISHU_SCOPES="$FEISHU_SCOPES" \
     CUSTOM_DOMAIN="${CUSTOM_DOMAIN:-}" \
+    EXTRA_ALLOWED_DOMAINS="${EXTRA_ALLOWED_DOMAINS:-}" \
     DOMAIN_VERIFICATION="${DOMAIN_VERIFICATION:-}" \
     python3 -c '
 import json, os
@@ -1046,8 +1081,16 @@ vars = {
   "CODE_TABLE": "lark-mcp-on-agentcore-oauth-codes",
   "OPENID_TABLE": "lark-mcp-on-agentcore-openid-map",
 }
+# ALLOWED_DOMAINS = the custom domain (if any) + any extra OAuth redirect hosts
+# (for non-loopback clients), comma-joined. Emitted unconditionally so the value
+# is explicit. See docs/connect-mcp-clients.
+_allowed = []
 if os.environ.get("CUSTOM_DOMAIN"):
-  vars["ALLOWED_DOMAINS"] = os.environ["CUSTOM_DOMAIN"]
+  _allowed.append(os.environ["CUSTOM_DOMAIN"])
+for _d in os.environ.get("EXTRA_ALLOWED_DOMAINS", "").replace(" ", "").split(","):
+  if _d and _d not in _allowed:
+    _allowed.append(_d)
+vars["ALLOWED_DOMAINS"] = ",".join(_allowed)
 # This update-function-configuration REPLACES the whole env set, so every var the
 # Lambda needs must be re-listed here — including DOMAIN_VERIFICATION, else the
 # value CDK set would be wiped. Empty string keeps the verification route inert.
@@ -1250,6 +1293,7 @@ cat > "$DEPLOY_CONFIG" << CFGEOF
 LARK_LANG=${LARK_LANG}
 REGION=${REGION}
 CUSTOM_DOMAIN=${CUSTOM_DOMAIN:-}
+EXTRA_ALLOWED_DOMAINS=${EXTRA_ALLOWED_DOMAINS:-}
 DOMAIN_VERIFICATION_TOKENS=${DOMAIN_VERIFICATION_TOKENS:-}
 SKIP_WAF=${SKIP_WAF}
 LOG_RETENTION_DAYS=${LOG_RETENTION_DAYS:-}
@@ -1294,6 +1338,21 @@ OAuth config (after Create integration):
 | Authorization URL | ${OAUTH_ENDPOINT}/authorize |
 
 Save → Connect → Authorize in browser → Connected.
+
+## Standard MCP clients (Kiro / Claude Code / Codex)
+
+The Client Secret above is only for Amazon Quick. Standard clients need just the
+MCP endpoint — they self-register (RFC 7591 DCR) and authorize in the browser, no
+secret to enter.
+
+MCP config (all clients):
+
+\`\`\`json
+{ "feishu": { "type": "http", "url": "${MCP_ENDPOINT}" } }
+\`\`\`
+
+All supported clients use loopback callbacks — works out of the box, no
+ALLOWED_DOMAINS configuration required. Details: docs/connect-mcp-clients_en.md
 
 ## Feishu App Redirect URL
 
@@ -1377,6 +1436,12 @@ echo "      Token URL:          ${OAUTH_ENDPOINT}/token"
 echo "      Authorization URL:  ${OAUTH_ENDPOINT}/authorize"
 echo ""
 echo "    ${L[save_connect]}"
+echo ""
+echo -e "${CYAN}  ${L[clients_title]}${NC}"
+echo ""
+echo "    ${L[clients_body]}"
+echo "    ${L[clients_json]//<MCP Endpoint>/${MCP_ENDPOINT}}"
+echo "    ${L[clients_cc]}"
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${CYAN}  ${L[operations]}${NC}"

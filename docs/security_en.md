@@ -4,7 +4,7 @@
 
 ## Overview
 
-The system employs defense-in-depth, implementing security controls at the network edge, transport layer, application layer, and storage layer. Tokens never leave the AWS internal network, OAuth uses PKCE + client_secret dual protection, and HMAC signing prevents CSRF and token forgery.
+The system employs defense-in-depth, implementing security controls at the network edge, transport layer, application layer, and storage layer. Tokens never leave the AWS internal network, OAuth uses PKCE (plus a shared client_secret for Amazon Quick), and HMAC signing prevents CSRF and token forgery.
 
 ## User Isolation (Feishu Token · MCP Token · MCP Endpoint)
 
@@ -44,15 +44,24 @@ The system implements the full OAuth 2.0 Authorization Code + PKCE (RFC 7636) fl
 2. The `/authorize` request must include `code_challenge` (returns 400 if missing); `code_challenge_method` is optional, but if provided it must be `S256` — any other value (e.g., `plain`) is rejected
 3. The code_challenge is encoded into an HMAC-signed state parameter, carried through the Feishu authorization redirect
 4. After Feishu authorization, `/callback` stores the auth code in DynamoDB (with code_challenge) and issues a one-time auth code to the client
-5. The client's `/token` request must provide both `code_verifier` and `client_secret`
+5. The client's `/token` request must always provide `code_verifier`; whether it also provides a `client_secret` depends on how it registered (see "Two client styles" below)
 6. The server computes `SHA256(code_verifier)` and compares it to the stored code_challenge via base64url comparison
 
 PKCE prevents authorization code interception attacks — even if an attacker captures the auth code, they cannot exchange it for tokens without the original code_verifier. Only S256 is accepted; plain method is rejected.
 
-The sequence below shows a full authorization-and-exchange flow and the four checks at the `/token` endpoint — where **the PKCE `code_verifier` is the identity-binding check, while `client_secret` is just one defense-in-depth layer**:
+### Two client styles
+
+The endpoint serves both kinds of MCP client at once; `/token` tells them apart by the `client_id`:
+
+- **Self-registering clients (Kiro, Claude Code, Codex)** discover the server (RFC 9728 Protected Resource Metadata, advertised in the `WWW-Authenticate` challenge on a 401) and register themselves via **`POST /register`** (RFC 7591 Dynamic Client Registration). They receive an opaque, HMAC-signed `client_id` and **no secret** (`token_endpoint_auth_method: "none"`). For these public clients, **PKCE is the sole client authentication** — `/token` rejects a request that carries a `client_secret`, and registration only accepts `redirect_uris` whose host is an exact allowlist match (`ALLOWED_DOMAINS`, `localhost`/`127.0.0.1`, or the QuickSight host).
+- **Amazon Quick (Quick Desktop)** is configured with the shared `OAUTH_CLIENT_ID` + `OAUTH_CLIENT_SECRET` printed at deploy time. Its `/token` request presents that secret (verified by a timing-safe compare) **in addition to** PKCE.
+
+In both styles **the PKCE `code_verifier` is the identity-binding check**. For self-registering public clients it is the only client credential; for Amazon Quick the shared `client_secret` is one extra defense-in-depth layer that does not itself bind identity.
+
+The sequence below shows a full authorization-and-exchange flow and the checks at the `/token` endpoint:
 
 <p align="center">
-  <img src="images/oauth-pkce-sequence-en.svg" alt="OAuth 2.0 Authorization Code + PKCE sequence: the four checks at /token, code_verifier binds identity" width="900">
+  <img src="images/oauth-pkce-sequence-en.svg" alt="OAuth 2.0 Authorization Code + PKCE sequence: the checks at /token, code_verifier binds identity (client_secret only for Amazon Quick)" width="900">
 </p>
 
 ## Credential Leak Impact
@@ -61,25 +70,26 @@ The system involves several "secrets" with similar names but vastly different bl
 
 | Credential | Where it lives | Consequence of an isolated leak | Severity | Remediation |
 |---|---|---|---|---|
-| **OAuth Client Secret** | SSM `oauth-client-secret` → OAuth Lambda env var; also a copy in client config | **Limited.** A static value shared by all clients, it is one of the four checks at `/token` but does **not** bind identity. Without the victim's one-time auth code and PKCE `code_verifier` from that flow, an attacker still cannot mint anyone's MCP token, let alone reach Feishu data. The main impact is weakening one defense-in-depth layer (if an auth code also leaks, only PKCE remains). | Low | `./scripts/ops.sh rotate-secret`; afterwards all MCP clients must update their Client Secret config. Issued MCP tokens are unaffected |
+| **OAuth Client Secret** | SSM `oauth-client-secret` → OAuth Lambda env var; also a copy in Amazon Quick's config | **Limited.** A static value used only by Amazon Quick (Quick Desktop); self-registering public clients never use it. It is one check at `/token` but does **not** bind identity. Without the victim's one-time auth code and PKCE `code_verifier` from that flow, an attacker still cannot mint anyone's MCP token, let alone reach Feishu data. The main impact is weakening one defense-in-depth layer for Amazon Quick (if an auth code also leaks, only PKCE remains). | Low | `./scripts/ops.sh rotate-secret`; afterwards Amazon Quick's connector must update its Client Secret. Self-registering clients and issued MCP tokens are unaffected |
 | **A user's MCP Token** | That user's MCP client | **Scoped to one user.** The holder can call MCP as that user within the 30-day validity. Cannot cross over to other users (identity is resolved per request from the signed `userId`), and cannot export the Feishu token (never handed out). | Medium | `./scripts/ops.sh revoke <userId>`; or rotate `state-secret` to invalidate all tokens |
 | **Feishu App Secret** | Secrets Manager; fetched asynchronously after container start | **Application-wide.** With the App ID, it can act as the entire Feishu custom app, affecting every user's OAuth and API calls. | High | Reset the App Secret on the Feishu Open Platform, update Secrets Manager, redeploy |
-| **STATE_SECRET root key** | SSM `state-secret` (SecureString) | **Catastrophic.** It derives all signing keys for MCP tokens / OAuth state / incremental-auth tokens; a leak lets an attacker **forge any user's MCP token** and thus act as any user. | Critical | Rotate `/lark-mcp-on-agentcore/state-secret` immediately; all users must reconnect (all issued tokens invalidate at once) |
+| **STATE_SECRET root key** | SSM `state-secret` (SecureString) | **Catastrophic.** It derives all four signing keys (MCP tokens / OAuth state / incremental-auth tokens / DCR `client_id`s); a leak lets an attacker **forge any user's MCP token** and thus act as any user. | Critical | Rotate `/lark-mcp-on-agentcore/state-secret` immediately; all users must reconnect and self-registering clients re-register (all issued tokens and `client_id`s invalidate at once) |
 
 **In one line:** What truly lets an attacker "act as someone else" is the **STATE_SECRET root key** (token forgery) and the **Feishu App Secret** (application-wide); an **isolated Client Secret leak has limited impact** — it is a config secret, not an identity credential. Regardless of severity, rotate the affected secret as soon as a leak is discovered.
 
 ## HMAC Token Signing (Domain-Separated Keys)
 
-Three independent HMAC-SHA256 signing keys are derived from a single root secret (stored in SSM Parameter Store as SecureString):
+Four independent HMAC-SHA256 signing keys are derived from a single root secret (stored in SSM Parameter Store as SecureString):
 
 ```
 STATE_SECRET (root, 256-bit)
-  ├── HMAC(root, "oauth-state-v1")   → stateKey  (OAuth state signing)
-  ├── HMAC(root, "mcp-token-v1")     → tokenKey  (MCP Bearer Token signing)
-  └── HMAC(root, "mcp-incr-auth-v1") → incrKey   (Incremental auth token signing)
+  ├── HMAC(root, "oauth-state-v1")    → stateKey   (OAuth state signing)
+  ├── HMAC(root, "mcp-token-v1")      → tokenKey   (MCP Bearer Token signing)
+  ├── HMAC(root, "mcp-incr-auth-v1")  → incrKey    (Incremental auth token signing)
+  └── HMAC(root, "mcp-dcr-client-v1") → dcrKey     (DCR client_id signing, RFC 7591)
 ```
 
-**Why domain separation?** If all three token types shared the same key, a signature for one type could potentially be used to forge another type (oracle attack). Domain separation ensures that observing state signatures reveals nothing about the MCP token signing key.
+**Why domain separation?** If all token types shared the same key, a signature for one type could potentially be used to forge another type (oracle attack). Domain separation ensures that observing one signature reveals nothing about another signing key — e.g. an MCP token can never be replayed as a registered `client_id`. The DCR `client_id` HMAC additionally prefixes its input with `dcr:` as a second separator.
 
 **OAuth State format:** `base64url(payload).timestamp.hmac_hex`
 - payload encodes redirect_uri, client state, code_challenge, etc.
@@ -170,7 +180,7 @@ EventBridge triggers the token refresh Lambda every 30 minutes. The reasons for 
 | Token storage | Secrets Manager (encrypted with the AWS-managed `aws/secretsmanager` KMS key by default; customer-managed KMS / BYOK is not currently supported; all reads/writes audited via CloudTrail) |
 | Token transport | AWS internal TLS + SigV4, never traverses public internet |
 | OAuth CSRF | HMAC-SHA256 signed state (timing-safe, 5-min expiry) |
-| MCP auth | OAuth 2.0 (PKCE + client_secret), HMAC signed token (30-day validity) |
+| MCP auth | OAuth 2.0 (PKCE; RFC 7591 DCR for self-registering clients, shared client_secret for Amazon Quick), HMAC signed token (30-day validity) |
 | Container | Stateless per-request, non-root; SIGTERM graceful shutdown with child-process tracking |
 | App Secret | Container kicks off the Secrets Manager fetch at startup asynchronously; until it loads, `/ping` returns 503 and `tools/call` returns `server_initializing`, so traffic is gated; the secret never enters the AgentCore control plane, logs, or argv |
 | Edge protection | CloudFront; optional WAFv2 (interactive prompt during deploy, default off) |

@@ -72,12 +72,12 @@
 
   <!-- 8. client -> lambda /token (highlight) -->
   <line x1="110" y1="346" x2="380" y2="346" stroke="#d97706" stroke-width="2" marker-end="url(#arro)"/>
-  <text x="120" y="340" fill="#b45309" font-size="10" font-weight="600">⑧ POST /token · auth code + code_verifier + client_secret</text>
+  <text x="120" y="340" fill="#b45309" font-size="10" font-weight="600">⑧ POST /token · auth code + code_verifier（Amazon Quick 另带 client_secret）</text>
 
-  <!-- 9. lambda self: four checks (highlight box) -->
+  <!-- 9. lambda self: token checks (highlight box) -->
   <rect x="380" y="362" width="368" height="116" rx="6" fill="#fffbeb" stroke="#d97706" stroke-width="1.2"/>
-  <text x="392" y="380" fill="#b45309" font-size="10" font-weight="600">⑨ /token 四道校验（任一不过 → 401/400）</text>
-  <text x="392" y="399" fill="#444" font-size="10">• client_secret 比对（timing-safe）—— 全体共用的静态值</text>
+  <text x="392" y="380" fill="#b45309" font-size="10" font-weight="600">⑨ /token 校验（任一不过 → 401/400）</text>
+  <text x="392" y="399" fill="#444" font-size="10">• 客户端认证：签名 client_id（DCR，无 secret）或 client_secret（Amazon Quick）</text>
   <text x="392" y="416" fill="#444" font-size="10">• 一次性 auth code 有效且未过期（DynamoDB，用后即焚）</text>
   <text x="392" y="433" fill="#444" font-size="10">• redirect_uri 与发起时一致</text>
   <text x="392" y="452" fill="#0a7d2c" font-size="10" font-weight="600">• SHA256(code_verifier) == code_challenge ← 绑定身份的关键</text>
@@ -89,7 +89,7 @@
 
   <!-- footnote band -->
   <line x1="35" y1="532" x2="1045" y2="532" stroke="#eee" stroke-width="1"/>
-  <text x="35" y="554" fill="#666" font-size="10">client_secret 只是四道校验之一，且是全体客户端共用的静态值——它确认“请求来自我们认可的客户端”，是纵深防御的一层，而非身份凭据。</text>
+  <text x="35" y="554" fill="#666" font-size="10">自助注册客户端（Kiro、Claude Code、Codex）出示签名 client_id、无 secret；Amazon Quick 出示共享 client_secret。无论哪种，secret 都不是身份凭据。</text>
   <text x="35" y="572" fill="#666" font-size="10">真正绑定身份、阻断被盗授权码兑换的是 PKCE 的 code_verifier（步骤 ①/⑨）：没有它，即便拿到 client_secret 与一次性 code 也换不出 MCP Token。</text>
   <text x="35" y="590" fill="#999" font-size="9">能伪造任意用户 MCP Token 的是 SSM 中的 state-secret 根密钥（见“凭据泄露影响对比”），而非 client_secret。</text>
 </svg>

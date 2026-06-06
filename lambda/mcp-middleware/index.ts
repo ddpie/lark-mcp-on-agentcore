@@ -11,7 +11,8 @@ import { isPendingDeletionError } from '../shared/secrets';
 const SECRET_PREFIX = process.env.SECRET_PREFIX || 'lark-mcp-on-agentcore/users';
 const STATE_SECRET_PARAM = process.env.STATE_SECRET_PARAM || '/lark-mcp-on-agentcore/state-secret';
 const RUNTIME_ARN = process.env.RUNTIME_ARN!;
-const AUTHORIZE_BASE = process.env.AUTHORIZE_BASE || '';
+const AUTHORIZE_BASE_RAW = process.env.AUTHORIZE_BASE || '';
+const AUTHORIZE_BASE = (AUTHORIZE_BASE_RAW && AUTHORIZE_BASE_RAW !== 'SET_AFTER_DEPLOY') ? AUTHORIZE_BASE_RAW : '';
 const REGION = process.env.DEPLOY_REGION || process.env.AWS_REGION || 'us-west-2';
 const TOKEN_BUFFER_SECONDS = 120;
 
@@ -129,9 +130,13 @@ async function handle(event: LambdaEvent) {
   }
   if (!userId) {
     log('WARN', 'auth_missing_or_invalid', { hasBearer: !!bearerToken });
+    // RFC 9728: advertise PRM so clients can discover the AS and start DCR.
+    const wwwAuth = AUTHORIZE_BASE
+      ? `Bearer resource_metadata="${AUTHORIZE_BASE}/.well-known/oauth-protected-resource"`
+      : 'Bearer';
     return {
       statusCode: 401,
-      headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' },
+      headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuth },
       body: '{"error":"unauthorized","error_description":"missing or invalid token"}',
     };
   }

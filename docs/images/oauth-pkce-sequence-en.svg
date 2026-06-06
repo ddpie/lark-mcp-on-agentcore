@@ -72,12 +72,12 @@
 
   <!-- 8. client -> lambda /token (highlight) -->
   <line x1="110" y1="346" x2="380" y2="346" stroke="#d97706" stroke-width="2" marker-end="url(#arro)"/>
-  <text x="120" y="340" fill="#b45309" font-size="10" font-weight="600">⑧ POST /token · auth code + code_verifier + client_secret</text>
+  <text x="120" y="340" fill="#b45309" font-size="10" font-weight="600">⑧ POST /token · auth code + code_verifier (+ client_secret for Amazon Quick)</text>
 
-  <!-- 9. lambda self: four checks (highlight box) -->
+  <!-- 9. lambda self: token checks (highlight box) -->
   <rect x="380" y="362" width="392" height="116" rx="6" fill="#fffbeb" stroke="#d97706" stroke-width="1.2"/>
-  <text x="392" y="380" fill="#b45309" font-size="10" font-weight="600">⑨ /token four checks (any failure → 401/400)</text>
-  <text x="392" y="399" fill="#444" font-size="10">• client_secret compare (timing-safe) — a shared static value</text>
+  <text x="392" y="380" fill="#b45309" font-size="10" font-weight="600">⑨ /token checks (any failure → 401/400)</text>
+  <text x="392" y="399" fill="#444" font-size="10">• client auth: signed client_id (DCR, no secret) OR client_secret (Amazon Quick)</text>
   <text x="392" y="416" fill="#444" font-size="10">• one-time auth code valid &amp; not expired (DynamoDB, burn-on-use)</text>
   <text x="392" y="433" fill="#444" font-size="10">• redirect_uri matches the one used at /authorize</text>
   <text x="392" y="452" fill="#0a7d2c" font-size="10" font-weight="600">• SHA256(code_verifier) == code_challenge ← the identity-binding check</text>
@@ -89,7 +89,7 @@
 
   <!-- footnote band -->
   <line x1="35" y1="532" x2="1045" y2="532" stroke="#eee" stroke-width="1"/>
-  <text x="35" y="554" fill="#666" font-size="10">client_secret is only one of four checks, and a static value shared by all clients — it confirms "the request comes from a client we recognize," a defense-in-depth layer, not an identity credential.</text>
-  <text x="35" y="572" fill="#666" font-size="10">The PKCE code_verifier (steps ①/⑨) is what binds identity and blocks redemption of a stolen auth code: without it, even with the client_secret and a one-time code you cannot mint an MCP token.</text>
+  <text x="35" y="554" fill="#666" font-size="10">Self-registering clients (Kiro, Claude Code, Codex) present a signed client_id and no secret; Amazon Quick presents a shared client_secret. Either way the secret is not an identity credential.</text>
+  <text x="35" y="572" fill="#666" font-size="10">The PKCE code_verifier (steps ①/⑨) is what binds identity and blocks redemption of a stolen auth code: without it, even with a client_secret and a one-time code you cannot mint an MCP token.</text>
   <text x="35" y="590" fill="#999" font-size="9">What can forge any user's MCP token is the state-secret root key in SSM (see "Credential leak impact"), not the client_secret.</text>
 </svg>

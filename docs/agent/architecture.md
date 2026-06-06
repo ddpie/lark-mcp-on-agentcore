@@ -106,10 +106,47 @@ checking the middleware and clients that parse them.
 - User tokens: AWS Secrets Manager at `lark-mcp-on-agentcore/users/{userId}` (encrypted).
 - App secret: Secrets Manager at `lark-mcp-on-agentcore/feishu-app`.
 - Signing key: SSM Parameter Store; domain-separated HMAC keys derived from it
-  (`oauth-state-v1`, `mcp-token-v1`, `mcp-incr-auth-v1`).
+  (`oauth-state-v1`, `mcp-token-v1`, `mcp-incr-auth-v1`, `mcp-dcr-client-v1`).
+  `mcp-dcr-client-v1` signs the opaque `client_id` issued by `/register` (see
+  "Client registration" below). All four are derived from the same SSM root via
+  `deriveKey` in `lambda/token-refresh-shim/index.ts`.
 - OAuth codes + OpenID→userId mapping: DynamoDB (codes are single-use via
   conditional/atomic delete).
 - Token auto-refresh: EventBridge every 30 min → `lambda/token-refresh-shim`.
+
+## Client registration & discovery (two ways a client authenticates)
+
+The OAuth Lambda supports two client styles at the same time; `/token` decides
+which by inspecting `client_id` (`lambda/token-refresh-shim/index.ts`, the
+`/token` handler):
+
+1. **Standard MCP clients (Kiro, Claude Code, Codex)** —
+   self-register via **`POST /register`** (RFC 7591 Dynamic Client Registration).
+   They get back an opaque, HMAC-signed `client_id` (`signClientId`, signed with
+   `mcp-dcr-client-v1`) and **no secret** (`token_endpoint_auth_method: "none"`).
+   At `/token` a valid signed `client_id` ⇒ public client: **PKCE is mandatory and
+   a `client_secret` is rejected**. `/register` only accepts `redirect_uris` whose
+   host is an exact match in the allowlist (QuickSight host, `localhost`/`127.0.0.1`,
+   or an `ALLOWED_DOMAINS` entry — no subdomain wildcard); `cursor://`-style custom
+   schemes are rejected.
+2. **Amazon Quick (Quick Desktop)** — configured with the shared `OAUTH_CLIENT_ID`
+   + `OAUTH_CLIENT_SECRET` printed at deploy. At `/token`, when `client_id` is not a
+   signed DCR id, the request authenticates by the shared `client_secret`
+   (timing-safe compare) and PKCE still applies.
+
+Either way the auth code is bound to its flow by **PKCE** (`code_challenge` is
+required at `/authorize`, `code_verifier` verified at `/token`) plus the per-code
+`redirect_uri` exact match — there is no separate code↔client_id binding.
+
+**Discovery (RFC 8414 + RFC 9728):** the middleware's 401 returns
+`WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`;
+that PRM doc and `/.well-known/oauth-authorization-server` advertise the issuer,
+`registration_endpoint`, and `token_endpoint_auth_methods_supported:
+["none","client_secret_post"]`. Both discovery docs derive their issuer/resource
+**only** from the pinned `CALLBACK_URL` env (never the request Host header) and
+return 500 if it is unset — so a forged Host cannot poison the advertised issuer.
+(`/authorize` and `/callback` still derive the per-request Feishu callback from the
+host, which is correct — that URL must match the actual request origin pre-deploy.)
 
 ## Build pipeline (what is generated, when)
 

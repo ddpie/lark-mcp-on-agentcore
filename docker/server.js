@@ -370,8 +370,8 @@ async function handleRequest(req, res, body) {
   }
 
   // tools/list — emit MCP annotations so spec-compliant clients (Quick Desktop,
-  // Claude Desktop, etc.) render an explicit user-approval UI for destructive
-  // tools instead of relying on the LLM to honor _confirm semantics.
+  // Kiro, etc.) render an explicit user-approval UI for destructive tools
+  // instead of relying on the LLM to honor _confirm semantics.
   if (mcpReq.method === 'tools/list') {
     const tools = [
       ...tier1Tools.map(t => ({
