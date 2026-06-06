@@ -202,6 +202,33 @@ const findByName = (name) => findByNameLib(catalogIndex, name);
 const patchPermissionError = (output, toolName, incrAuthToken) =>
   patchPermissionErrorLib(toolScopeMap, AUTHORIZE_BASE, output, toolName, incrAuthToken);
 
+function buildReauthResponse(incrAuthToken) {
+  const authUrl = (AUTHORIZE_BASE && incrAuthToken)
+    ? `${AUTHORIZE_BASE}/authorize?t=${encodeURIComponent(incrAuthToken)}` : '';
+  const link = authUrl
+    ? `\nAsk the user to re-authorize: ${authUrl}`
+    : '\nAsk the user to reconnect their MCP client to re-authorize.';
+  return JSON.stringify({
+    ok: false,
+    error: {
+      type: 'auth',
+      message: 'Feishu authorization revoked or expired.',
+      user_action: `Session expired.${link} Do not retry until re-authorized.`,
+      authorize_url: authUrl || undefined,
+    },
+  }, null, 2);
+}
+
+function isAuthError(output) {
+  try {
+    const data = JSON.parse(output);
+    if (data.error?.type === 'auth') return true;
+    if (data.error?.hint?.includes('auth login')) return true;
+    return false;
+  } catch {}
+  return /\bauth login\b|token is expired|token is invalid/i.test(output);
+}
+
 async function executeTool(def, args, userToken, toolName, incrAuthToken, abortSignal) {
   // High-risk writes (delete, etc.) require explicit user approval. Primary
   // defense is the destructiveHint annotation surfaced via tools/list — a
@@ -253,6 +280,9 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     // than leaking it until the timeout.
     const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, LARK_CLI_TIMEOUT_MS, abortSignal), abortSignal);
     const output = stdout.trim() || '{"ok":true,"data":null}';
+    if (isAuthError(output)) {
+      return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
+    }
     return { content: [{ type: 'text', text: patchPermissionError(output, toolName, incrAuthToken) }] };
   } catch (err) {
     if (err instanceof ServerBusyError) {
@@ -261,16 +291,9 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     if (err.message === 'client_aborted') {
       return { content: [{ type: 'text', text: '{"error":"client_aborted"}' }], isError: true };
     }
-    // A client disconnect aborts the signal, which makes execFile kill the child
-    // and reject with name=AbortError (and killed=true). That's NOT a timeout —
-    // check it before the killed/signal branch below so it isn't mislabeled.
     if (err.name === 'AbortError') {
       return { content: [{ type: 'text', text: '{"error":"client_aborted"}' }], isError: true };
     }
-    // On timeout (execFile kills the child: err.killed + signal) or maxBuffer
-    // overflow, err.stdout holds a TRUNCATED partial fragment — almost always
-    // invalid JSON, and it buries the real cause. Map these to clean structured
-    // errors instead of returning the corrupt blob (the line below).
     if (err.killed || err.signal) {
       return { content: [{ type: 'text', text: '{"error":"timeout","message":"lark-cli call exceeded the time limit"}' }], isError: true };
     }
@@ -278,6 +301,9 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
       return { content: [{ type: 'text', text: '{"error":"output_too_large","message":"lark-cli output exceeded the buffer limit; narrow the query (e.g. pagination/filters)"}' }], isError: true };
     }
     const message = err.stdout?.trim() || err.stderr?.trim() || err.message;
+    if (isAuthError(message)) {
+      return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
+    }
     return { content: [{ type: 'text', text: patchPermissionError(message, toolName, incrAuthToken) }], isError: true };
   }
 }

@@ -201,35 +201,33 @@ describe('patchPermissionError', () => {
 
   it('adds authorize_url when scope is found in toolScopeMap', () => {
     const output = JSON.stringify({ error: { code: ERROR_CODE, message: 'Permission denied' } });
-    const result = patch(output, 'lark_im_messages_send', '');
-    expect(result).toContain('AUTHORIZATION REQUIRED');
-    expect(result).toContain('https://oauth.example.com/authorize');
-    expect(result).toContain('im%3Amessage%3Asend');
-    expect(result).toContain('Do NOT retry');
-    expect(result).not.toContain('console_url');
+    const parsed = JSON.parse(patch(output, 'lark_im_messages_send', ''));
+    expect(parsed.error.authorize_url).toContain('https://oauth.example.com/authorize');
+    expect(parsed.error.authorize_url).toContain('im%3Amessage%3Asend');
+    expect(parsed.error.required_scopes).toContain('im:message:send');
+    expect(parsed.error.user_action).toContain('Ask the user');
+    expect(parsed.error.console_url).toBeUndefined();
   });
   it('includes incremental auth token in URL when provided', () => {
     const output = JSON.stringify({ error: { code: ERROR_CODE, message: 'Permission denied' } });
-    const result = patch(output, 'lark_im_messages_send', 'my-auth-token');
-    expect(result).toContain('&t=my-auth-token');
+    const parsed = JSON.parse(patch(output, 'lark_im_messages_send', 'my-auth-token'));
+    expect(parsed.error.authorize_url).toContain('&t=my-auth-token');
   });
   it('extracts scopes from console_url when toolScopeMap has no entry', () => {
     const output = JSON.stringify({ error: { code: ERROR_CODE, message: 'Permission denied', console_url: 'https://feishu.cn/admin?scopes=wiki:wiki:readonly,wiki:space' } });
-    const result = patch(output, 'lark_unknown_tool', '');
-    expect(result).toContain('wiki%3Awiki%3Areadonly');
-    expect(result).toContain('wiki%3Aspace');
+    const parsed = JSON.parse(patch(output, 'lark_unknown_tool', ''));
+    expect(parsed.error.authorize_url).toContain('wiki%3Awiki%3Areadonly');
+    expect(parsed.error.authorize_url).toContain('wiki%3Aspace');
   });
   it('extracts scopes from error message regex when no console_url', () => {
     const output = JSON.stringify({ error: { code: ERROR_CODE, message: 'Insufficient privilege. Required scope: contact:user.base:readonly' } });
-    const result = patch(output, 'lark_unknown_tool', '');
-    expect(result).toContain('contact%3Auser.base%3Areadonly');
+    const parsed = JSON.parse(patch(output, 'lark_unknown_tool', ''));
+    expect(parsed.error.authorize_url).toContain('contact%3Auser.base%3Areadonly');
   });
-  it('returns generic hint when no scopes can be determined', () => {
+  it('returns generic user_action when no scopes can be determined', () => {
     const output = JSON.stringify({ error: { code: ERROR_CODE, message: 'Something went wrong' } });
-    const result = patch(output, 'lark_unknown_tool', '');
-    const jsonPart = result.includes('---') ? result.split('---').pop().trim() : result;
-    const parsed = JSON.parse(jsonPart);
-    expect(parsed.error.hint).toContain('not automatically determined');
+    const parsed = JSON.parse(patch(output, 'lark_unknown_tool', ''));
+    expect(parsed.error.user_action).toContain('not automatically determined');
     expect(parsed.error.authorize_url).toBeUndefined();
   });
   it('passes through output unchanged when error code is not 99991679', () => {
@@ -245,9 +243,9 @@ describe('patchPermissionError', () => {
   });
   it('handles multiple scopes in error message', () => {
     const output = JSON.stringify({ error: { code: ERROR_CODE, message: 'Requires scopes: im:message:send, im:chat:readonly' } });
-    const result = patch(output, 'lark_unknown_tool', '');
-    expect(result).toContain('im%3Amessage%3Asend');
-    expect(result).toContain('im%3Achat%3Areadonly');
+    const parsed = JSON.parse(patch(output, 'lark_unknown_tool', ''));
+    expect(parsed.error.authorize_url).toContain('im%3Amessage%3Asend');
+    expect(parsed.error.authorize_url).toContain('im%3Achat%3Areadonly');
   });
 });
 
