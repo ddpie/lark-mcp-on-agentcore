@@ -1317,21 +1317,24 @@ cat > "$DEPLOY_INFO" << INFOEOF
 > Region: ${REGION}
 > Account: ${ACCOUNT_ID}
 
-## Quick Desktop Setup
+## Connect (Kiro / Claude Code / Codex)
+
+\`\`\`json
+{ "mcpServers": { "feishu": { "type": "http", "url": "${MCP_ENDPOINT}" } } }
+\`\`\`
+
+Save → authorize in browser → done. Details: docs/connect-mcp-clients_en.md
+
+## Amazon Quick Desktop (requires Client Secret)
 
 Settings → Capabilities → Browse Connections → Connectors →
 Create for your team → Model Context Protocol → No, create new
 
-Connection info:
 | Field | Value |
 |-------|-------|
 | Name | Feishu Remote MCP |
 | MCP server endpoint | ${MCP_ENDPOINT} |
 | Connection type | public |
-
-OAuth config (after Create integration):
-| Field | Value |
-|-------|-------|
 | Client ID | ${OAUTH_CLIENT_ID} |
 | Client Secret | ${OAUTH_CLIENT_SECRET_VAL} |
 | Token URL | ${OAUTH_ENDPOINT}/token |
@@ -1339,28 +1342,11 @@ OAuth config (after Create integration):
 
 Save → Connect → Authorize in browser → Connected.
 
-## Standard MCP clients (Kiro / Claude Code / Codex)
+## Feishu App Settings (first deploy only)
 
-The Client Secret above is only for Amazon Quick. Standard clients need just the
-MCP endpoint — they self-register (RFC 7591 DCR) and authorize in the browser, no
-secret to enter.
+Open: https://open.feishu.cn/app/${APP_ID}/safe
 
-MCP config (all clients):
-
-\`\`\`json
-{ "feishu": { "type": "http", "url": "${MCP_ENDPOINT}" } }
-\`\`\`
-
-All supported clients use loopback callbacks — works out of the box, no
-ALLOWED_DOMAINS configuration required. Details: docs/connect-mcp-clients_en.md
-
-## Feishu App Redirect URL
-
-Open Feishu app security settings:
-https://open.feishu.cn/app/${APP_ID}/safe
-
-Add redirect URL:
-${REDIRECT_URL}
+Add redirect URL: ${REDIRECT_URL}
 
 ## Operations
 
@@ -1405,20 +1391,15 @@ fi
 echo ""
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${YELLOW}  ${L[next_steps]}${NC}"
+echo -e "${CYAN}  ${L[clients_title]}${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "  ${YELLOW}${L[upgrade_hint]}${NC}"
+echo "    ${L[clients_json]//<MCP Endpoint>/${MCP_ENDPOINT}}"
+echo "    ${L[clients_cc]}"
 echo ""
-echo -e "${CYAN}  ${L[step1_title]}${NC}"
-echo ""
-echo "    ${L[step1_open]}"
-echo "    https://open.feishu.cn/app/${APP_ID}/safe"
-echo ""
-echo "    ${L[step1_add]}"
-echo "    ${REDIRECT_URL}"
-echo ""
-echo -e "${CYAN}  ${L[step2_title]}${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}  ${L[quick_title]}${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo "    ${L[step2_nav]}"
 echo "    ${L[step2_browser]}"
@@ -1437,11 +1418,17 @@ echo "      Authorization URL:  ${OAUTH_ENDPOINT}/authorize"
 echo ""
 echo "    ${L[save_connect]}"
 echo ""
-echo -e "${CYAN}  ${L[clients_title]}${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}  ${L[feishu_app_title]}${NC}"
+echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "    ${L[clients_body]}"
-echo "    ${L[clients_json]//<MCP Endpoint>/${MCP_ENDPOINT}}"
-echo "    ${L[clients_cc]}"
+echo "    ${L[step1_open]}"
+echo "    https://open.feishu.cn/app/${APP_ID}/safe"
+echo ""
+echo "    ${L[step1_add]}"
+echo "    ${REDIRECT_URL}"
+echo ""
+echo -e "  ${YELLOW}${L[upgrade_hint]}${NC}"
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${CYAN}  ${L[operations]}${NC}"

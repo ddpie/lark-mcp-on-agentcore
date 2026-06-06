@@ -1032,7 +1032,8 @@ describe('/callback — i18n success page', () => {
     expect(r.statusCode).toBe(200);
     expect(r.body).toContain('Authorized');
     expect(r.body).toContain('has been authorized');
-    expect(r.body).toContain('Return to Amazon Quick Desktop');
+    expect(r.body).toContain('Permission granted');
+    expect(r.body).not.toContain('awsquick://');
     expect(r.body).toContain('lang="en"');
   });
 

@@ -709,13 +709,13 @@ async function handle(event: LambdaEvent) {
       return { statusCode: 302, headers: { Location: redirectBack } };
     }
 
-    // Quick Desktop flow: show success page + auto-redirect via custom URL scheme.
     const userName = await getUserInfo(result.data.access_token);
     const displayName = userName || `${stableUserId.slice(0, 8)}…`;
     const acceptLang = event.headers?.['accept-language'] || event.headers?.['Accept-Language'] || '';
     const langKey = detectLang(acceptLang);
     const ct = (i18n.callback as Record<string, typeof i18n.callback.en>)[langKey] || i18n.callback.en;
-    const successHtml = `<!DOCTYPE html><html lang="${langKey}"><head><meta charset="utf-8"><title>${ct.title}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:480px;margin:80px auto;padding:24px;text-align:center;color:#222}h2{color:#0a7d2c;margin-bottom:8px}.btn{display:inline-block;padding:10px 20px;margin-top:20px;background:#0a66c2;color:#fff;text-decoration:none;border-radius:6px;font-size:14px}p{color:#666;font-size:14px;line-height:1.5}.hint{color:#999;font-size:12px;margin-top:24px}</style></head><body><h2>${ct.heading}</h2><p>${ct.message.replace('%s', escapeHtml(displayName))}</p><a class="btn" href="awsquick://connector-refresh">${ct.button}</a><p class="hint">${ct.hint}</p></body></html>`;
+    const hintText = ct.hint_close;
+    const successHtml = `<!DOCTYPE html><html lang="${langKey}"><head><meta charset="utf-8"><title>${ct.title}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;max-width:480px;margin:80px auto;padding:24px;text-align:center;color:#222}h2{color:#0a7d2c;margin-bottom:8px}p{color:#666;font-size:14px;line-height:1.5}.hint{color:#999;font-size:12px;margin-top:24px}</style></head><body><h2>${ct.heading}</h2><p>${ct.message.replace('%s', escapeHtml(displayName))}</p><p class="hint">${hintText}</p></body></html>`;
     return { statusCode: 200, headers: { "Content-Type": "text/html; charset=utf-8" }, body: successHtml };
   }
 
