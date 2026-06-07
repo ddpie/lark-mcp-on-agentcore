@@ -9,6 +9,7 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as kms from "aws-cdk-lib/aws-kms";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as logs from "aws-cdk-lib/aws-logs";
@@ -131,6 +132,20 @@ export class OAuthStack extends cdk.Stack {
 
     const oauthClientId = names.oauthClientId;
 
+    // Customer-managed KMS key (CMK) encrypting every user token secret. One key
+    // per app (this stack) = per-slug isolation: a sibling app's Lambda role is
+    // never on this key policy, so it cannot decrypt this app's tokens.
+    // RETAIN so the key (and thus the ability to decrypt existing secrets) survives
+    // a stack teardown; rotation on to satisfy cdk-nag KMSBackingKeyRotationEnabled.
+    // The default key policy keeps account-root admin (the documented §1 threat
+    // boundary): this CMK defends against least-privilege GetSecretValue readers,
+    // NOT against IAM/KMS administrators.
+    const userSecretKey = new kms.Key(this, "UserSecretKey", {
+      description: `lark-mcp-on-agentcore user token secret encryption (${names.slug || "default"})`,
+      enableKeyRotation: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     const oauthFnName = `${this.stackName}-oauth`;
     const oauthLogGroup = createLogGroup(this, "OAuthLogGroup", oauthFnName, logRetention);
     const oauthFn = new nodejs.NodejsFunction(this, "OAuthFunction", {
@@ -156,6 +171,10 @@ export class OAuthStack extends cdk.Stack {
         OAUTH_CLIENT_SECRET: "SET_AFTER_DEPLOY",
         ALLOWED_DOMAINS: props.customDomain || "",
         DOMAIN_VERIFICATION: props.domainVerification || "",
+        // CreateSecret stamps this on new user secrets; the refresh loop migrates
+        // existing ones onto it. deploy.sh re-threads it on every deploy (it
+        // replaces the whole env), reading the UserSecretKmsKeyArn output below.
+        USER_SECRET_KMS_KEY_ARN: userSecretKey.keyArn,
       },
       // @aws-sdk/lib-dynamodb is not in the Node.js 20 runtime; bundle it.
       bundling: { externalModules: ["@aws-sdk/client-*"], minify: true, target: "node20" },
@@ -183,10 +202,19 @@ export class OAuthStack extends cdk.Stack {
         // strict orgs with explicit Deny on TagResource block first-time
         // authorization for new users.
         "secretsmanager:TagResource",
+        // CMK migration: read a secret's current KmsKeyId and swap it in-place.
+        // Missing either ⇒ the first refresh cycle AccessDenies and no secret migrates.
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:UpdateSecret",
       ],
       resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${this.secretPrefix}/*`],
     }));
     denyNestedUserSecrets(oauthFn);
+    // oauthFn creates/updates secrets on the CMK, so it needs Encrypt as well as
+    // Decrypt/GenerateDataKey. kms:Encrypt is load-bearing for the migration:
+    // without it UpdateSecret SILENTLY skips re-encryption (AWS documented), so the
+    // key swap would no-op with no error. DescribeKey lets SM resolve the key.
+    userSecretKey.grant(oauthFn, "kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey");
     // ListSecrets is an account-level action and does not honor resource-scoping
     oauthFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ["secretsmanager:ListSecrets"],
@@ -247,6 +275,12 @@ export class OAuthStack extends cdk.Stack {
       resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${this.secretPrefix}/*`],
     }));
     denyNestedUserSecrets(middlewareFn);
+    // MCP HOT PATH: middlewareFn GetSecretValue-reads the user token on every
+    // request. Once secrets move to the CMK it MUST be able to Decrypt, or every
+    // tool call KMS-AccessDenies and the data plane goes fully down. Read-only —
+    // no Encrypt (it never writes). No env var needed (decrypt resolves the key
+    // from the secret automatically).
+    userSecretKey.grant(middlewareFn, "kms:Decrypt", "kms:DescribeKey");
     middlewareFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ["ssm:GetParameter"],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${stateSecretParam}`],
@@ -363,6 +397,30 @@ export class OAuthStack extends cdk.Stack {
       evaluationPeriods: th("refresh_failed").evaluationPeriods,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+    }).addAlarmAction(alarmAction);
+
+    // CMK migration stragglers — user secrets still NOT on the per-app CMK after a
+    // refresh cycle. Converges to 0 once every secret is migrated; staying > 0 is
+    // the canary for a silent missing-kms:Encrypt (UpdateSecret returns OK but never
+    // re-encrypts) or a stuck/misconfigured key. Long period + several eval periods
+    // so the normal post-deploy convergence window (a few 30-min cycles) doesn't page.
+    const cmkStragglersFilter = new logs.MetricFilter(this, "CmkStragglersFilter", {
+      logGroup: oauthFn.logGroup,
+      filterPattern: logs.FilterPattern.all(
+        logs.FilterPattern.stringValue("$.event", "=", "refresh_cycle"),
+        logs.FilterPattern.exists("$.stragglers"),
+      ),
+      metricName: "CmkStragglers",
+      metricNamespace: metricNs,
+      metricValue: "$.stragglers",
+    });
+    new cloudwatch.Alarm(this, "CmkStragglersAlarm", {
+      alarmName: an.cmk_stragglers,
+      metric: cmkStragglersFilter.metric({ statistic: "Maximum", period: cdk.Duration.seconds(th("cmk_stragglers").period) }),
+      threshold: th("cmk_stragglers").threshold,
+      evaluationPeriods: th("cmk_stragglers").evaluationPeriods,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
     }).addAlarmAction(alarmAction);
 
     // Lambda errors (any uncaught throw / runtime error).
@@ -600,6 +658,7 @@ export class OAuthStack extends cdk.Stack {
           cloudwatch.Alarm.fromAlarmArn(this, "RefApiGw5xx", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.apigw_5xx}`),
           cloudwatch.Alarm.fromAlarmArn(this, "RefOAuthErr", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.oauth_errors}`),
           cloudwatch.Alarm.fromAlarmArn(this, "RefMwErr", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.middleware_errors}`),
+          cloudwatch.Alarm.fromAlarmArn(this, "RefCmkStragglers", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.cmk_stragglers}`),
         ],
         width: 24,
       }),
@@ -726,6 +785,10 @@ export class OAuthStack extends cdk.Stack {
     new cdk.CfnOutput(this, "DashboardUrl", { value: dashboardUrl, description: "CloudWatch observability dashboard" });
     new cdk.CfnOutput(this, "AlarmTopicArn", { value: alarmTopic.topicArn });
     new cdk.CfnOutput(this, "OAuthFunctionName", { value: oauthFn.functionName });
+    new cdk.CfnOutput(this, "UserSecretKmsKeyArn", {
+      value: userSecretKey.keyArn,
+      description: "CMK encrypting user token secrets; deploy.sh re-threads it into the OAuth Lambda env",
+    });
     new cdk.CfnOutput(this, "MiddlewareFunctionName", { value: middlewareFn.functionName });
     new cdk.CfnOutput(this, "OAuthEndpoint", { value: this.oauthEndpoint });
     new cdk.CfnOutput(this, "McpEndpoint", {

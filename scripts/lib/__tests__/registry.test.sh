@@ -66,6 +66,26 @@ echo "── rename_alias: cannot rename onto an in-use alias ──"
 if rename_alias "team-d" "Finance2"; then : ; else nok "setup rename should succeed"; fi  # free move first
 if rename_alias "team-d" "HR Production"; then nok "rename onto in-use alias must fail"; else ok; fi
 
+# State now: team-a='HR Production', team-d='Finance2', team-e='HR Prod'.
+
+echo "── alias_taken_by_other: a NEW slug taking an in-use alias is flagged ──"
+if alias_taken_by_other "team-new" "HR Production"; then ok; else nok "should report taken"; fi
+
+echo "── alias_taken_by_other: normalized match (case/space) is flagged ──"
+if alias_taken_by_other "team-new" "  hr   PRODUCTION "; then ok; else nok "normalized alias should be flagged taken"; fi
+
+echo "── alias_taken_by_other: a free alias is NOT flagged ──"
+if alias_taken_by_other "team-new" "Brand New Alias"; then nok "free alias must not be flagged"; else ok; fi
+
+echo "── alias_taken_by_other: the SAME slug re-using its own alias is NOT flagged ──"
+if alias_taken_by_other "team-a" "HR Production"; then nok "same-slug own alias must not be flagged"; else ok; fi
+
+echo "── slug_registered: an existing slug is reported registered ──"
+if slug_registered "team-a"; then ok; else nok "team-a should be registered"; fi
+
+echo "── slug_registered: an unknown slug is NOT registered ──"
+if slug_registered "never-deployed"; then nok "unknown slug must not be registered"; else ok; fi
+
 echo ""
 echo "── registry.sh: $PASS passed, $FAIL failed ──"
 if [ "$FAIL" -gt 0 ]; then red "REGISTRY TESTS FAILED"; exit 1; else grn "ALL REGISTRY TESTS PASSED"; exit 0; fi

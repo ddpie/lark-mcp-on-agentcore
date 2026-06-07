@@ -61,6 +61,41 @@ PY
 # one atomically; fails if another slug holds the new (normalized) alias.
 rename_alias() { _with_lock _claim_alias_impl "$@"; }
 
+# alias_taken_by_other <slug> <alias> : READ-ONLY precheck (no write, no lock).
+# Returns 0 if the normalized alias is already owned by a DIFFERENT slug (i.e. a
+# claim would fail), non-zero otherwise. Used by the interactive new-app flow to
+# re-prompt before committing — the authoritative write still goes through
+# claim_alias. Mirrors _claim_alias_impl's normalization exactly.
+alias_taken_by_other() {
+  [ -f "$APPS_REGISTRY" ] || return 1
+  REG="$APPS_REGISTRY" SLUG="$1" ALIAS="$2" python3 - <<'PY'
+import json, os, re, sys
+def norm(s): return re.sub(r"\s+", " ", s.strip()).lower()
+try:
+    with open(os.environ["REG"]) as f: data = json.load(f)
+except (FileNotFoundError, ValueError):
+    sys.exit(1)
+key = norm(os.environ["ALIAS"]); slug = os.environ["SLUG"]
+for s, row in data.get("apps", {}).items():
+    if row.get("aliasKey") == key and s != slug:
+        sys.exit(0)   # taken by another slug
+sys.exit(1)           # free (or owned by this slug)
+PY
+}
+
+# slug_registered <slug> : 0 if the slug already has a registry row, else non-zero.
+slug_registered() {
+  [ -f "$APPS_REGISTRY" ] || return 1
+  REG="$APPS_REGISTRY" SLUG="$1" python3 - <<'PY'
+import json, os, sys
+try:
+    with open(os.environ["REG"]) as f: data = json.load(f)
+except (FileNotFoundError, ValueError):
+    sys.exit(1)
+sys.exit(0 if os.environ["SLUG"] in data.get("apps", {}) else 1)
+PY
+}
+
 # upsert_app <slug> <alias> <region> <endpoint> <runtime> : record/update a row.
 upsert_app() { _with_lock _upsert_app_impl "$@"; }
 _upsert_app_impl() {

@@ -59,7 +59,7 @@ describe(`OAuthStack slugged synth (slug=${SLUG}) carries the slug on every phys
   it("alarm names carry the slug, AND none is undefined", () => {
     const alarms = t.findResources("AWS::CloudWatch::Alarm");
     const names = Object.values(alarms).map((a) => a.Properties?.AlarmName as string);
-    expect(names.length).toBe(10);
+    expect(names.length).toBe(11);
     for (const n of names) {
       expect(n).toBeTruthy();
       expect(n).not.toContain("undefined");

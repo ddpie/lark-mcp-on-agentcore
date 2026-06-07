@@ -25,8 +25,9 @@ describe("alarm names: every CloudWatch alarm has a defined, non-empty AlarmName
   it("no alarm has an undefined or empty AlarmName", () => {
     const alarms = template.findResources("AWS::CloudWatch::Alarm");
     const ids = Object.keys(alarms);
-    // The stack defines 10 named alarms; if this count drifts, update intentionally.
-    expect(ids.length).toBe(10);
+    // The stack defines 11 named alarms (10 + the CMK-stragglers canary); if this
+    // count drifts, update intentionally.
+    expect(ids.length).toBe(11);
     for (const id of ids) {
       const name = alarms[id].Properties?.AlarmName;
       expect(name, `alarm ${id} is missing AlarmName`).toBeTruthy();

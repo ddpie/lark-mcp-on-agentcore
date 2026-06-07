@@ -73,7 +73,7 @@
       "testing_oauth": "测试 OAuth...",
       "testing_runtime": "测试 Runtime...",
       "deploy_info": "部署信息（请保存）",
-            "step1_open": "打开飞书应用安全设置:",
+      "step1_open": "打开飞书应用安全设置:",
       "step1_add": "添加重定向 URL:",
       "feishu_app_title": "飞书应用设置（首次部署需完成）",
       "quick_title": "Amazon Quick Desktop（需要 Client Secret）",
@@ -135,7 +135,16 @@
       "alarm_desc_concurrency_pct": "Lambda 并发占账户配额百分比，接近限制需提额",
       "alarm_desc_throttles": "Lambda 被限流（已有用户受影响）",
       "alarm_desc_apigw_5xx": "API Gateway 网关层 5xx 错误",
-      "alarm_desc_upstream_5xx": "AgentCore 上游返回 5xx"
+      "alarm_desc_upstream_5xx": "AgentCore 上游返回 5xx",
+      "select_app_title": "选择要部署的应用:",
+      "app_default_label": "默认应用  (default)",
+      "app_new_label": "➕ 新建应用…",
+      "app_slug_prompt": "应用 slug (a-z0-9-, ≤20): ",
+      "app_slug_invalid": "✗ 无效 slug（仅 a-z0-9-、≤20、非保留字）",
+      "app_slug_exists": "该 slug 已存在，改为部署它? (Y/n) ",
+      "app_alias_prompt": "显示别名 (默认 = %s): ",
+      "app_alias_taken": "✗ 别名已被占用，请换一个",
+      "deploying_app": "部署应用: %s (%s)"
     },
     "en": {
       "title": "Lark MCP on AgentCore - Deploy",
@@ -210,7 +219,7 @@
       "testing_oauth": "Testing OAuth...",
       "testing_runtime": "Testing Runtime...",
       "deploy_info": "Deployment Info (please save)",
-            "step1_open": "Open Feishu app security settings:",
+      "step1_open": "Open Feishu app security settings:",
       "step1_add": "Add redirect URL:",
       "feishu_app_title": "Feishu App Settings (first deploy only)",
       "quick_title": "Amazon Quick Desktop (requires Client Secret)",
@@ -272,7 +281,16 @@
       "alarm_desc_concurrency_pct": "Lambda concurrency as % of account quota (near limit = need increase)",
       "alarm_desc_throttles": "Lambda throttled (users already impacted)",
       "alarm_desc_apigw_5xx": "API Gateway 5xx errors at gateway level",
-      "alarm_desc_upstream_5xx": "AgentCore upstream returned 5xx"
+      "alarm_desc_upstream_5xx": "AgentCore upstream returned 5xx",
+      "select_app_title": "Select app to deploy:",
+      "app_default_label": "Default app  (default)",
+      "app_new_label": "➕ New app…",
+      "app_slug_prompt": "App slug (a-z0-9-, <=20): ",
+      "app_slug_invalid": "✗ Invalid slug (a-z0-9- only, <=20, not reserved)",
+      "app_slug_exists": "Slug already exists — deploy it instead? (Y/n) ",
+      "app_alias_prompt": "Display alias (default = %s): ",
+      "app_alias_taken": "✗ Alias already in use — pick another",
+      "deploying_app": "Deploying app: %s (%s)"
     }
   },
   "dashboard": {
@@ -322,7 +340,8 @@
       "concurrency_pct": "Lambda 并发过高 (%)",
       "throttles": "Lambda 被限流",
       "apigw_5xx": "API Gateway 5xx",
-      "upstream_5xx": "AgentCore 上游 5xx"
+      "upstream_5xx": "AgentCore 上游 5xx",
+      "cmk_stragglers": "用户密钥未迁移到 CMK"
     },
     "en": {
       "token_lost": "Token Lost (refresh consumed but not stored)",
@@ -334,7 +353,8 @@
       "concurrency_pct": "Lambda Concurrency High (%)",
       "throttles": "Lambda Throttled",
       "apigw_5xx": "API Gateway 5xx",
-      "upstream_5xx": "AgentCore Upstream 5xx"
+      "upstream_5xx": "AgentCore Upstream 5xx",
+      "cmk_stragglers": "User Secrets Not On CMK"
     }
   },
   "alarm": {

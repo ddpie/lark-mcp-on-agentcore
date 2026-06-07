@@ -38,11 +38,11 @@ get_oauth_fn() {
 
 case "${1:-help}" in
   list-users)
-    echo "已授权用户 (app: ${SLUG:-default}):"
+    echo "Authorized users (app: ${SLUG:-default}):"
     list_user_secret_names | sed 's#^#  #' || true
     ;;
   list-apps)
-    echo "已部署应用:"
+    echo "Deployed apps:"
     echo "  default  (lark_mcp_on_agentcore)"
     if [ -f "$APPS_REGISTRY" ]; then
       while IFS= read -r s; do
@@ -52,8 +52,8 @@ case "${1:-help}" in
     fi
     ;;
   rename)
-    NEW_ALIAS="${2:?用法: ops.sh rename --app <slug> <new-alias>}"
-    if [ -z "$SLUG" ]; then echo "  rename 需要 --app <slug>(默认应用无别名)"; exit 1; fi
+    NEW_ALIAS="${2:?Usage: ops.sh rename --app <slug> <new-alias>}"
+    if [ -z "$SLUG" ]; then echo "  rename requires --app <slug> (the default app has no alias)"; exit 1; fi
     if rename_alias "$SLUG" "$NEW_ALIAS"; then
       # Refresh the alarm-webhook Lambda's APP_ALIAS so alert cards show the new name.
       WEBHOOK_FN=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region "$REGION" \
@@ -72,55 +72,55 @@ print(json.dumps({"Variables": env}))
           --environment "file://$ENV_FILE" --region "$REGION" >/dev/null 2>&1 || true
         rm -f "$ENV_FILE"
       fi
-      echo "  已重命名为 '${NEW_ALIAS}' ✓"
+      echo "  Renamed to '${NEW_ALIAS}' ✓"
     else
-      echo "  别名 '${NEW_ALIAS}' 已被占用,请换一个。"; exit 1
+      echo "  Alias '${NEW_ALIAS}' is already in use; pick another."; exit 1
     fi
     ;;
   revoke)
-    USER="${2:?用法: ops.sh revoke --app <slug> <user_id>}"
+    USER="${2:?Usage: ops.sh revoke --app <slug> <user_id>}"
     # user_id is a single Feishu open_id / hex segment — never contains '/'.
     # Reject any slash so a crafted id like 'team-a/ou_victim' can't escape this
     # app's namespace and force-delete another app's nested user secret (the
     # IAM/runtime isolation boundary; mirrors the listAllUserSecrets [^/]+ screen).
     case "$USER" in
-      */*|"") echo "  无效的 user_id: '${USER}'(不能包含 '/')" >&2; exit 1 ;;
+      */*|"") echo "  Invalid user_id: '${USER}' (must not contain '/')" >&2; exit 1 ;;
     esac
     SECRET_ID="${SECRET_USERS_PREFIX}/${USER}"
-    echo "  将永久删除密钥: ${SECRET_ID}"
-    read -rp "  确认撤销 ${USER} (app: ${SLUG:-default}) 的 Token? (y/N) " CONFIRM
+    echo "  Will permanently delete secret: ${SECRET_ID}"
+    read -rp "  Revoke ${USER}'s token (app: ${SLUG:-default})? (y/N) " CONFIRM
     if [[ "$CONFIRM" =~ ^[yY] ]]; then
       aws secretsmanager delete-secret --secret-id "$SECRET_ID" --force-delete-without-recovery --region "$REGION" 2>&1
-      echo "  已撤销 ✓"
+      echo "  Revoked ✓"
     fi
     ;;
   refresh-all)
-    echo "触发手动刷新 (app: ${SLUG:-default})..."
+    echo "Triggering manual refresh (app: ${SLUG:-default})..."
     LAMBDA_FN=$(get_oauth_fn)
-    if [ -z "$LAMBDA_FN" ]; then echo "  未找到 OAuth Lambda"; exit 1; fi
+    if [ -z "$LAMBDA_FN" ]; then echo "  OAuth Lambda not found"; exit 1; fi
     aws lambda invoke --function-name "$LAMBDA_FN" --payload '{"source":"aws.events"}' --region "$REGION" /tmp/refresh-out.json 2>&1 | head -2
     python3 -m json.tool < /tmp/refresh-out.json
     ;;
   logs)
-    echo "最近 Lambda 日志 (app: ${SLUG:-default}):"
+    echo "Recent Lambda logs (app: ${SLUG:-default}):"
     LAMBDA_FN=$(get_oauth_fn)
-    if [ -z "$LAMBDA_FN" ]; then echo "  未找到 OAuth Lambda"; exit 1; fi
-    aws logs tail "/aws/lambda/${LAMBDA_FN}" --region "$REGION" --since 1h --format short 2>/dev/null | tail -20 || echo "  未找到日志"
+    if [ -z "$LAMBDA_FN" ]; then echo "  OAuth Lambda not found"; exit 1; fi
+    aws logs tail "/aws/lambda/${LAMBDA_FN}" --region "$REGION" --since 1h --format short 2>/dev/null | tail -20 || echo "  No logs found"
     ;;
   status)
-    echo "=== 系统状态 (app: ${SLUG:-default}) ==="
+    echo "=== System status (app: ${SLUG:-default}) ==="
     echo ""
     USERS=$(list_user_secret_names | grep -c . || true)
-    echo "  已授权用户: ${USERS}"
-    echo "  Runtime:    ${RUNTIME_NAME}"
+    echo "  Authorized users: ${USERS}"
+    echo "  Runtime:          ${RUNTIME_NAME}"
     EB_RULE=$(aws events list-rules --name-prefix "$OAUTH_STACK" --region "$REGION" --query 'Rules[0].Name' --output text 2>/dev/null || echo "")
-    if [ -z "$EB_RULE" ] || [ "$EB_RULE" = "None" ]; then EB="未找到"; else
-    EB=$(aws events describe-rule --name "$EB_RULE" --region "$REGION" --query 'State' --output text 2>/dev/null || echo "未找到"); fi
-    echo "  Token 刷新:  ${EB}"
+    if [ -z "$EB_RULE" ] || [ "$EB_RULE" = "None" ]; then EB="not found"; else
+    EB=$(aws events describe-rule --name "$EB_RULE" --region "$REGION" --query 'State' --output text 2>/dev/null || echo "not found"); fi
+    echo "  Token refresh:    ${EB}"
     echo ""
     ;;
   destroy)
-    echo "销毁 AgentCore Runtime (app: ${SLUG:-default})..."
+    echo "Destroying AgentCore Runtime (app: ${SLUG:-default})..."
     RUNTIME_ID=$(RUNTIME_NAME="$RUNTIME_NAME" REGION="$REGION" python3 -c "
 import boto3, os
 c = boto3.client('bedrock-agentcore-control', region_name=os.environ['REGION'])
@@ -136,7 +136,7 @@ while True:
     if not next_token: break
 " 2>/dev/null)
     if [ -n "$RUNTIME_ID" ]; then
-      read -rp "  确认删除 Runtime ${RUNTIME_ID} (${RUNTIME_NAME})? (y/N) " CONFIRM
+      read -rp "  Delete Runtime ${RUNTIME_ID} (${RUNTIME_NAME})? (y/N) " CONFIRM
       if [[ "$CONFIRM" =~ ^[yY] ]]; then
         RUNTIME_ID="$RUNTIME_ID" REGION="$REGION" python3 -c "
 import boto3, time, os
@@ -146,15 +146,15 @@ try: c.delete_agent_runtime_endpoint(agentRuntimeId=rid, endpointName='ep')
 except Exception: pass
 time.sleep(3)
 c.delete_agent_runtime(agentRuntimeId=rid)
-print('  已删除 ✓')
+print('  Deleted ✓')
 "
       fi
     else
-      echo "  未找到 AgentCore Runtime (${RUNTIME_NAME})。"
+      echo "  AgentCore Runtime not found (${RUNTIME_NAME})."
     fi
     ;;
   rotate-secret)
-    echo "轮换 OAuth Client Secret (app: ${SLUG:-default})..."
+    echo "Rotating OAuth Client Secret (app: ${SLUG:-default})..."
     NEW_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
     SEC_FILE=$(mktemp); chmod 600 "$SEC_FILE"
     printf '%s' "$NEW_SECRET" > "$SEC_FILE"
@@ -182,28 +182,72 @@ print(json.dumps({"Variables": env}))
       rm -f "$ENV_FILE"
     fi
     echo ""
-    echo "  新 Client Secret: ${NEW_SECRET:0:8}..."
+    echo "  New Client Secret: ${NEW_SECRET:0:8}..."
     echo ""
-    echo "  ⚠ 注意:"
-    echo "    1. 已发放的 MCP Token 仍然有效 (STATE_SECRET 未变)"
-    echo "    2. 请更新 Quick Desktop connector 的 Client Secret"
+    echo "  ⚠ Note:"
+    echo "    1. Already-issued MCP tokens stay valid (STATE_SECRET unchanged)"
+    echo "    2. Update the Client Secret in your Quick Desktop connector"
     echo ""
-    echo "  已更新 ✓"
+    echo "  Updated ✓"
+    ;;
+  rebuild-registry)
+    # Rebuild .local/apps.json from AWS (the source of truth). The registry is a
+    # local convenience index (list-apps / upgrade --rest / alias-uniqueness); if it
+    # is lost or you deploy from a new machine, this re-discovers every named app by
+    # enumerating its CloudFormation OAuth stack (LarkMcpOnAgentCoreOAuth-<slug>).
+    # The default app has no registry row (no alias), so it is skipped.
+    echo "Rebuilding app registry from AWS (region: ${REGION})..."
+    STACKS=$(aws cloudformation list-stacks --region "$REGION" \
+      --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+      --query 'StackSummaries[?starts_with(StackName, `LarkMcpOnAgentCoreOAuth-`)].StackName' \
+      --output text 2>/dev/null | tr '\t' '\n' || true)
+    if [ -z "$STACKS" ]; then
+      echo "  No named-app (slug) OAuth stacks found. Registry left unchanged."
+      echo "  (The default app needs no registry entry.)"
+      exit 0
+    fi
+    COUNT=0
+    while IFS= read -r stack; do
+      [ -z "$stack" ] && continue
+      s="${stack#LarkMcpOnAgentCoreOAuth-}"   # slug = stack name minus the prefix
+      # Endpoint + alias-source come from the stack's own outputs.
+      ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$stack" --region "$REGION" \
+        --query 'Stacks[0].Outputs[?OutputKey==`OAuthEndpoint`].OutputValue' --output text 2>/dev/null || echo "")
+      WEBHOOK_FN=$(aws cloudformation describe-stacks --stack-name "$stack" --region "$REGION" \
+        --query 'Stacks[0].Outputs[?OutputKey==`AlarmWebhookFunctionName`].OutputValue' --output text 2>/dev/null || echo "")
+      # Alias is a local-only concept; the only place AWS may hold it is the alarm
+      # webhook Lambda's APP_ALIAS env. If no webhook was configured, fall back to slug.
+      ALIAS="$s"
+      if [ -n "$WEBHOOK_FN" ] && [ "$WEBHOOK_FN" != "None" ]; then
+        A=$(aws lambda get-function-configuration --function-name "$WEBHOOK_FN" --region "$REGION" \
+          --query 'Environment.Variables.APP_ALIAS' --output text 2>/dev/null || echo "")
+        [ -n "$A" ] && [ "$A" != "None" ] && ALIAS="$A"
+      fi
+      # Runtime name comes from the authoritative resolver (no duplicated transform).
+      # resolve_slug runs in a subshell so it can't clobber our loop's exported vars.
+      RUNTIME_NAME_REBUILD=$( resolve_slug "$s" >/dev/null 2>&1 && printf '%s' "$RUNTIME_NAME" )
+      upsert_app "$s" "$ALIAS" "$REGION" "$ENDPOINT" "$RUNTIME_NAME_REBUILD"
+      printf '  ✓ %s  (%s)\n' "$ALIAS" "$s"
+      COUNT=$((COUNT+1))
+    done <<< "$STACKS"
+    echo "  Rebuilt ${COUNT} app entr$([ "$COUNT" = 1 ] && echo y || echo ies) → ${APPS_REGISTRY}"
+    echo "  Note: alias falls back to the slug when no alarm webhook was configured; fix with 'ops.sh rename'."
     ;;
   help|*)
-    echo "用法: ./scripts/ops.sh [--app <slug>] <命令>"
+    echo "Usage: ./scripts/ops.sh [--app <slug>] <command>"
     echo ""
-    echo "命令:"
-    echo "  list-users     列出所有已授权用户"
-    echo "  list-apps      列出所有已部署应用 (别名 + slug)"
-    echo "  rename         重命名应用别名 (--app <slug> <new-alias>)"
-    echo "  revoke         撤销用户 Token"
-    echo "  refresh-all    手动触发 Token 刷新"
-    echo "  logs           查看最近 Lambda 日志"
-    echo "  status         系统概览"
-    echo "  rotate-secret  轮换 OAuth Client Secret"
-    echo "  destroy        删除 AgentCore Runtime (仅 Runtime;完整销毁请用 ./scripts/teardown.sh)"
+    echo "Commands:"
+    echo "  list-users        List all authorized users"
+    echo "  list-apps         List all deployed apps (alias + slug)"
+    echo "  rebuild-registry  Rebuild the local app registry from AWS (after losing .local/apps.json)"
+    echo "  rename            Rename an app's alias (--app <slug> <new-alias>)"
+    echo "  revoke            Revoke a user's token"
+    echo "  refresh-all       Trigger a manual token refresh"
+    echo "  logs              View recent Lambda logs"
+    echo "  status            System overview"
+    echo "  rotate-secret     Rotate the OAuth Client Secret"
+    echo "  destroy           Delete the AgentCore Runtime (Runtime only; for full teardown use ./scripts/teardown.sh)"
     echo ""
-    echo "  --app <slug>   指定应用 (默认应用可省略)"
+    echo "  --app <slug>      Target a specific app (omit for the default app)"
     ;;
 esac

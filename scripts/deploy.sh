@@ -51,53 +51,6 @@ for ((_i=0; _i<${#_args[@]}; _i++)); do
   esac
 done
 
-# shellcheck source=lib/slug.sh
-source "${SCRIPT_DIR}/lib/slug.sh"
-if ! resolve_slug "$APP_SLUG"; then
-  exit 1
-fi
-# resolve_slug exports: SLUG SFX RUNTIME_NAME FEISHU_SECRET SECRET_USERS_PREFIX
-# STATE_PARAM OAUTH_SECRET_PARAM WEBHOOK_SSM_NAME CODE_TABLE OPENID_TABLE
-# OAUTH_CLIENT_ID OAUTH_STACK RUNTIME_STACK WAF_STACK
-
-# Per-slug deploy-config so deploying app B never clobbers app A's saved config.
-# Default slug keeps the original .local/deploy-config path (backward compat).
-if [ -n "$SLUG" ]; then
-  APP_LOCAL_DIR="${LOCAL_DIR}/apps/${SLUG}"
-  mkdir -p "$APP_LOCAL_DIR"
-  DEPLOY_CONFIG="${APP_LOCAL_DIR}/deploy-config"
-else
-  DEPLOY_CONFIG="${LOCAL_DIR}/deploy-config"
-fi
-
-# App registry + HARD alias uniqueness (only for named apps; the default app has
-# no alias). Claim the alias ATOMICALLY before creating any resource, so a
-# collision aborts cleanly with no half-built stack.
-APPS_REGISTRY="${LOCAL_DIR}/apps.json"
-export APPS_REGISTRY
-if [ -n "$SLUG" ]; then
-  # shellcheck source=lib/registry.sh
-  source "${SCRIPT_DIR}/lib/registry.sh"
-  [ -z "$APP_ALIAS" ] && APP_ALIAS="$SLUG"   # default the alias to the slug
-  if ! claim_alias "$SLUG" "$APP_ALIAS"; then
-    echo "  ERROR: alias '${APP_ALIAS}' is already used by another app. Pick a unique --alias." >&2
-    exit 1
-  fi
-fi
-
-if [ "$AUTO_YES" = "1" ]; then
-  if [ ! -f "$DEPLOY_CONFIG" ]; then
-    echo "  ERROR: --yes requires a previous deployment config (${DEPLOY_CONFIG})." >&2
-    echo "  Run once interactively first (for app '${SLUG:-default}'), then use --yes." >&2
-    exit 1
-  fi
-  # Load all saved config values as env vars
-  set -a
-  # shellcheck source=/dev/null
-  source "$DEPLOY_CONFIG"
-  set +a
-fi
-
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
@@ -106,6 +59,7 @@ NC='\033[0m'
 
 # Arrow-key interactive picker. Usage: pick RESULT_VAR "label1" "label2" ...
 # Optional: set PICK_DEFAULT=N (1-based) before calling to pre-select.
+# Defined early (before slug resolution) so select_app() can use it.
 pick() {
   local _var="$1"; shift
   local -a _items=("$@")
@@ -162,9 +116,19 @@ pick() {
   unset PICK_DEFAULT
 }
 
-# Language selection (only ask if not already set by install.sh or saved config)
-if [ -z "${LARK_LANG:-}" ] && [ -f "$DEPLOY_CONFIG" ]; then
-  SAVED_LANG=$(grep '^LARK_LANG=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+# shellcheck source=lib/slug.sh
+source "${SCRIPT_DIR}/lib/slug.sh"
+APPS_REGISTRY="${LOCAL_DIR}/apps.json"
+export APPS_REGISTRY
+# shellcheck source=lib/registry.sh
+source "${SCRIPT_DIR}/lib/registry.sh"
+
+# --- Language + i18n, loaded EARLY so the app picker below is fully localized ---
+# Language is a global operator preference (not per-app): honor an explicit
+# LARK_LANG (e.g. exported by install.sh), else the saved GLOBAL deploy-config,
+# else ask with a language-neutral bilingual picker.
+if [ -z "${LARK_LANG:-}" ] && [ -f "${LOCAL_DIR}/deploy-config" ]; then
+  SAVED_LANG=$(grep '^LARK_LANG=' "${LOCAL_DIR}/deploy-config" 2>/dev/null | cut -d= -f2- || echo "")
   [ -n "$SAVED_LANG" ] && export LARK_LANG="$SAVED_LANG"
 fi
 if [ -z "${LARK_LANG:-}" ]; then
@@ -178,7 +142,6 @@ if [ -z "${LARK_LANG:-}" ]; then
   esac
 fi
 
-# --- i18n messages (loaded from config/i18n.json) ---
 if ! command -v python3 &>/dev/null; then
   echo "  ERROR: python3 is required but not found" >&2
   exit 1
@@ -207,6 +170,135 @@ step() { echo -e "\n${GREEN}=== ${L[$1]} ===${NC}\n"; }
 info() { echo -e "${CYAN}  $1${NC}"; }
 warn() { echo -e "${YELLOW}  ⚠ $1${NC}"; }
 err()  { echo -e "${RED}  ✗ $1${NC}"; }
+
+# Interactive app selection. Only when a human is at the terminal AND no app was
+# specified up front (--app / APP_SLUG) AND not a --yes redeploy. In every other
+# case behavior is byte-identical to before: the default app (empty slug) is used.
+select_app() {
+  local -a _slugs=() _labels=()
+  while IFS= read -r _s; do [ -n "$_s" ] && _slugs+=("$_s"); done < <(list_app_slugs)
+
+  _labels+=("${L[app_default_label]}")
+  local _s _al
+  # Guard the expansion: under `set -u` on bash <4.4 an empty "${arr[@]}" errors
+  # (the common first-deploy / default-only case has zero registered apps).
+  for _s in ${_slugs[@]+"${_slugs[@]}"}; do
+    _al="$(get_app_alias "$_s")"
+    _labels+=("${_al:-$_s}  ($_s)")
+  done
+  _labels+=("${L[app_new_label]}")
+
+  echo ""
+  echo "  ${L[select_app_title]}"
+  echo ""
+  local _choice
+  pick _choice "${_labels[@]}"
+
+  if [ "$_choice" = "${L[app_default_label]}" ]; then
+    APP_SLUG=""; return
+  fi
+  if [ "$_choice" = "${L[app_new_label]}" ]; then
+    _new_app_prompt; return
+  fi
+  # Existing app: the slug is the trailing "(slug)" token.
+  APP_SLUG="${_choice##*\(}"; APP_SLUG="${APP_SLUG%\)}"
+}
+
+# Prompt for a new app's slug + alias, validating both before returning. Sets
+# APP_SLUG / APP_ALIAS. The authoritative alias claim still happens below via
+# claim_alias; this only pre-validates so the user can fix mistakes immediately.
+_new_app_prompt() {
+  local _slug _alias
+  while true; do
+    printf "  %s" "${L[app_slug_prompt]}" >&2
+    read -r _slug </dev/tty || _slug=""
+    if ! validate_slug "$_slug"; then
+      echo "  ${L[app_slug_invalid]}" >&2
+      continue
+    fi
+    if slug_registered "$_slug"; then
+      printf "  %s" "${L[app_slug_exists]}" >&2
+      local _yn; read -r _yn </dev/tty || _yn="y"
+      [[ "${_yn:-y}" =~ ^[nN] ]] && continue
+      APP_SLUG="$_slug"; APP_ALIAS=""; return   # alias already in registry
+    fi
+    break
+  done
+  while true; do
+    printf "  $(t app_alias_prompt "$_slug")" >&2
+    read -r _alias </dev/tty || _alias=""
+    [ -z "$_alias" ] && _alias="$_slug"
+    if alias_taken_by_other "$_slug" "$_alias"; then
+      echo "  ${L[app_alias_taken]}" >&2
+      continue
+    fi
+    break
+  done
+  APP_SLUG="$_slug"; APP_ALIAS="$_alias"
+}
+
+if [ "$AUTO_YES" = "0" ] && [ -z "$APP_SLUG" ] && [ -t 0 ] && [ -t 1 ]; then
+  select_app
+fi
+
+if ! resolve_slug "$APP_SLUG"; then
+  exit 1
+fi
+# resolve_slug exports: SLUG SFX RUNTIME_NAME FEISHU_SECRET SECRET_USERS_PREFIX
+# STATE_PARAM OAUTH_SECRET_PARAM WEBHOOK_SSM_NAME CODE_TABLE OPENID_TABLE
+# OAUTH_CLIENT_ID OAUTH_STACK RUNTIME_STACK WAF_STACK
+
+# Per-slug deploy-config so deploying app B never clobbers app A's saved config.
+# Default slug keeps the original .local/deploy-config path (backward compat).
+if [ -n "$SLUG" ]; then
+  APP_LOCAL_DIR="${LOCAL_DIR}/apps/${SLUG}"
+  mkdir -p "$APP_LOCAL_DIR"
+  DEPLOY_CONFIG="${APP_LOCAL_DIR}/deploy-config"
+else
+  DEPLOY_CONFIG="${LOCAL_DIR}/deploy-config"
+fi
+
+# App registry + HARD alias uniqueness (only for named apps; the default app has
+# no alias). Claim the alias ATOMICALLY before creating any resource, so a
+# collision aborts cleanly with no half-built stack.
+APPS_REGISTRY="${LOCAL_DIR}/apps.json"
+export APPS_REGISTRY
+if [ -n "$SLUG" ]; then
+  # shellcheck source=lib/registry.sh
+  source "${SCRIPT_DIR}/lib/registry.sh"
+  # When no alias was given, preserve the slug's EXISTING registered alias on a
+  # redeploy (so re-running deploy doesn't silently rename it to the slug); only
+  # fall back to the slug for a brand-new app.
+  if [ -z "$APP_ALIAS" ]; then
+    APP_ALIAS="$(get_app_alias "$SLUG")"
+    [ -z "$APP_ALIAS" ] && APP_ALIAS="$SLUG"
+  fi
+  if ! claim_alias "$SLUG" "$APP_ALIAS"; then
+    echo "  ERROR: alias '${APP_ALIAS}' is already used by another app. Pick a unique --alias." >&2
+    exit 1
+  fi
+fi
+
+# Banner: make it explicit which app this run targets (esp. now that the picker
+# can change it). Default app shows alias+slug as "default".
+info "$(t deploying_app "${APP_ALIAS:-default}" "${SLUG:-default}")"
+
+if [ "$AUTO_YES" = "1" ]; then
+  if [ ! -f "$DEPLOY_CONFIG" ]; then
+    echo "  ERROR: --yes requires a previous deployment config (${DEPLOY_CONFIG})." >&2
+    echo "  Run once interactively first (for app '${SLUG:-default}'), then use --yes." >&2
+    exit 1
+  fi
+  # Load all saved config values as env vars
+  set -a
+  # shellcheck source=/dev/null
+  source "$DEPLOY_CONFIG"
+  set +a
+fi
+
+# (colors, pick(), language selection, and the i18n L[]/t/step/info/warn/err
+# helpers are all defined earlier — before slug resolution — so select_app() is
+# localized. Nothing to redefine here.)
 
 # Drain any pre-typed input so a stray Enter held over from the previous prompt
 # can't auto-accept the next one. Critical for confirm prompts (region, WAF,
@@ -1115,6 +1207,11 @@ info "OAuth: ${OAUTH_ENDPOINT}"
 # 设置 OAuth Lambda
 OAUTH_FN=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`OAuthFunctionName`].OutputValue' --output text 2>/dev/null || echo "")
+# CMK ARN for user token secrets. The env update below REPLACES the whole Lambda
+# env, so this must be re-threaded every deploy or the migration loop would lose
+# USER_SECRET_KMS_KEY_ARN (silently reverting to no-op key swaps).
+USER_SECRET_KMS_KEY_ARN=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region $REGION \
+  --query 'Stacks[0].Outputs[?OutputKey==`UserSecretKmsKeyArn`].OutputValue' --output text 2>/dev/null || echo "")
 STATE_SECRET_VAL=$(aws ssm get-parameter --name "$STATE_PARAM" --region $REGION --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || echo 'fallback')
 OAUTH_SECRET_VAL=$(aws ssm get-parameter --name "$OAUTH_SECRET_PARAM" --region $REGION --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || echo 'fallback')
 
@@ -1151,6 +1248,7 @@ if [ -n "$OAUTH_FN" ] && [ -n "$OAUTH_ENDPOINT" ]; then
     OAUTH_CLIENT_ID="$OAUTH_CLIENT_ID" \
     CODE_TABLE="$CODE_TABLE" \
     OPENID_TABLE="$OPENID_TABLE" \
+    USER_SECRET_KMS_KEY_ARN="$USER_SECRET_KMS_KEY_ARN" \
     python3 -c '
 import json, os
 # update-function-configuration REPLACES the whole env, so every per-slug value
@@ -1167,6 +1265,10 @@ vars = {
   "CODE_TABLE": os.environ["CODE_TABLE"],
   "OPENID_TABLE": os.environ["OPENID_TABLE"],
 }
+# CMK ARN for user token secrets. Empty (key output missing) keeps pre-CMK
+# behavior — CreateSecret omits KmsKeyId and the refresh loop skips key swaps.
+if os.environ.get("USER_SECRET_KMS_KEY_ARN"):
+  vars["USER_SECRET_KMS_KEY_ARN"] = os.environ["USER_SECRET_KMS_KEY_ARN"]
 # ALLOWED_DOMAINS = the custom domain (if any) + any extra OAuth redirect hosts
 # (for non-loopback clients), comma-joined. Emitted unconditionally so the value
 # is explicit. See docs/connect-mcp-clients.

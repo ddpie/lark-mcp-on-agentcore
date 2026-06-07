@@ -100,6 +100,15 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         "Ref": "OAuthFunction814F9D6D",
       },
     },
+    "UserSecretKmsKeyArn": {
+      "Description": "CMK encrypting user token secrets; deploy.sh re-threads it into the OAuth Lambda env",
+      "Value": {
+        "Fn::GetAtt": [
+          "UserSecretKeyC2EEB9AF",
+          "Arn",
+        ],
+      },
+    },
   },
   "Parameters": {
     "BootstrapVersion": {
@@ -237,6 +246,47 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "MetricName": "AuthFail",
             "MetricNamespace": "LarkMcpOnAgentCore",
             "MetricValue": "1",
+          },
+        ],
+      },
+      "Type": "AWS::Logs::MetricFilter",
+    },
+    "CmkStragglersAlarm50FAF29F": {
+      "Properties": {
+        "AlarmActions": [
+          {
+            "Ref": "AlarmTopicD01E77F9",
+          },
+        ],
+        "AlarmName": "用户密钥未迁移到 CMK",
+        "ComparisonOperator": "GreaterThanThreshold",
+        "EvaluationPeriods": 4,
+        "MetricName": "CmkStragglers",
+        "Namespace": "LarkMcpOnAgentCore",
+        "Period": 1800,
+        "Statistic": "Maximum",
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+        "Threshold": 0,
+        "TreatMissingData": "notBreaching",
+      },
+      "Type": "AWS::CloudWatch::Alarm",
+    },
+    "CmkStragglersFilterB30D2023": {
+      "Properties": {
+        "FilterPattern": "{ ($.event = "refresh_cycle") && ($.stragglers = "*") }",
+        "LogGroupName": {
+          "Ref": "OAuthLogGroupF9A7E869",
+        },
+        "MetricTransformations": [
+          {
+            "MetricName": "CmkStragglers",
+            "MetricNamespace": "LarkMcpOnAgentCore",
+            "MetricValue": "$.stragglers",
           },
         ],
       },
@@ -533,6 +583,19 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
               "Action": "secretsmanager:*",
               "Effect": "Deny",
               "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/users/*/*",
+            },
+            {
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "UserSecretKeyC2EEB9AF",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "ssm:GetParameter",
@@ -2045,7 +2108,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "a25c84ee2b079e2986b0873461c103bfa43d81269207badbb5ed8819da644015.zip",
+          "S3Key": "ab77759528c34aff242fd894472d7ce85ad0ab5503b1807d439eb898087a485f.zip",
         },
         "Environment": {
           "Variables": {
@@ -2063,6 +2126,12 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             },
             "SECRET_PREFIX": "lark-mcp-on-agentcore/users",
             "STATE_SECRET_PARAM": "/lark-mcp-on-agentcore/state-secret",
+            "USER_SECRET_KMS_KEY_ARN": {
+              "Fn::GetAtt": [
+                "UserSecretKeyC2EEB9AF",
+                "Arn",
+              ],
+            },
           },
         },
         "FunctionName": "TestOAuthStack-oauth",
@@ -2164,6 +2233,8 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
                 "secretsmanager:DeleteSecret",
                 "secretsmanager:RestoreSecret",
                 "secretsmanager:TagResource",
+                "secretsmanager:DescribeSecret",
+                "secretsmanager:UpdateSecret",
               ],
               "Effect": "Allow",
               "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/users/*",
@@ -2172,6 +2243,21 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
               "Action": "secretsmanager:*",
               "Effect": "Deny",
               "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/users/*/*",
+            },
+            {
+              "Action": [
+                "kms:Encrypt",
+                "kms:Decrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "UserSecretKeyC2EEB9AF",
+                  "Arn",
+                ],
+              },
             },
             {
               "Action": "secretsmanager:ListSecrets",
@@ -2303,7 +2389,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
           "Fn::Join": [
             "",
             [
-              "{"widgets":[{"type":"text","width":24,"height":1,"x":0,"y":0,"properties":{"markdown":"## 告警状态"}},{"type":"alarm","width":24,"height":3,"x":0,"y":1,"properties":{"title":"告警状态","alarms":["arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 丢失 (刷新已消耗但未存储)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 刷新失败","arn:aws:cloudwatch:us-west-2:123456789012:alarm:AgentCore 上游 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:MCP 延迟 P95 >10s","arn:aws:cloudwatch:us-west-2:123456789012:alarm:飞书未授权突增","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 并发过高 (%)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 被限流","arn:aws:cloudwatch:us-west-2:123456789012:alarm:API Gateway 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:OAuth Lambda 错误","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Middleware Lambda 错误"]}},{"type":"text","width":24,"height":1,"x":0,"y":4,"properties":{"markdown":"## MCP 请求量"}},{"type":"metric","width":8,"height":6,"x":0,"y":5,"properties":{"view":"timeSeries","title":"MCP 请求量","region":"",
+              "{"widgets":[{"type":"text","width":24,"height":1,"x":0,"y":0,"properties":{"markdown":"## 告警状态"}},{"type":"alarm","width":24,"height":3,"x":0,"y":1,"properties":{"title":"告警状态","alarms":["arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 丢失 (刷新已消耗但未存储)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 刷新失败","arn:aws:cloudwatch:us-west-2:123456789012:alarm:AgentCore 上游 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:MCP 延迟 P95 >10s","arn:aws:cloudwatch:us-west-2:123456789012:alarm:飞书未授权突增","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 并发过高 (%)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 被限流","arn:aws:cloudwatch:us-west-2:123456789012:alarm:API Gateway 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:OAuth Lambda 错误","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Middleware Lambda 错误","arn:aws:cloudwatch:us-west-2:123456789012:alarm:用户密钥未迁移到 CMK"]}},{"type":"text","width":24,"height":1,"x":0,"y":4,"properties":{"markdown":"## MCP 请求量"}},{"type":"metric","width":8,"height":6,"x":0,"y":5,"properties":{"view":"timeSeries","title":"MCP 请求量","region":"",
               {
                 "Ref": "AWS::Region",
               },
@@ -2603,6 +2689,45 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
         },
       },
       "Type": "AWS::Lambda::Permission",
+    },
+    "UserSecretKeyC2EEB9AF": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "Description": "lark-mcp-on-agentcore user token secret encryption (default)",
+        "EnableKeyRotation": true,
+        "KeyPolicy": {
+          "Statement": [
+            {
+              "Action": "kms:*",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::123456789012:root",
+                    ],
+                  ],
+                },
+              },
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "Tags": [
+          {
+            "Key": "project",
+            "Value": "lark-mcp-on-agentcore",
+          },
+        ],
+      },
+      "Type": "AWS::KMS::Key",
+      "UpdateReplacePolicy": "Retain",
     },
   },
   "Rules": {

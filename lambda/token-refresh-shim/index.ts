@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual, createHash } from 'crypto';
-import { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand, CreateSecretCommand, ListSecretsCommand, DeleteSecretCommand, RestoreSecretCommand } from '@aws-sdk/client-secrets-manager';
+import { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand, CreateSecretCommand, ListSecretsCommand, DeleteSecretCommand, RestoreSecretCommand, DescribeSecretCommand, UpdateSecretCommand } from '@aws-sdk/client-secrets-manager';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { storeCode, retrieveAndDeleteCode } from './dynamodb-codes';
 import { storeOpenIdMapping, getOpenIdMapping } from './dynamodb-openid';
@@ -13,6 +13,11 @@ const FEISHU_REFRESH_URL = "https://open.feishu.cn/open-apis/authen/v1/oidc/refr
 const CALLBACK_URL_ENV = process.env.CALLBACK_URL || '';
 const SECRET_PREFIX = process.env.SECRET_PREFIX || "lark-mcp-on-agentcore/users";
 const APP_SECRET_ID = process.env.APP_SECRET_ID || "lark-mcp-on-agentcore/feishu-app";
+// Customer-managed KMS key (CMK) for user token secrets. Set by CDK/deploy.sh.
+// Empty = legacy behavior (AWS-managed `aws/secretsmanager` key): CreateSecret
+// omits KmsKeyId and the refresh loop performs no key-swap migration, so an
+// unconfigured deployment is byte-compatible with the pre-CMK behavior.
+const USER_SECRET_KMS_KEY_ARN = process.env.USER_SECRET_KMS_KEY_ARN || '';
 const STATE_SECRET_PARAM = process.env.STATE_SECRET_PARAM || '/lark-mcp-on-agentcore/state-secret';
 const OAUTH_CLIENT_SECRET = process.env.OAUTH_CLIENT_SECRET!;
 const FEISHU_SCOPES = process.env.FEISHU_SCOPES || '';
@@ -252,7 +257,16 @@ async function storeToken(userId: string, data: { access_token: string; refresh_
   });
   try { await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value })); return false; }
   catch (e: any) {
-    if (e.name === "ResourceNotFoundException") { await sm.send(new CreateSecretCommand({ Name: secretId, SecretString: value, Tags: PROJECT_TAGS })); return true; }
+    if (e.name === "ResourceNotFoundException") {
+      // New secrets are created directly on the CMK so they never need migrating.
+      // KmsKeyId is a create-time-only attribute; omitting it (empty env) falls
+      // back to the AWS-managed key, matching pre-CMK behavior.
+      await sm.send(new CreateSecretCommand({
+        Name: secretId, SecretString: value, Tags: PROJECT_TAGS,
+        ...(USER_SECRET_KMS_KEY_ARN ? { KmsKeyId: USER_SECRET_KMS_KEY_ARN } : {}),
+      }));
+      return true;
+    }
     if (isPendingDeletionError(e)) {
       await sm.send(new RestoreSecretCommand({ SecretId: secretId }));
       await sm.send(new PutSecretValueCommand({ SecretId: secretId, SecretString: value }));
@@ -290,6 +304,51 @@ async function preflightWritable(secretId: string, userId: string): Promise<bool
   }
 }
 
+
+// CMK migration (resident invariant, not a one-shot): no user token secret should
+// ever stay on a key other than this stack's CMK. The KMS key is a create-time
+// attribute — PutSecretValue does NOT change it — so existing secrets must be
+// migrated explicitly via UpdateSecret, which re-encrypts the AWSCURRENT/PENDING/
+// PREVIOUS versions in-place with zero downtime (the token value is untouched).
+// Returns:
+//   'current'  — already on the CMK, nothing to do (not a straggler)
+//   'swapped'  — was off the CMK; UpdateSecret ran AND a re-Describe confirmed the
+//                key actually changed (not a straggler)
+//   'stuck'    — UpdateSecret returned OK but a re-Describe shows the key did NOT
+//                change. This is the silent missing-kms:Encrypt case (AWS documented:
+//                without Encrypt, SM skips re-encryption and returns success anyway).
+//                Counts as a straggler so the canary surfaces the misconfig.
+//   'failed'   — Describe/Update threw (transient/throttle/misconfig). Token left
+//                untouched on its old key, retried next cycle. A straggler. We NEVER
+//                delete on a key-swap failure: UpdateSecret is a control-plane API
+//                whose errors do not mean the token is invalid (blocker-fix).
+// When no CMK is configured (empty env) this is a no-op ('current'), preserving
+// pre-CMK behavior. The re-Describe doubles DescribeSecret calls for a secret being
+// migrated, but only while it is off-CMK (transient), and is what makes `stragglers`
+// a trustworthy convergence/Encrypt-permission canary instead of a churn counter.
+type KeySwapResult = 'current' | 'swapped' | 'stuck' | 'failed';
+async function ensureSecretOnCmk(secretId: string, userId: string): Promise<KeySwapResult> {
+  if (!USER_SECRET_KMS_KEY_ARN) return 'current';
+  try {
+    const desc = await sm.send(new DescribeSecretCommand({ SecretId: secretId }));
+    if (desc.KmsKeyId === USER_SECRET_KMS_KEY_ARN) return 'current';
+    // Only KmsKeyId is sent — no SecretString — so the token value is never touched
+    // and no version quota is consumed; SM re-encrypts the current version in place.
+    await sm.send(new UpdateSecretCommand({ SecretId: secretId, KmsKeyId: USER_SECRET_KMS_KEY_ARN }));
+    // Re-confirm: a missing kms:Encrypt makes UpdateSecret a silent no-op, so trusting
+    // its success would mask the misconfig. Verify the key really moved.
+    const after = await sm.send(new DescribeSecretCommand({ SecretId: secretId }));
+    if (after.KmsKeyId === USER_SECRET_KMS_KEY_ARN) {
+      log('INFO', 'user_secret_key_swapped', { userIdHash: hashUserId(userId) });
+      return 'swapped';
+    }
+    log('WARN', 'key_swap_silent_noop', { userIdHash: hashUserId(userId) });
+    return 'stuck';
+  } catch (e: any) {
+    log('WARN', 'key_swap_failed', { userIdHash: hashUserId(userId), error: e.message, name: e.name });
+    return 'failed';
+  }
+}
 
 // Multi-app isolation (Killer Fix #3): the Secrets Manager `name` filter is a
 // PREFIX match, not exact, so filtering by `SECRET_PREFIX` alone also matches a
@@ -362,10 +421,25 @@ async function handle(event: LambdaEvent) {
     const secrets = await listAllUserSecrets();
     const errors: Array<{ userIdHash: string; phase: string; error: string }> = [];
     let refreshed = 0, failed = 0, skipped = 0;
+    // CMK migration counters (independent of refresh outcome to avoid polluting
+    // RefreshFailedAlarm). `stragglers` is the convergence canary: it counts secrets
+    // confirmed STILL off the CMK after this cycle (swap failed, or swap was a silent
+    // no-op from a missing kms:Encrypt). A successfully-confirmed swap is NOT a
+    // straggler, so a healthy migration cycle does not false-page; stragglers only
+    // stays > 0 when something is genuinely stuck.
+    let keySwapped = 0, keySwapFailed = 0, stragglers = 0;
 
     const CONCURRENCY = 5;
     async function refreshUser(name: string) {
       const userId = name.replace(`${SECRET_PREFIX}/`, "");
+
+      // Enforce the CMK invariant FIRST — before the TTL early-return below, or a
+      // not-yet-expiring token (the majority) would never get migrated.
+      const swap = await ensureSecretOnCmk(name, userId);
+      if (swap === 'swapped') keySwapped++;            // migrated AND confirmed — not a straggler
+      else if (swap === 'failed') { keySwapFailed++; stragglers++; }
+      else if (swap === 'stuck') { keySwapFailed++; stragglers++; }  // silent Encrypt no-op
+
       let stored: StoredToken | null;
       try {
         stored = await getToken(userId);
@@ -452,9 +526,9 @@ async function handle(event: LambdaEvent) {
       await Promise.all(secrets.slice(i, i + CONCURRENCY).map(refreshUser));
     }
 
-    log('INFO', 'refresh_cycle', { refreshed, failed, skipped, total: secrets.length });
+    log('INFO', 'refresh_cycle', { refreshed, failed, skipped, total: secrets.length, keySwapped, keySwapFailed, stragglers });
 
-    return { statusCode: 200, body: JSON.stringify({ refreshed, failed, skipped, total: secrets.length, errors }) };
+    return { statusCode: 200, body: JSON.stringify({ refreshed, failed, skipped, total: secrets.length, keySwapped, keySwapFailed, stragglers, errors }) };
   }
 
   const path = event.path || event.requestContext?.http?.path || event.rawPath || "/";
