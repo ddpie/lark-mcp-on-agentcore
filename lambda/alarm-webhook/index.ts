@@ -7,6 +7,9 @@ interface SNSEvent { Records: SNSRecord[] }
 const WEBHOOK_URL = process.env.FEISHU_WEBHOOK_URL || '';
 const WEBHOOK_SECRET = process.env.FEISHU_WEBHOOK_SECRET || '';
 const WEBHOOK_KEYWORD = process.env.FEISHU_WEBHOOK_KEYWORD || '';
+// Per-app display name (empty for the default app). Shown on the card so a shared
+// alert channel across multiple apps can tell which app fired.
+const APP_ALIAS = process.env.APP_ALIAS || '';
 const LANG = process.env.DEPLOY_LANG || 'en';
 const t = i18n.alarm[LANG as keyof typeof i18n.alarm] || i18n.alarm.en;
 
@@ -39,9 +42,10 @@ export async function handler(event: SNSEvent): Promise<void> {
 
     const isAlarm = alarm.NewStateValue === 'ALARM';
     const keyword = WEBHOOK_KEYWORD ? `[${WEBHOOK_KEYWORD}] ` : '';
+    const appTag = APP_ALIAS ? `[${APP_ALIAS}] ` : '';
     const title = isAlarm
-      ? `🔴 ${keyword}${t.alarm}: ${alarm.AlarmName}`
-      : `✅ ${keyword}${t.ok}: ${alarm.AlarmName}`;
+      ? `🔴 ${keyword}${appTag}${t.alarm}: ${alarm.AlarmName}`
+      : `✅ ${keyword}${appTag}${t.ok}: ${alarm.AlarmName}`;
 
     const card: Record<string, unknown> = {
       msg_type: 'interactive',

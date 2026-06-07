@@ -132,6 +132,18 @@ A: Yes. Set `CUSTOM_DOMAIN=mcp.company.com` or follow the deploy script prompt.
 
 A: Yes. Set `LARKSUITE_CLI_BRAND=lark` during deployment.
 
+**Q: Can one AWS account host multiple Feishu apps?**
+
+A: Yes. Deploy each app under a short slug: `./scripts/deploy.sh --app <slug> --alias "<name>"`, then operate it with `./scripts/ops.sh --app <slug> <cmd>` and tear it down with `./scripts/teardown.sh --app <slug>`. The reserved default app (no `--app`) keeps the original byte-identical resource names. Apps are fully isolated (credentials, tokens, signing keys, per-app KMS key) and the WAF is shared per region. See `docs/operations_en.md` (Multi-app) and `docs/security_en.md` (Multi-App Isolation).
+
+**Q: How are user tokens encrypted at rest? Can I use my own KMS key?**
+
+A: User Feishu tokens in Secrets Manager are encrypted with a **per-app customer-managed KMS key (CMK)** created automatically at deploy — not the AWS-managed default key. Decrypt is granted only to that app's two Lambda roles, so a principal with `GetSecretValue` but no KMS access reads ciphertext. Existing secrets migrate onto the CMK transparently via the 30-min refresh loop (zero downtime, never destructive). No BYOK action is needed; it is on by default. See `docs/security_en.md` (Token Storage at Rest).
+
+**Q: Received a CmkStragglers alarm — what does it mean?**
+
+A: It means some user token secrets are still not on the per-app CMK after a refresh cycle. It is a migration convergence canary: healthy migration drives it to 0 within a few 30-min cycles. If it stays > 0, the most likely cause is a missing `kms:Encrypt` grant on the OAuth Lambda role (AWS silently skips re-encryption) — check the role's KMS permissions. It is never destructive: a stuck key-swap only retries, it never deletes a token.
+
 **Q: Do I need to re-enter all config on re-deploy?**
 
 A: No. All choices (region, language, domain, WAF, log retention, Feishu credentials, webhook URL) are remembered. Just press Enter to keep previous selections.

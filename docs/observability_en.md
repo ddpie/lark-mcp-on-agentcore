@@ -4,9 +4,9 @@
 
 ## Overview
 
-The system automatically creates comprehensive observability infrastructure during deployment: 10 CloudWatch alarms, 14 log MetricFilters (5 alarm-driving + 9 dashboard-only; the other 5 alarms use Lambda built-in metrics or `AWS/ApiGateway` 5XXError), a multi-section Dashboard, and optional Feishu group webhook alarm notifications. All observability data is designed around two core questions: **Can users access the service normally?** and **Are any tokens being lost?**
+The system automatically creates comprehensive observability infrastructure during deployment: 11 CloudWatch alarms, 15 log MetricFilters (6 alarm-driving + 9 dashboard-only; the other 5 alarms use Lambda built-in metrics or `AWS/ApiGateway` 5XXError), a multi-section Dashboard, and optional Feishu group webhook alarm notifications. All observability data is designed around two core questions: **Can users access the service normally?** and **Are any tokens being lost?**
 
-## Alarms (10)
+## Alarms (11)
 
 All alarms connect to a single SNS Topic (`lark-mcp-on-agentcore-alarms`) that can simultaneously subscribe email, Feishu webhooks, PagerDuty, etc.
 
@@ -22,12 +22,13 @@ All alarms connect to a single SNS Topic (`lark-mcp-on-agentcore-alarms`) that c
 | 8 | Throttles | Lambda Throttles (Middleware) | >= 1 | 300s | 1 | Throttling has occurred — user requests are being rejected |
 | 9 | ApiGateway5xx | AWS/ApiGateway 5XXError | >= 5 | 300s | 2 | Gateway-level server errors (not Lambda errors; e.g., integration timeouts) |
 | 10 | AgentCore5xx | MetricFilter: `agentcore_5xx` | >= 3 | 300s | 1 | AgentCore upstream returned 5xx — container issue or AWS service failure |
+| 11 | CmkStragglers | MetricFilter: `refresh_cycle` ($.stragglers) | > 0 | 1800s | 4 | User token secrets still **not** on the per-app CMK after a refresh cycle. Healthy migration converges to 0; staying > 0 signals a stuck/misconfigured key (e.g. missing `kms:Encrypt`). Long period + 4 eval periods so the normal post-deploy convergence window does not page |
 
 Alarms treat missing data as not breaching (`treatMissingData: NOT_BREACHING`), since absence of data points during low-traffic periods is expected behavior.
 
-## MetricFilters (14)
+## MetricFilters (15)
 
-All MetricFilters publish to namespace `LarkMcpOnAgentCore`. 5 of them drive alarms (marked "Alarm"); the other 9 are dashboard-only. **Note:** 5 additional alarms (OAuthErrors / MiddlewareErrors / Concurrency / Throttles / ApiGateway5xx) consume Lambda built-in metrics or the `AWS/ApiGateway` namespace and do **not** depend on a MetricFilter.
+All MetricFilters publish to namespace `LarkMcpOnAgentCore` (per-app: `LarkMcpOnAgentCore/<slug>`). 6 of them drive alarms (marked "Alarm"); the other 9 are dashboard-only. **Note:** 5 additional alarms (OAuthErrors / MiddlewareErrors / Concurrency / Throttles / ApiGateway5xx) consume Lambda built-in metrics or the `AWS/ApiGateway` namespace and do **not** depend on a MetricFilter.
 
 **Alarm-to-MetricFilter coupling:** McpLatencyAlarm and FeishuNotAuthAlarm reference their metrics by `namespace + metricName` strings (no explicit CDK dependency), whereas the other alarms call `filter.metric(...)` directly. If the corresponding MetricFilter is renamed or deleted without updating the alarm, the alarm will silently go blind — CloudFormation will not error, and CloudWatch will simply show Insufficient Data. When renaming McpLatencyFilter or FeishuNotAuthorizedFilter, always sync the alarm references.
 
@@ -47,13 +48,14 @@ All MetricFilters publish to namespace `LarkMcpOnAgentCore`. 5 of them drive ala
 | 12 | NewUserFilter | OAuth Lambda | `$.event = "new_user_authorized"` | NewUserAuthorized (count) | Dashboard | New user growth |
 | 13 | ActiveUsersFilter | OAuth Lambda | `$.event = "refresh_cycle"` | ActiveUsers ($.total value) | Dashboard | Active user count |
 | 14 | FeishuSlowLatencyFilter | OAuth Lambda | `$.event = "feishu_slow"` | FeishuSlowLatencyMs ($.durationMs) | Dashboard | Feishu slow call latency (percentiles) |
+| 15 | CmkStragglersFilter | OAuth Lambda | `$.event = "refresh_cycle" AND $.stragglers exists` | CmkStragglers ($.stragglers value) | Alarm | User secrets not yet on the CMK (migration canary) |
 
 ## Dashboard Sections
 
 Dashboard name: `lark-mcp-on-agentcore`, auto-created, contains 5 sections:
 
 ### 1. Alarm Status Overview
-- AlarmStatusWidget showing real-time status of all 10 alarms (green/yellow/red)
+- AlarmStatusWidget showing real-time status of all 11 alarms (green/yellow/red)
 - At-a-glance system health assessment
 
 ### 2. MCP Traffic
@@ -92,6 +94,8 @@ Three presets available during deploy, selected via arrow keys:
 | throttles | 5 | 1 | 1 |
 | apigw_5xx | 20 | 5 | 2 |
 | upstream_5xx | 10 | 3 | 1 |
+
+(`cmk_stragglers` is not preset-tunable — it is a fixed `> 0` convergence canary defined only in `config/alarm-thresholds.json`.)
 
 Preset definitions: `config/alarm-presets.json`
 
@@ -146,7 +150,13 @@ Both methods can be enabled simultaneously. Configuration persists in `.local/de
 Runs every 30 minutes (EventBridge rate trigger), auto-renews when access_token has less than half its TTL remaining. After completion, emits structured log:
 
 ```json
-{"event": "refresh_cycle", "refreshed": 5, "failed": 0, "skipped": 1, "total": 12}
+{"event": "refresh_cycle", "refreshed": 5, "failed": 0, "skipped": 1, "total": 12, "keySwapped": 0, "keySwapFailed": 0, "stragglers": 0}
 ```
 
-The `total` field is published as the ActiveUsers metric on the Dashboard.
+The `total` field is published as the ActiveUsers metric on the Dashboard. `keySwapped` / `keySwapFailed` / `stragglers` track the per-app CMK migration: `keySwapped` is secrets migrated and confirmed this cycle, `stragglers` (published as the CmkStragglers metric) is secrets still off the CMK — it converges to 0 once every secret is migrated.
+
+## Multi-App Observability
+
+Per-app deployments (`--app <slug>`) get their **own** isolated observability: a slug-suffixed metric namespace `LarkMcpOnAgentCore/<slug>`, slug-suffixed alarm names and `ApiName` dimensions, and a per-app dashboard `lark-mcp-on-agentcore-<slug>`. This keeps one app's alarms from firing on another's (or the summed) metrics.
+
+An **optional cross-app roll-up dashboard** (`lark-mcp-on-agentcore-fleet`) can be deployed with `DEPLOY_ROLLUP=1` (see `infra/lib/fleet-dashboard.ts`). It auto-discovers every app via CloudWatch `SEARCH()` expressions and owns no alarms or SNS topic, so deleting it never affects alerting — its lifecycle is fully decoupled from the per-app stacks.

@@ -103,8 +103,16 @@ checking the middleware and clients that parse them.
 
 ## Token & identity (where each secret lives)
 
-- User tokens: AWS Secrets Manager at `lark-mcp-on-agentcore/users/{userId}` (encrypted).
-- App secret: Secrets Manager at `lark-mcp-on-agentcore/feishu-app`.
+- User tokens: AWS Secrets Manager at `lark-mcp-on-agentcore/users/{userId}`
+  (`.../users/<slug>/{userId}` for a non-default app), encrypted with a **per-app
+  customer-managed KMS key (CMK)**. The OAuth Lambda gets the key ARN via
+  `USER_SECRET_KMS_KEY_ARN`; `CreateSecret` stamps it on new secrets and the refresh
+  loop migrates existing ones (`UpdateSecret`, zero-downtime, never destructive).
+  **deploy.sh must re-thread `USER_SECRET_KMS_KEY_ARN` on every deploy** (it replaces
+  the whole Lambda env) — it reads the `UserSecretKmsKeyArn` stack output. See
+  `docs/security_*.md` (Token Storage at Rest) and `invariants.md`.
+- App secret: Secrets Manager at `lark-mcp-on-agentcore/feishu-app`
+  (`feishu-app/<slug>` for a non-default app; slash-delimited for IAM isolation).
 - Signing key: SSM Parameter Store; domain-separated HMAC keys derived from it
   (`oauth-state-v1`, `mcp-token-v1`, `mcp-incr-auth-v1`, `mcp-dcr-client-v1`).
   `mcp-dcr-client-v1` signs the opaque `client_id` issued by `/register` (see

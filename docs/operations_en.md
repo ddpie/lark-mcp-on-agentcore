@@ -30,6 +30,7 @@ deploy.sh is an interactive deployment script handling the full flow from enviro
 
 **Configuration Collection (interactive):**
 1. Language selection (Chinese/English)
+1b. App selection (only when run with **no** `--app` at a TTY): pick the default app, an existing named app, or create a new one (prompts for slug + alias). Skipped when `--app`/`APP_SLUG`/`--yes` is set or stdin is not a TTY. See the **Multi-app** section below.
 2. Feishu App ID + App Secret (supports env vars `FEISHU_APP_ID`/`FEISHU_APP_SECRET`, detects and reuses existing credentials)
 3. Validates credentials against Feishu API
 4. Custom domain (optional)
@@ -244,3 +245,178 @@ npm run knip                       # Dead code / unused dependency detection
 ```bash
 ./scripts/teardown.sh              # Destroy everything (AgentCore Runtime + cross-region WAF + CDK stacks)
 ```
+
+## Multi-app (multiple Feishu apps)
+
+One AWS account + region can host **N independent Feishu apps** on this service.
+Each app is **slug-namespaced**: `deploy.sh` runs once per app and creates a fully
+isolated stack (its own Feishu-app secret, state-secret, DynamoDB tables, AgentCore
+Runtime, and CloudFront endpoint). Apps are selected by **endpoint** — a request that
+reaches app X's CloudFront domain is, by construction, for app X; there is no
+per-request app header and no MCP-token format change.
+
+The original single deployment is the reserved **default** app: run without `--app`
+and every physical resource name is **byte-identical** to today's (no suffix, no
+transform). Run `./scripts/upgrade.sh` and `./scripts/ops.sh`/`teardown.sh` without
+`--app` to operate on it.
+
+**Slug rules** (`scripts/lib/slug.sh`): `^[a-z][a-z0-9-]{0,18}[a-z0-9]$` — 1–20 chars,
+lowercase, no leading/trailing/double hyphen, no underscore/slash/uppercase. Reserved
+words are rejected: `default, users, feishu, feishu-app, state, state-secret, oauth,
+oauth-codes, openid, openid-map, alarms, app, admin, waf, runtime`.
+
+### Onboard a new app
+
+**Prerequisite:** create the Feishu app and grant its scopes in the
+[Feishu Open Platform](https://open.feishu.cn/app) console **first**. `deploy.sh`
+cannot create a Feishu app — it only associates and validates an existing App ID +
+App Secret.
+
+```bash
+./scripts/deploy.sh --app <slug> --alias "<display name>"
+```
+
+**Interactive alternative:** running `./scripts/deploy.sh` with **no** `--app` at an
+interactive terminal now shows an app picker first — choose the **default app**, an
+existing named app, or **➕ New app…** (which prompts for a slug + alias, validating
+both on the spot). The picker is fully localized (zh/en). It is skipped — and the
+default app used, exactly as before — whenever `--app`/`APP_SLUG` is given, `--yes` is
+passed, or stdin/stdout is not a TTY (e.g. the `curl | bash` install path or CI).
+`install.sh` also forwards `--app`/`--alias` through to `deploy.sh`.
+
+- `--alias` is a human-readable label (UTF-8; Chinese/spaces OK) shown in
+  `ops.sh list-apps`, dashboard titles, and alarm cards. It defaults to the slug.
+  The alias is **hard-unique** within the account+region: a collision aborts the
+  deploy **before any resource is created**.
+- Resolves all per-slug names from the slug: `lark-mcp-on-agentcore/feishu-app/<slug>`
+  secret, per-slug state-secret/oauth-client-secret SSM, `…-oauth-codes-<slug>` /
+  `…-openid-map-<slug>` tables, runtime `lark_mcp_on_agentcore_<slug>`, and a dedicated
+  CloudFront endpoint. The WAF stack is **shared** across all apps.
+
+**After deploy:** register the printed Redirect URL (`<OAuth endpoint>/callback`) in
+that app's Feishu console, then paste the printed MCP endpoint into your MCP client.
+
+### Operate one app
+
+```bash
+./scripts/ops.sh --app <slug> <cmd>   # status | list-users | revoke | refresh-all | logs | rotate-secret | destroy
+./scripts/ops.sh list-apps            # lists default + every named app as "alias (slug)"
+./scripts/ops.sh rename --app <slug> "<new alias>"   # change the alias (also updates the alarm card label)
+./scripts/ops.sh rebuild-registry     # rebuild .local/apps.json from AWS (after losing it / on a new machine)
+```
+
+Omit `--app` to target the default app. `--app` may go before or after the subcommand.
+
+**On the local registry (`.local/apps.json`).** The app registry is a local
+convenience **index** (slug → alias / region / endpoint / runtime). It powers
+`list-apps`, the `deploy.sh` app picker, `upgrade.sh --rest/--list`, and the hard
+alias-uniqueness check — but it is **not** the source of truth: every app's real
+state lives in AWS, named by slug. Losing it (it is gitignored, not committed) does
+**not** affect running apps, and per-app `ops.sh --app <slug>` still works if you
+know the slug. To restore the index — or to populate it on a fresh machine —
+`./scripts/ops.sh rebuild-registry` re-discovers every named app from its
+CloudFormation OAuth stack (`LarkMcpOnAgentCoreOAuth-<slug>`). The alias is recovered
+from the alarm-webhook Lambda's `APP_ALIAS` when a webhook was configured, otherwise
+it falls back to the slug (fix with `ops.sh rename`). Run it against the right region
+(`AWS_REGION=<region> ./scripts/ops.sh rebuild-registry`).
+
+### Upgrade the fleet
+
+Re-running `deploy.sh` **is** an upgrade: the content-addressed image is built once
+and each app's runtime repoints to the shared ECR tag (**build-once / repoint-N**).
+`upgrade.sh` orchestrates this over the registry:
+
+```bash
+./scripts/upgrade.sh --canary          # upgrade ONLY the default app, then verify
+./scripts/upgrade.sh --rest            # upgrade every named app in the registry
+./scripts/upgrade.sh --all             # canary (default) then --rest
+./scripts/upgrade.sh --rollback <slug> # repin <slug>'s endpoint to its previous runtime version
+./scripts/upgrade.sh --list            # show registered apps
+```
+
+**Why canary-first.** `--canary` upgrades only the default app and stops, so you
+bound the blast radius to one app before touching the fleet. "Verify" is
+`deploy.sh`'s built-in post-deploy check (OAuth metadata reachable + Runtime READY).
+Observe the default app, then run `--rest` (or use `--all` to chain both). `--rest`
+iterates the registry and **continues on failure** — one app's failed upgrade is
+logged and skipped, it does not halt the others, so a single bad app can't block the
+fleet. Re-run `--rest` after fixing it.
+
+**In-flight sessions.** An upgrade repoints the Runtime endpoint to a new version;
+existing MCP sessions keep running on their microVM until they idle out, and new
+sessions pick up the new version. No active session is killed mid-call.
+
+**Rollback.** `--rollback <slug>` repins the endpoint to the previous runtime
+*version* (image only) and prompts for an explicit `yes`. If no previous version
+exists, it tells you to use the full-rebuild path instead.
+
+> Image-only `--rollback` is safe **only if OAuth scopes did not change** between
+> versions. If the upgrade touched scopes, instead `git checkout <prev>` and
+> `./scripts/deploy.sh --app <slug> --yes`.
+
+### Tear down one app
+
+```bash
+./scripts/teardown.sh --app <slug>
+```
+
+Destroys that app's Runtime and CDK stacks. The **shared WAF is kept** while any
+other app still uses it. The `…-openid-map-<slug>` table has `RETAIN`, so it
+survives `cdk destroy` — you **must delete it manually before re-deploying the same
+slug**, or the redeploy fails with "table already exists":
+
+```bash
+aws dynamodb delete-table --table-name lark-mcp-on-agentcore-openid-map-<slug> --region <region>
+```
+
+### Cross-app roll-up dashboard (optional)
+
+Deploy with `DEPLOY_ROLLUP=1` to add a single read-only dashboard
+(`lark-mcp-on-agentcore-fleet`) that auto-discovers every app via CloudWatch
+`SEARCH()` expressions. It owns no alarms or SNS topic, so deleting it never affects
+alerting — its lifecycle is fully decoupled from the per-app stacks. See
+`infra/lib/fleet-dashboard.ts` and `docs/observability_en.md` (Multi-App Observability).
+
+```bash
+# Deploy / update the roll-up dashboard (one-off, not part of the normal deploy flow):
+cd infra && DEPLOY_ROLLUP=1 npx cdk deploy LarkMcpOnAgentCoreFleet --require-approval never
+```
+
+It is **not** part of `deploy.sh` by design (deploy.sh acts on one app per run; the
+roll-up is fleet-wide). `deploy.sh` therefore does not print its URL. Get it after
+deploy from the stack output, or open it directly (the dashboard name is fixed):
+
+```bash
+aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreFleet --region <region> \
+  --query 'Stacks[0].Outputs[?OutputKey==`FleetDashboardUrl`].OutputValue' --output text
+# Or directly:
+# https://console.aws.amazon.com/cloudwatch/home?region=<region>#dashboards:name=lark-mcp-on-agentcore-fleet
+```
+
+### Constraints / caveats
+
+- **Single account + region only** — no cross-account, no cross-region.
+- **Alias is hard-unique** within the account+region; pick another on collision.
+- **The default app's names never change** (default sentinel = empty slug, not the
+  literal `default`).
+- **The slug is immutable** — renaming a slug means CFN resource replacement and data
+  loss. Only the **alias** is changeable (via `ops.sh rename`).
+
+## User-token KMS migration (CMK)
+
+User token secrets are encrypted with a per-app customer-managed KMS key. New users
+land on the CMK immediately; existing secrets are migrated transparently by the 30-min
+refresh loop (`UpdateSecret` key-swap, zero downtime, **never destructive** — a failed
+swap only logs `key_swap_failed`, counts a straggler, and retries next cycle). No
+operator action is needed for the migration itself.
+
+What to watch:
+
+- **`CmkStragglers` alarm.** Fires when secrets stay off the CMK after a cycle. Healthy
+  migration converges to 0 within a few cycles. If it stays > 0, the most likely cause
+  is a missing `kms:Encrypt` grant on the OAuth Lambda role (AWS silently skips
+  re-encryption) — verify the role's KMS permissions.
+- **deploy.sh re-threads the key ARN automatically.** Because deploy.sh fully replaces
+  the OAuth Lambda env, it reads the `UserSecretKmsKeyArn` stack output and re-adds
+  `USER_SECRET_KMS_KEY_ARN` on every deploy. If you script Lambda env changes outside
+  deploy.sh, preserve that variable or migration silently no-ops.

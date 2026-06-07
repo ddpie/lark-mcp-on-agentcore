@@ -18,9 +18,11 @@ docker/
   tier1.json          28 个高频工具
   skills/             MCP 适配后的 Skill (从 lark-cli skills 转换，由 lark_get_skill 提供)
 infra/
-  lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront
+  lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront + 用户 Token KMS CMK
   lib/runtime-stack.ts  Docker 镜像 + IAM (含 SM 读权限)
   lib/waf-stack.ts    CloudFront-scope WAFv2 (us-east-1，可选)
+  lib/slug-names.ts   CDK 每应用名称解析器（与 scripts/lib/slug.sh 对应）
+  lib/fleet-dashboard.ts  可选的跨应用汇总 Dashboard（DEPLOY_ROLLUP=1）
 lambda/
   token-refresh-shim/ OAuth 流程 + Token 自动刷新 (preflight+retry)
                       __tests__/        单元测试 (vitest)
@@ -29,10 +31,14 @@ lambda/
   mcp-middleware/     Token 验证 + SigV4 代理 + 25s timeout
   alarm-webhook/      SNS → 飞书群 Webhook (消息卡片格式转换)
 scripts/
-  deploy.sh           交互式部署 (中/英双语，可选 WAF 跨区域 bootstrap)
+  deploy.sh           交互式部署 (中/英双语，可选 WAF 跨区域 bootstrap; --app <slug> 支持多应用)
   install.sh          一键安装 (中/英双语)
-  ops.sh              运维工具 (status/list-users/revoke/refresh-all/logs/rotate-secret/destroy)
-  teardown.sh         完整销毁 (Runtime + CDK + WAF 如启用 + 可选 user-token 清理)
+  ops.sh              运维工具 (status/list-users/list-apps/rename/revoke/refresh-all/logs/rotate-secret/destroy; --app <slug>)
+  teardown.sh         销毁单个应用 (Runtime + CDK + WAF-若为最后一个 + 可选 user-token 清理; --app <slug>)
+  upgrade.sh          多应用协同升级 (--canary / --rest / --all / --rollback <slug>)
+  lib/slug.sh         应用 slug → 资源名解析器 (deploy/ops/teardown/upgrade 共享 source)
+  lib/registry.sh     基于文件的应用注册表 + 别名原子唯一性 (.local/apps.json)
+  lib/__tests__/      slug.sh + registry.sh 的纯 shell 单元测试
   test.sh             统一测试入口 (unit / coverage / mutation / audit / e2e)
   test-e2e.sh         端到端测试 (OAuth + Runtime + /mcp + WAF 如启用)
   audit-tools.sh      工具目录结构性自检 (15 项断言, 含 catalog snapshot)

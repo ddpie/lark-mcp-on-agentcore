@@ -287,9 +287,17 @@ if ! confirm "${L[start_deploy]}"; then
   exit 0
 fi
 
-# Pass through --yes/-y if provided
+# Pass through deploy flags if provided. --app/--alias are forwarded so an operator
+# can target a specific Feishu app non-interactively; without them, deploy.sh's
+# interactive app picker handles selection (same TTY, so it works after exec).
 _deploy_args=()
+_prev=""
 for arg in "$@"; do
-  case "$arg" in --yes|-y) _deploy_args+=("$arg") ;; esac
+  case "$arg" in
+    --yes|-y) _deploy_args+=("$arg") ;;
+    --app|--alias) _deploy_args+=("$arg"); _prev="$arg" ;;
+    --app=*|--alias=*) _deploy_args+=("$arg") ;;
+    *) if [ "$_prev" = "--app" ] || [ "$_prev" = "--alias" ]; then _deploy_args+=("$arg"); fi; _prev="" ;;
+  esac
 done
 exec ./scripts/deploy.sh "${_deploy_args[@]+"${_deploy_args[@]}"}"

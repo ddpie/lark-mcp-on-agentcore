@@ -5,6 +5,11 @@
 
 interface SecretStore { [id: string]: string }
 let store: SecretStore = {};
+// Per-secret KMS key id, mirroring the real Secrets Manager `KmsKeyId` attribute.
+// Set at CreateSecret time and changeable only via UpdateSecret (NOT PutSecretValue,
+// which keeps the existing key — the exact property the CMK migration relies on).
+// Absent (undefined) models the AWS-managed `aws/secretsmanager` default key.
+let keyStore: { [id: string]: string } = {};
 // Secrets scheduled for deletion (RecoveryWindowInDays) — still present but
 // pending-deletion: PutSecretValue/CreateSecret fail until RestoreSecret clears the flag.
 let pendingDeletion: Set<string> = new Set();
@@ -18,6 +23,11 @@ let failGetMatch: { idMatch: string; err: { name: string; message: string } } | 
 let failCreateMatch: { nameMatch: string; err: { name: string; message: string } } | null = null;
 // Failure trigger for PUT that matches SecretId
 let failPutMatch: { idMatch: string; err: { name: string; message: string } } | null = null;
+// Failure trigger for UpdateSecret (the CMK key-swap) that matches SecretId.
+let failUpdateMatch: { idMatch: string; err: { name: string; message: string } } | null = null;
+// Models the silent missing-kms:Encrypt case: UpdateSecret returns success but does
+// NOT re-encrypt (key unchanged). Matched by SecretId substring.
+let silentNoopUpdateMatch: string | null = null;
 
 // DDB code store (for /token grant exchange)
 interface CodeRow { code: string; userId: string; codeChallenge: string; redirectUri: string; expiresAt: number }
@@ -35,6 +45,9 @@ let failOpenidPut: { name: string; message: string } | null = null;
 
 const reset = () => {
   store = {};
+  keyStore = {};
+  failUpdateMatch = null;
+  silentNoopUpdateMatch = null;
   pendingDeletion = new Set();
   listNames = [];
   failOpName = null;
@@ -57,6 +70,8 @@ class CreateSecretCommand { constructor(public input: any) {} }
 class ListSecretsCommand { constructor(public input: any) {} }
 class DeleteSecretCommand { constructor(public input: any) {} }
 class RestoreSecretCommand { constructor(public input: any) {} }
+class DescribeSecretCommand { constructor(public input: any) {} }
+class UpdateSecretCommand { constructor(public input: any) {} }
 
 class SecretsManagerClient {
   send(cmd: any): Promise<any> {
@@ -102,6 +117,42 @@ class SecretsManagerClient {
         return Promise.reject(err);
       }
       store[cmd.input.Name] = cmd.input.SecretString;
+      // CreateSecret is the ONLY way the KMS key is fixed at creation time. A new
+      // user secret with KmsKeyId lands directly on the CMK (no migration needed).
+      if (cmd.input.KmsKeyId) keyStore[cmd.input.Name] = cmd.input.KmsKeyId;
+      return Promise.resolve({ ARN: 'arn' });
+    }
+
+    if (cmd instanceof DescribeSecretCommand) {
+      const id = cmd.input.SecretId;
+      if (!(id in store)) {
+        const err: any = new Error('not found');
+        err.name = 'ResourceNotFoundException';
+        return Promise.reject(err);
+      }
+      // KmsKeyId is undefined for secrets on the AWS-managed default key.
+      return Promise.resolve({ Name: id, KmsKeyId: keyStore[id] });
+    }
+
+    if (cmd instanceof UpdateSecretCommand) {
+      const id = cmd.input.SecretId;
+      if (failUpdateMatch && id.includes(failUpdateMatch.idMatch)) {
+        const err: any = new Error(failUpdateMatch.err.message);
+        err.name = failUpdateMatch.err.name;
+        return Promise.reject(err);
+      }
+      if (!(id in store)) {
+        const err: any = new Error('not found');
+        err.name = 'ResourceNotFoundException';
+        return Promise.reject(err);
+      }
+      // Silent no-op: models a role missing kms:Encrypt — AWS returns success but
+      // does NOT re-encrypt, so the key is left unchanged.
+      const silentNoop = silentNoopUpdateMatch && id.includes(silentNoopUpdateMatch);
+      // UpdateSecret re-encrypts the current version under the new key in-place —
+      // the token value is untouched (the property the zero-downtime migration relies on).
+      if (cmd.input.KmsKeyId && !silentNoop) keyStore[id] = cmd.input.KmsKeyId;
+      if (cmd.input.SecretString !== undefined) store[id] = cmd.input.SecretString;
       return Promise.resolve({ ARN: 'arn' });
     }
 
@@ -121,7 +172,16 @@ class SecretsManagerClient {
     }
 
     if (cmd instanceof ListSecretsCommand) {
-      return Promise.resolve({ SecretList: listNames.map(n => ({ Name: n })) });
+      // Model the real Secrets Manager `name` filter: it is a PREFIX match, not
+      // exact. Returning only exact matches would hide the cross-app bleed that
+      // Killer Fix #3's [^/]+ screen exists to defend against.
+      const filters = cmd.input?.Filters as Array<{ Key: string; Values: string[] }> | undefined;
+      const nameFilter = filters?.find(f => f.Key === 'name');
+      const prefixes = nameFilter?.Values ?? [];
+      const matched = prefixes.length === 0
+        ? listNames
+        : listNames.filter(n => prefixes.some(p => n.startsWith(p)));
+      return Promise.resolve({ SecretList: matched.map(n => ({ Name: n })) });
     }
 
     if (cmd instanceof DeleteSecretCommand) {
@@ -173,7 +233,13 @@ export const mockClient = {
     ListSecretsCommand,
     DeleteSecretCommand,
     RestoreSecretCommand,
+    DescribeSecretCommand,
+    UpdateSecretCommand,
     __set: (id: string, value: string) => { store[id] = value; },
+    __setKey: (id: string, keyId: string | undefined) => {
+      if (keyId === undefined) delete keyStore[id]; else keyStore[id] = keyId;
+    },
+    __getKey: (id: string) => keyStore[id],
     __get: (id: string) => store[id],
     __isPendingDeletion: (id: string) => pendingDeletion.has(id),
     __schedulePendingDeletion: (id: string) => { pendingDeletion.add(id); },
@@ -183,6 +249,8 @@ export const mockClient = {
     __failGetMatching: (idMatch: string, err: { name: string; message: string }) => { failGetMatch = { idMatch, err }; },
     __failCreateMatching: (nameMatch: string, err: { name: string; message: string }) => { failCreateMatch = { nameMatch, err }; },
     __failPutMatching: (idMatch: string, err: { name: string; message: string }) => { failPutMatch = { idMatch, err }; },
+    __failUpdateMatching: (idMatch: string, err: { name: string; message: string }) => { failUpdateMatch = { idMatch, err }; },
+    __silentNoopUpdateMatching: (idMatch: string) => { silentNoopUpdateMatch = idMatch; },
   },
   dynamodb: {
     DynamoDBDocumentClient: {

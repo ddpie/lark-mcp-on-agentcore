@@ -262,16 +262,33 @@ describe('middleware boundary — token decode_error branch', () => {
 
 describe('middleware boundary — agentcore response logging', () => {
   it('slow response (>5s but success) logs agentcore_slow', async () => {
-    const realNow = Date.now;
-    let calls = 0;
-    vi.spyOn(Date, 'now').mockImplementation(() => {
-      calls++;
-      // First calls are token verification / SSM load; the proxy uses Date.now() before and after fetch
-      // Return a value 6000ms apart for the fetch timing pair
-      return realNow() + (calls > 3 ? 6000 : 0);
+    // Drive a fake clock that jumps +6000ms WHEN fetch is invoked, so the
+    // proxy's before/after Date.now() pair straddles the jump and durationMs>5000
+    // deterministically (the old version keyed on a fragile call-count and never
+    // actually hit the branch — a false-green this also fixes).
+    const realNow = Date.now.bind(Date);
+    let clockOffset = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => realNow() + clockOffset);
+    const ev = authedEvent();           // build token under the unshifted clock
+    fetchResponse = { status: 200, body: '{}' };
+    const realFetch = global.fetch as any;
+    global.fetch = vi.fn(async (url: any, init: any) => {
+      clockOffset += 6000;              // advance the clock across the fetch
+      return realFetch(url, init);
+    }) as any;
+
+    const logs: any[] = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((line: any) => {
+      try { logs.push(JSON.parse(line)); } catch { /* non-JSON */ }
     });
-    const r = await call(authedEvent());
+
+    const r = await call(ev);
     expect(r.statusCode).toBe(200);
+    // The slow-path log must actually have fired (the assertion the old test lacked).
+    expect(logs.some(l => l.event === 'agentcore_slow' && l.durationMs >= 5000)).toBe(true);
+
+    logSpy.mockRestore();
+    global.fetch = realFetch;
     vi.restoreAllMocks();
   });
 });
