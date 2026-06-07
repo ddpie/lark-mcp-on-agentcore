@@ -1027,14 +1027,40 @@ DEPLOY_STARTED=true
 
 # 清理残留资源
 info "${L[clean_residuals]}"
+# Dashboard physical name for THIS app (default app = bare name, slug = suffixed).
+# Mirrors slug-names.ts dashboardName so we can reap an orphaned dashboard below.
+DASHBOARD_NAME="lark-mcp-on-agentcore${SLUG:+-$SLUG}"
 for STACK_NAME in "$OAUTH_STACK" "$RUNTIME_STACK"; do
   STACK_STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
     --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
-  if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STACK_STATUS" = "DELETE_FAILED" ]; then
-    warn "Stack ${STACK_NAME} status: ${STACK_STATUS}, deleting..."
-    aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$REGION" 2>/dev/null || true
-    aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --region "$REGION" 2>/dev/null || true
-  fi
+  # Zombie states = a stack that NEVER successfully deployed and now blocks redeploy:
+  #   ROLLBACK_COMPLETE / DELETE_FAILED  — a failed create that rolled back
+  #   REVIEW_IN_PROGRESS                 — a CDK changeset shell whose execution never
+  #                                        completed (e.g. early-validation failure);
+  #                                        it owns no real resources but its name is taken.
+  # All must be deleted before `cdk deploy` can recreate the stack.
+  case "$STACK_STATUS" in
+    ROLLBACK_COMPLETE|DELETE_FAILED|REVIEW_IN_PROGRESS)
+      warn "Stack ${STACK_NAME} status: ${STACK_STATUS}, deleting..."
+      aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$REGION" 2>/dev/null || true
+      aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" --region "$REGION" 2>/dev/null || true
+      # Reap an ORPHANED dashboard left by an earlier failed attempt. A fixed-name
+      # resource (CloudWatch Dashboard) created by a prior run but not owned by the
+      # just-deleted shell stack lingers and makes the next `cdk deploy` fail with
+      # "already exists". Only the OAuth stack owns the dashboard, and we only reach
+      # here after deleting a NEVER-deployed zombie — so a same-named dashboard is an
+      # orphan, safe to delete. (A healthy CREATE_COMPLETE stack never enters this case.)
+      if [ "$STACK_NAME" = "$OAUTH_STACK" ]; then
+        if aws cloudwatch list-dashboards --region "$REGION" \
+             --dashboard-name-prefix "$DASHBOARD_NAME" \
+             --query "DashboardEntries[?DashboardName=='${DASHBOARD_NAME}'].DashboardName" \
+             --output text 2>/dev/null | grep -qx "$DASHBOARD_NAME"; then
+          warn "Removing orphaned dashboard ${DASHBOARD_NAME} (left by a failed deploy)..."
+          aws cloudwatch delete-dashboards --region "$REGION" --dashboard-names "$DASHBOARD_NAME" 2>/dev/null || true
+        fi
+      fi
+      ;;
+  esac
 done
 
 # WAF lives in us-east-1 regardless of deploy region. It is SHARED across all
