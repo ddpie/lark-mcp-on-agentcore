@@ -65,7 +65,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 
 ## 架构
 
-支持远程 MCP 的客户端（如 Quick Desktop）发起请求 → CloudFront → API Gateway → Middleware Lambda（验证 MCP Token + SigV4 签名）→ AgentCore Runtime（MCP 服务容器处理飞书 API 调用）。OAuth Lambda 负责用户授权和 Token 自动刷新（每 30 分钟），EventBridge 定时触发。所有 Token 加密存储在 Secrets Manager 中。
+支持远程 MCP 的客户端（如 Quick Desktop）发起请求 → CloudFront → API Gateway → Middleware Lambda（验证 MCP Token + SigV4 签名）→ AgentCore Runtime（MCP 服务容器处理飞书 API 调用）。OAuth Lambda 负责用户授权和 Token 自动刷新（每 30 分钟），EventBridge 定时触发。所有 Token 加密存储在 Secrets Manager 中（专用 KMS 密钥，仅本服务可解密）。
 
 <p align="center">
   <img src="docs/images/architecture.svg" alt="Architecture" width="720">
@@ -90,6 +90,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 |---|---|
 | **智能编排** | 把 lark-cli 官方 20+ 个业务域 Skill 改写为纯 MCP 形态、按需加载——让支持远程 MCP 的客户端也能在操作前读到这些最佳实践 |
 | **业务用户零门槛、IT 集中管控** | 只创建一个飞书应用、管理员部署一次，全员共用——非技术成员浏览器授权一次即用；飞书应用集中管理，IT 可统一审计权限与可见性；每位用户以自己飞书身份调用，数据按用户隔离 |
+| **可托管多个飞书应用** | 需要时，同一套基础设施可在单 AWS 账户内托管多个相互独立的飞书应用，按 slug 隔离部署（`deploy.sh --app <slug>`），凭证 / Token / 密钥互不可见（[详情](docs/operations_zh.md)） |
 
 <details>
 <summary>运维 / 安全 / 成本特性</summary>
@@ -99,7 +100,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/
 | **按需付费** | AgentCore Runtime 空闲缩零，按 vCPU-秒 + 内存-秒计费 |
 | **渐进授权** | 默认只申请常用权限；首次用到某个低频功能时，自动生成 incremental-auth 链接，用户点击在飞书授权页确认即可，已有权限会累积 |
 | **低运维** | Token 自动刷新（30min）、异常自动告警到飞书群、日志按策略过期 |
-| **安全** | PKCE + HMAC token + WAF + Secrets Manager 加密存储（[详情](docs/security_zh.md)） |
+| **安全** | PKCE + HMAC token + WAF + Secrets Manager 加密存储（专用 KMS 密钥）（[详情](docs/security_zh.md)） |
 | **轻量升级** | lark-cli 新版本发布时，按 `docs/skills/bump-lark-cli.md` 流程操作（提取 scope + 适配 skill + deploy），终端用户无需任何操作 |
 
 </details>
@@ -265,7 +266,7 @@ Save and authorize in the browser when prompted. See [Connect clients](docs/conn
 
 ## Architecture
 
-Requests from a remote MCP client (e.g., Quick Desktop) → CloudFront → API Gateway → Middleware Lambda (MCP token verification + SigV4 signing) → AgentCore Runtime (MCP service container handles Feishu API calls). OAuth Lambda manages user authorization and auto-refreshes tokens every 30 minutes via EventBridge. All tokens encrypted in Secrets Manager.
+Requests from a remote MCP client (e.g., Quick Desktop) → CloudFront → API Gateway → Middleware Lambda (MCP token verification + SigV4 signing) → AgentCore Runtime (MCP service container handles Feishu API calls). OAuth Lambda manages user authorization and auto-refreshes tokens every 30 minutes via EventBridge. All tokens encrypted in Secrets Manager (a dedicated KMS key only this service can decrypt).
 
 <p align="center">
   <img src="docs/images/architecture-en.svg" alt="Architecture" width="720">
@@ -290,6 +291,7 @@ Requests from a remote MCP client (e.g., Quick Desktop) → CloudFront → API G
 |---|---|
 | **Smart orchestration** | lark-cli's official 20+ domain Skills, rewritten into pure-MCP form and loaded on demand — so remote MCP clients can also read these best practices before acting |
 | **Zero-friction for users, centrally managed for IT** | One Feishu app, one admin deploy, shared by everyone — non-technical members authorize once in the browser; the Feishu app is managed centrally, so IT can audit scopes and visibility in one place; each user acts under their own Feishu identity, data isolated per user |
+| **Can host multiple Feishu apps** | When needed, the same infrastructure can host several independent Feishu apps in one AWS account, deployed isolated per slug (`deploy.sh --app <slug>`); credentials / tokens / keys are mutually invisible ([details](docs/operations_en.md)) |
 
 <details>
 <summary>Operational / security / cost features</summary>
@@ -299,7 +301,7 @@ Requests from a remote MCP client (e.g., Quick Desktop) → CloudFront → API G
 | **Pay-per-use** | AgentCore Runtime scales to zero when idle, billed by vCPU-seconds + memory-seconds |
 | **Incremental auth** | Only common scopes are requested up front; the first time a low-frequency tool is used, an incremental-auth link is generated — the user clicks it, approves the new scope on the Feishu authorization page, and Feishu accumulates the existing scopes |
 | **Low-ops** | Auto token refresh (30min), alarms auto-push to Feishu group, logs expire by policy |
-| **Secure** | PKCE + HMAC tokens + WAF + Secrets Manager encryption ([details](docs/security_en.md)) |
+| **Secure** | PKCE + HMAC tokens + WAF + Secrets Manager encryption (dedicated KMS key) ([details](docs/security_en.md)) |
 | **Lightweight upgrade** | When lark-cli releases a new version, follow `docs/skills/bump-lark-cli.md` (extract scopes + adapt skills + deploy), end users need no action |
 
 </details>

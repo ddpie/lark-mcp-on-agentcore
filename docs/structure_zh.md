@@ -18,9 +18,11 @@ docker/
   tier1.json          28 个高频工具
   skills/             MCP 适配后的 Skill (从 lark-cli skills 转换，由 lark_get_skill 提供)
 infra/
-  lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront
+  lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront + 用户 Token KMS CMK
   lib/runtime-stack.ts  Docker 镜像 + IAM (含 SM 读权限)
   lib/waf-stack.ts    CloudFront-scope WAFv2 (us-east-1，可选)
+  lib/slug-names.ts   CDK 每应用名称解析器（与 scripts/lib/slug.sh 对应）
+  lib/fleet-dashboard.ts  可选的跨应用汇总 Dashboard（DEPLOY_ROLLUP=1）
 lambda/
   token-refresh-shim/ OAuth 流程 + Token 自动刷新 (preflight+retry)
                       __tests__/        单元测试 (vitest)

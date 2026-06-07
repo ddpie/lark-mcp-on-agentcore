@@ -18,9 +18,11 @@ docker/
   tier1.json          28 high-frequency tools
   skills/             MCP-adapted Skills (transformed from lark-cli skills, served by lark_get_skill)
 infra/
-  lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront
+  lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront + user-token KMS CMK
   lib/runtime-stack.ts  Docker image + IAM (with SM read access)
   lib/waf-stack.ts    CloudFront-scope WAFv2 (us-east-1, optional)
+  lib/slug-names.ts   CDK per-app name resolver (mirrors scripts/lib/slug.sh)
+  lib/fleet-dashboard.ts  Optional cross-app roll-up dashboard (DEPLOY_ROLLUP=1)
 lambda/
   token-refresh-shim/ OAuth flow + token refresh (preflight + retry)
                       __tests__/        Unit tests (vitest)

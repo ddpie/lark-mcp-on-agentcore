@@ -12,7 +12,8 @@ No license or subscription fees. Infrastructure costs split into a small fixed p
 |------|-----------|-------|
 | **Fixed** | Secrets Manager (feishu-app) | 1 secret that always exists, stores Feishu App ID/Secret |
 | **Fixed** | SSM Parameter Store (state-secret + oauth-client-secret) | 2 SecureStrings; Standard tier is free |
-| **Fixed** | CloudWatch Alarms x 10 | Created at deploy, do not scale with users |
+| **Fixed** | CloudWatch Alarms x 11 | Created at deploy, do not scale with users |
+| **Fixed** | KMS customer-managed key (user-token CMK) | 1 key per app, $1/month; created at deploy |
 | **Fixed** | ECR image storage | Each deploy overwrites the same image, ~600 MB |
 | **Fixed** | EventBridge rule | Triggers Lambda every 30 minutes, within free tier |
 | **Fixed** | WAFv2 (optional) | WebACL + rule monthly fees are fixed |
@@ -23,6 +24,7 @@ No license or subscription fees. Infrastructure costs split into a small fixed p
 | **Usage** | CloudFront | Data transfer per request |
 | **Usage** | CloudWatch Logs | Log ingestion and storage grow with request volume |
 | **Usage** | DynamoDB | OAuth authorization code writes/reads/deletes |
+| **Usage** | KMS requests | Encrypt/Decrypt on token store/read (refresh loop + every MCP tool call) |
 
 ## Component Details
 
@@ -32,7 +34,8 @@ No license or subscription fees. Infrastructure costs split into a small fixed p
 | Secrets Manager | $0.40/secret/month + $0.05/10,000 API calls |
 | DynamoDB (OAuth codes) | PAY_PER_REQUEST + TTL; < $0.10/month |
 | CloudWatch Logs | $0.50/GB ingested + $0.03/GB/month stored (retention configurable at deploy) |
-| CloudWatch Alarms x 10 | $0.10/alarm/month, ~$1.00 total |
+| CloudWatch Alarms x 11 | $0.10/alarm/month, ~$1.10 total |
+| KMS customer-managed key (user-token CMK) | $1.00/key/month + $0.03/10,000 requests; 1 key per app, annual rotation included |
 | SSM Parameter Store (Standard SecureString x 2) | Free (Standard tier has no charge; only Advanced tier costs $0.05/parameter/month) |
 | ECR image storage | ~$0.10/GB/month (image ~600 MB) |
 | WAFv2 (optional, default off) | $5/WebACL/month + $1/rule/month + $0.60/M requests |
@@ -56,7 +59,8 @@ Estimates below are based on us-west-2 pricing, assuming each user makes an aver
 |-----------|-------------|
 | Secrets Manager (1 fixed + 10 user) | $4.40 |
 | SSM Parameter Store (Standard) | Free |
-| CloudWatch Alarms x 10 | $1.00 |
+| CloudWatch Alarms x 11 | $1.10 |
+| KMS CMK (1 key + requests) | ~$1.00 |
 | ECR (~0.6 GB) | $0.06 |
 | Lambda (OAuth: ~1440 refresh + Middleware: ~4400) | Within free tier |
 | API Gateway (~4400 requests) | Within free tier |
@@ -64,7 +68,7 @@ Estimates below are based on us-west-2 pricing, assuming each user makes an aver
 | CloudWatch Logs (~50 MB/month) | $0.03 |
 | DynamoDB | < $0.01 |
 | AgentCore Runtime (~3700 vCPU-seconds) | Per AWS pricing |
-| **Total (excl. AgentCore/WAF)** | **~$5.50/month** |
+| **Total (excl. AgentCore/WAF)** | **~$6.60/month** |
 
 ### 100 Users (Medium Team)
 
@@ -74,7 +78,8 @@ Estimates below are based on us-west-2 pricing, assuming each user makes an aver
 |-----------|-------------|
 | Secrets Manager (1 + 100) | $40.40 |
 | SSM Parameter Store (Standard) | Free |
-| CloudWatch Alarms x 10 | $1.00 |
+| CloudWatch Alarms x 11 | $1.10 |
+| KMS CMK (1 key + requests) | ~$1.00 |
 | ECR (~0.6 GB) | $0.06 |
 | Lambda (~1440 refresh + ~44000 MCP) | $0.01 (still near free tier) |
 | API Gateway (~44000 requests) | $0.15 |
@@ -82,7 +87,7 @@ Estimates below are based on us-west-2 pricing, assuming each user makes an aver
 | CloudWatch Logs (~500 MB/month) | $0.25 |
 | DynamoDB (~100 authorizations) | < $0.01 |
 | AgentCore Runtime (~37000 vCPU-seconds) | Per AWS pricing |
-| **Total (excl. AgentCore/WAF)** | **~$42/month** |
+| **Total (excl. AgentCore/WAF)** | **~$43/month** |
 
 ### 500 Users (Large Team)
 
@@ -92,7 +97,8 @@ Estimates below are based on us-west-2 pricing, assuming each user makes an aver
 |-----------|-------------|
 | Secrets Manager (1 + 500) | $200.40 |
 | SSM Parameter Store (Standard) | Free |
-| CloudWatch Alarms x 10 | $1.00 |
+| CloudWatch Alarms x 11 | $1.10 |
+| KMS CMK (1 key + requests) | ~$1.05 |
 | ECR (~0.6 GB) | $0.06 |
 | Lambda (~1440 refresh + ~220000 MCP) | $0.20 |
 | API Gateway (~220000 requests) | $0.77 |
@@ -101,8 +107,10 @@ Estimates below are based on us-west-2 pricing, assuming each user makes an aver
 | DynamoDB (~500 authorizations) | < $0.05 |
 | AgentCore Runtime (~185000 vCPU-seconds) | Per AWS pricing |
 | WAFv2 (recommended at this scale) | $7.00 + $0.13 |
-| **Total (excl. AgentCore)** | **~$211/month** |
+| **Total (excl. AgentCore)** | **~$212/month** |
 
 **Note:** AgentCore Runtime is the largest variable cost, billed by actual processing time. Exact amounts depend on AWS pricing (which changes over time). Refer to the [AWS Bedrock AgentCore pricing page](https://aws.amazon.com/bedrock/agentcore/pricing/) for current figures.
 
 **On Runtime idle timeout:** Configurable at deploy: 5 / 10 / 15 / 30 min (default 10 min, shorter than AWS's 15 min default). Sessions accrue vCPU-seconds while idle, so a shorter timeout cuts cost at the price of more cold starts. 10 min covers typical conversation bursts and saves about 30% on idle cost vs the AWS default. Re-deploy to change.
+
+**On multiple Feishu apps:** Costs are **per app**. Each app deployed with `--app <slug>` gets its own fixed components (11 alarms, 1 KMS CMK, per-app dashboard, the feishu-app secret, SSM params) plus its own per-user usage. The fixed portion is roughly multiplied by the number of apps; the WAF, if enabled, is shared across apps in the same region.

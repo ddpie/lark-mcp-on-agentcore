@@ -4,9 +4,9 @@
 
 ## 概述
 
-系统部署时自动创建完整的可观测性基础设施：10 个 CloudWatch 告警、14 个日志 MetricFilter（5 个驱动告警 + 9 个仅供 Dashboard，其余 5 个告警基于 Lambda 内置指标或 ApiGateway 5XXError）、一个多板块 Dashboard、以及可选的飞书群 Webhook 告警推送。所有观测数据围绕两个核心问题设计：**用户能不能正常使用？** 和 **Token 有没有丢？**
+系统部署时自动创建完整的可观测性基础设施：11 个 CloudWatch 告警、15 个日志 MetricFilter（6 个驱动告警 + 9 个仅供 Dashboard，其余 5 个告警基于 Lambda 内置指标或 ApiGateway 5XXError）、一个多板块 Dashboard、以及可选的飞书群 Webhook 告警推送。所有观测数据围绕两个核心问题设计：**用户能不能正常使用？** 和 **Token 有没有丢？**
 
-## 告警（10 个）
+## 告警（11 个）
 
 所有告警连接到同一个 SNS Topic (`lark-mcp-on-agentcore-alarms`)，可同时订阅邮件、飞书 Webhook、PagerDuty 等。
 
@@ -22,12 +22,13 @@
 | 8 | Throttles | Lambda Throttles (Middleware) | >= 1 | 300s | 1 | 已发生限流 — 用户请求被拒绝 |
 | 9 | ApiGateway5xx | AWS/ApiGateway 5XXError | >= 5 | 300s | 2 | API 网关层面服务端错误（非 Lambda 错误，如集成超时） |
 | 10 | AgentCore5xx | MetricFilter: `agentcore_5xx` | >= 3 | 300s | 1 | AgentCore 上游返回 5xx — Runtime 容器问题或 AWS 服务故障 |
+| 11 | CmkStragglers | MetricFilter: `refresh_cycle` ($.stragglers) | > 0 | 1800s | 4 | 刷新周期后仍**未**迁移到本应用 CMK 的用户 Token secret 数。健康迁移会收敛到 0；持续 > 0 说明密钥卡住或配错（如缺 `kms:Encrypt`）。长周期 + 4 个评估周期，使部署后正常收敛窗口不误报 |
 
 告警状态为 `MISSING` 时视为正常（`treatMissingData: NOT_BREACHING`），因为低流量时段没有数据点是预期行为。
 
-## MetricFilter（14 个）
+## MetricFilter（15 个）
 
-所有 MetricFilter 发布到命名空间 `LarkMcpOnAgentCore`。其中 5 个驱动告警（标记为"告警"），9 个仅供 Dashboard。**注意：** 另外 5 个告警（OAuthErrors / MiddlewareErrors / Concurrency / Throttles / ApiGateway5xx）使用 Lambda 内置指标或 `AWS/ApiGateway` 命名空间，不依赖 MetricFilter。
+所有 MetricFilter 发布到命名空间 `LarkMcpOnAgentCore`（按应用：`LarkMcpOnAgentCore/<slug>`）。其中 6 个驱动告警（标记为"告警"），9 个仅供 Dashboard。**注意：** 另外 5 个告警（OAuthErrors / MiddlewareErrors / Concurrency / Throttles / ApiGateway5xx）使用 Lambda 内置指标或 `AWS/ApiGateway` 命名空间，不依赖 MetricFilter。
 
 **告警与 MetricFilter 的耦合方式：** McpLatencyAlarm 与 FeishuNotAuthAlarm 通过 `namespace + metricName` 字符串引用对应指标（CDK 中没有显式依赖），而其他告警直接调用 `filter.metric(...)`。前者意味着如果重命名或删除对应 MetricFilter 而忘了同步告警，告警会"静默失明"——CloudFormation 不会报错，CloudWatch 也只是显示 Insufficient Data。修改 MetricFilter 名称时务必同步检查 McpLatencyFilter / FeishuNotAuthorizedFilter 的引用方。
 
@@ -47,13 +48,14 @@
 | 12 | NewUserFilter | OAuth Lambda | `$.event = "new_user_authorized"` | NewUserAuthorized (count) | Dashboard | 新用户增长 |
 | 13 | ActiveUsersFilter | OAuth Lambda | `$.event = "refresh_cycle"` | ActiveUsers ($.total 值) | Dashboard | 活跃用户数 |
 | 14 | FeishuSlowLatencyFilter | OAuth Lambda | `$.event = "feishu_slow"` | FeishuSlowLatencyMs ($.durationMs) | Dashboard | 飞书慢调用延迟值（百分位） |
+| 15 | CmkStragglersFilter | OAuth Lambda | `$.event = "refresh_cycle" AND $.stragglers exists` | CmkStragglers ($.stragglers 值) | 告警 | 尚未迁移到 CMK 的用户 secret 数（迁移探针） |
 
 ## Dashboard 板块
 
 Dashboard 名称: `lark-mcp-on-agentcore`，自动创建，包含 5 个板块：
 
 ### 1. 告警状态总览
-- AlarmStatusWidget 显示全部 10 个告警的实时状态（绿/黄/红）
+- AlarmStatusWidget 显示全部 11 个告警的实时状态（绿/黄/红）
 - 一目了然判断系统是否正常
 
 ### 2. MCP 流量
@@ -92,6 +94,8 @@ Dashboard 名称: `lark-mcp-on-agentcore`，自动创建，包含 5 个板块：
 | throttles | 5 | 1 | 1 |
 | apigw_5xx | 20 | 5 | 2 |
 | upstream_5xx | 10 | 3 | 1 |
+
+（`cmk_stragglers` 不参与预设调节——它是固定的 `> 0` 收敛探针，仅在 `config/alarm-thresholds.json` 中定义。）
 
 预设定义文件：`config/alarm-presets.json`
 
@@ -146,7 +150,13 @@ Dashboard 名称: `lark-mcp-on-agentcore`，自动创建，包含 5 个板块：
 每 30 分钟一次（EventBridge rate 触发），access_token 剩余不足一半有效期时自动续期。刷新完成后记录结构化日志：
 
 ```json
-{"event": "refresh_cycle", "refreshed": 5, "failed": 0, "skipped": 1, "total": 12}
+{"event": "refresh_cycle", "refreshed": 5, "failed": 0, "skipped": 1, "total": 12, "keySwapped": 0, "keySwapFailed": 0, "stragglers": 0}
 ```
 
-其中 `total` 作为 ActiveUsers 指标发布到 Dashboard。
+其中 `total` 作为 ActiveUsers 指标发布到 Dashboard。`keySwapped` / `keySwapFailed` / `stragglers` 跟踪每应用的 CMK 迁移：`keySwapped` 是本轮迁移并确认成功的 secret 数，`stragglers`（作为 CmkStragglers 指标发布）是仍未迁移到 CMK 的 secret 数——所有 secret 迁移完成后收敛到 0。
+
+## 多应用可观测性
+
+按应用部署（`--app <slug>`）拥有**独立**的可观测性：带 slug 后缀的指标命名空间 `LarkMcpOnAgentCore/<slug>`、带 slug 后缀的告警名与 `ApiName` 维度、以及每应用独立的 Dashboard `lark-mcp-on-agentcore-<slug>`。这避免一个应用的告警在另一个应用（或汇总）指标上误触发。
+
+可选的**跨应用汇总 Dashboard**（`lark-mcp-on-agentcore-fleet`）可用 `DEPLOY_ROLLUP=1` 部署（见 `infra/lib/fleet-dashboard.ts`）。它通过 CloudWatch `SEARCH()` 表达式自动发现所有应用,不拥有任何告警或 SNS topic,因此删除它绝不影响告警——其生命周期与各应用栈完全解耦。

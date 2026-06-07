@@ -27,7 +27,7 @@ Identity in this service is **user-only**: every user acts as themselves, and on
 - **The userId is signed, not user-supplied.** It lives inside the HMAC-signed MCP Token (`tokenKey`); a client cannot change it without invalidating the signature. Tampering → signature mismatch → 401.
 - **Feishu Tokens are stored per user** at `lark-mcp-on-agentcore/users/{userId}` and only ever read by `userId` extracted from a verified MCP Token. They are **never** sent back to the client.
 - **Switching users (e.g. in Quick Desktop) is just a different MCP Token.** A new user completes OAuth and gets their own MCP Token → the endpoint resolves the new `userId` → reads the new user's Feishu Token. A user who hasn't authorized gets a 403 + re-auth link, never someone else's session.
-- **Runtime isolation is triple-layered** (see `docs/agent/architecture.md`): each MCP session runs in its own AgentCore microVM; each tool call runs in its own child process; the Feishu Token is passed to that child via environment only, never shared between calls or persisted.
+- **Runtime isolation is triple-layered** (see `docs/agent/architecture.md`): each MCP session runs in its **own AgentCore microVM** with no shared memory or disk between sessions, so one user's session cannot observe another's in-flight state; each tool call runs in its own child process; the Feishu Token is passed to that child via environment only, never shared between calls or persisted.
 - **Confused-deputy guard:** the incremental-auth flow additionally verifies the consenting Feishu `open_id` belongs to the session owner, so user B cannot graft their Feishu authorization onto user A's session (see the incremental auth token note below).
 
 The sequence below shows how identity is resolved — and the Feishu Token kept isolated — within a single MCP tool call:
@@ -35,6 +35,27 @@ The sequence below shows how identity is resolved — and the Feishu Token kept 
 <p align="center">
   <img src="images/isolation-sequence-en.svg" alt="Sequence of one MCP tool call: identity resolved per request, Feishu Token never leaves the server" width="900">
 </p>
+
+## Multi-App Isolation (one AWS account, many Feishu apps)
+
+A single AWS account/region can host **N independent Feishu apps**, each deployed under a short **slug** (`./scripts/deploy.sh --app <slug>`). The reserved **default** app (empty slug) keeps the original byte-identical resource names. Every per-app physical name is derived from the slug by two resolvers that must agree: `scripts/lib/slug.sh` (shell) and `infra/lib/slug-names.ts` (CDK).
+
+<p align="center">
+  <img src="images/multi-app-en.svg" alt="Multi-app isolation: each app has its own endpoint, secrets, signing key, and CMK; WAF/ECR/account are shared" width="860">
+</p>
+
+The security goal: **app A can never read, delete, or forge app B's user tokens.** This rests on four independent boundaries — defense-in-depth, so dropping any one does not by itself open a hole:
+
+| Boundary | Mechanism | What it stops |
+|---|---|---|
+| **Credential read** | Each app's Feishu App Secret lives at `feishu-app/<slug>` (slash-delimited), and the runtime IAM role is scoped to exactly that ARN. The default app's `feishu-app-*` wildcard cannot match a slugged `feishu-app/<slug>-…`. | App A's runtime reading app B's master credential. |
+| **Token forgery** | Each app has its own SSM `state-secret` signing root (per-slug parameter). An MCP token minted for app A fails HMAC verification under app B. | A token issued by one app being replayed against another. |
+| **Token deletion / enumeration** | `listAllUserSecrets` applies a two-part screen — trailing-slash prefix filter **plus** a single-segment `^<prefix>/[^/]+$` match — so the default app's 30-min refresh loop (which auto-deletes revoked users) never sees another app's nested `users/<slug>/<openid>`. `ops.sh revoke` also rejects any `user_id` containing `/`. | The default app's cleanup loop destroying a slugged app's live tokens. |
+| **IAM resource boundary** | Because IAM `*` matches `/`, the default app's `users/*` grant would otherwise reach every slugged `users/<slug>/<openid>`. An explicit **Deny on `users/*/*`** (default app only) closes this — the runtime screen alone is not sufficient. | The default app's Lambda having IAM privilege over nested secrets. |
+
+**KMS is the fifth, cryptographic layer.** Each app owns its own customer-managed KMS key (see below); a sibling app's Lambda role is never on that key's policy, so even if an IAM boundary were bypassed the ciphertext is undecryptable to the wrong app.
+
+**Slug is immutable; only the alias is mutable.** The human-readable **alias** is hard-unique within the account/region, claimed via an atomic registry write *before* any resource is created, so two apps can never collide on a display name. Renaming changes only the alias (`ops.sh rename`); the slug — which names real resources — never changes, because renaming it would orphan the RETAIN'd `openid-map` table and force every user to re-authorize.
 
 ## OAuth 2.0 PKCE Flow
 
@@ -173,11 +194,39 @@ EventBridge triggers the token refresh Lambda every 30 minutes. The reasons for 
 3. **Concurrency control:** Maximum 5 users refresh in parallel (`CONCURRENCY = 5`), preventing Feishu API rate limiting from mass concurrent refreshes
 4. **Cost consideration:** One Lambda invocation every 30 minutes costs negligible amounts (~43,200 invocations/month, well within free tier)
 
+## Token Storage at Rest (Customer-Managed KMS Key)
+
+User Feishu tokens are stored in Secrets Manager encrypted with a **per-app customer-managed KMS key (CMK)**, not the AWS-managed `aws/secretsmanager` default key. Each app (each OAuth stack) owns exactly one CMK whose key policy grants decrypt only to that app's two Lambda execution roles:
+
+- **OAuth Lambda** (`oauthFn`): `Encrypt` + `Decrypt` + `GenerateDataKey` + `DescribeKey` — it creates and re-keys secrets.
+- **Middleware Lambda** (`middlewareFn`): `Decrypt` + `DescribeKey` only — read-only, on the MCP hot path.
+
+**What this adds:** a principal holding only `secretsmanager:GetSecretValue` — but not KMS decrypt — reads ciphertext, not plaintext. At-rest encryption is thus bound to the two app roles, layered on top of the IAM resource-scoping and CloudTrail audit already in place.
+
+**Transparent migration (zero downtime).** A secret's KMS key is fixed at `CreateSecret` time — `PutSecretValue` cannot change it. New users are created directly on the CMK. Existing secrets are migrated by the 30-minute refresh loop, which runs a key-swap check *before* the half-life early-return (so even not-yet-expiring tokens migrate): it `DescribeSecret`s the current key and, if it is not the CMK, calls `UpdateSecret` to re-encrypt the current version in place. The token value is never touched, so users notice nothing.
+
+Two safety properties make the migration trustworthy:
+
+- **Never destructive on failure.** `UpdateSecret` is a control-plane API; a throttle or transient error does not mean the token is invalid. A failed key-swap is logged (`key_swap_failed`), counted, and retried next cycle — the token is **never** deleted. (Deletion stays reserved for the genuine terminal Feishu codes 20016/20017/20064.)
+- **Silent-no-op canary.** If `kms:Encrypt` were missing, AWS would return success from `UpdateSecret` but skip re-encryption. The loop re-`DescribeSecret`s after the swap to confirm the key actually moved; an unconfirmed swap counts as a straggler. The `CmkStragglers` alarm fires only when secrets stay off the CMK — so a healthy migration cycle reports 0 (no false page) and a stuck/misconfigured key is surfaced.
+
+The key uses `RemovalPolicy.RETAIN` (a deleted key would make every secret encrypted under it permanently undecryptable) with automatic annual rotation enabled.
+
+## Key & Secret Rotation Matrix
+
+| Key / secret | Where | Rotation | How |
+|---|---|---|---|
+| **OAuth Client Secret** | SSM `oauth-client-secret` | On demand | `./scripts/ops.sh rotate-secret` (then update Amazon Quick's connector). Issued MCP tokens unaffected. |
+| **STATE_SECRET root key** | SSM `state-secret` (SecureString) | On demand (also the kill-switch) | Rotate the SSM parameter; invalidates **all** MCP tokens / OAuth states / `client_id`s at once → users reconnect, clients re-register. Per-app: each slug has its own. |
+| **User token CMK** | KMS (per app) | **Automatic, annual** | AWS-managed key rotation (`enableKeyRotation`). No action needed; old material stays usable for decrypt. |
+| **Feishu App Secret** | Secrets Manager `feishu-app[/<slug>]` | On demand | Reset on the Feishu Open Platform, update Secrets Manager, redeploy. |
+| **Feishu user tokens** | Secrets Manager `users/{userId}` | Every 30 min (access), per Feishu TTL (refresh) | Automatic via the EventBridge refresh loop. |
+
 ## Security Layer Summary
 
 | Layer | Measure |
 |-------|---------|
-| Token storage | Secrets Manager (encrypted with the AWS-managed `aws/secretsmanager` KMS key by default; customer-managed KMS / BYOK is not currently supported; all reads/writes audited via CloudTrail) |
+| Token storage | Secrets Manager, encrypted with a **per-app customer-managed KMS key (CMK)** whose key policy grants decrypt only to that app's two Lambda roles — a least-privilege `GetSecretValue` reader (no IAM/KMS-admin/AssumeRole) gets ciphertext, not plaintext. Existing secrets migrate onto the CMK transparently via the refresh loop (`UpdateSecret`, zero downtime). All reads/writes audited via CloudTrail. |
 | Token transport | AWS internal TLS + SigV4, never traverses public internet |
 | OAuth CSRF | HMAC-SHA256 signed state (timing-safe, 5-min expiry) |
 | MCP auth | OAuth 2.0 (PKCE; RFC 7591 DCR for self-registering clients, shared client_secret for Amazon Quick), HMAC signed token (30-day validity) |
