@@ -29,10 +29,14 @@ lambda/
   mcp-middleware/     Token verification + SigV4 proxy + 25s timeout
   alarm-webhook/      SNS → Feishu webhook (message card formatting)
 scripts/
-  deploy.sh           Interactive deployment (Chinese/English, optional WAF cross-region bootstrap)
+  deploy.sh           Interactive deployment (Chinese/English, optional WAF cross-region bootstrap; --app <slug> for multi-app)
   install.sh          One-click install (Chinese/English)
-  ops.sh              Operations toolkit (status/list-users/revoke/refresh-all/logs/rotate-secret/destroy)
-  teardown.sh         Full destroy (Runtime + CDK stacks + WAF if enabled + optional user-token cleanup)
+  ops.sh              Operations toolkit (status/list-users/list-apps/rename/revoke/refresh-all/logs/rotate-secret/destroy; --app <slug>)
+  teardown.sh         Full destroy of one app (Runtime + CDK stacks + WAF-if-last + optional user-token cleanup; --app <slug>)
+  upgrade.sh          Multi-app coordinated upgrade (--canary / --rest / --all / --rollback <slug>)
+  lib/slug.sh         Per-app slug → resource-name resolver (sourced by deploy/ops/teardown/upgrade)
+  lib/registry.sh     File-based app registry + atomic alias uniqueness (.local/apps.json)
+  lib/__tests__/      Pure-shell unit tests for slug.sh + registry.sh
   test.sh             Unified test entry (unit / coverage / mutation / audit / e2e)
   test-e2e.sh         End-to-end tests (OAuth + Runtime + /mcp + WAF if enabled)
   audit-tools.sh      Tool catalog structural audit (15 assertions, with snapshot)

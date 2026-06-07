@@ -3,8 +3,12 @@ import * as ecr_assets from "aws-cdk-lib/aws-ecr-assets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
 import * as path from "path";
+import { resolveSlug } from "./slug-names";
 
-export interface RuntimeStackProps extends cdk.StackProps {}
+export interface RuntimeStackProps extends cdk.StackProps {
+  /** Per-app slug; empty = default sentinel (byte-identical names). */
+  slug?: string;
+}
 
 export class RuntimeStack extends cdk.Stack {
   public readonly runtimeRole: iam.Role;
@@ -30,9 +34,14 @@ export class RuntimeStack extends cdk.Stack {
       iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonEC2ContainerRegistryReadOnly")
     );
     // Container fetches APP_SECRET from Secrets Manager at startup.
+    // Killer Fix #1: scope the grant to THIS app's secret only. The default app
+    // keeps `feishu-app-*`; a slugged app uses the slash-delimited
+    // `feishu-app/<slug>-*`, which the default's `feishu-app-*` cannot match
+    // (the char after `feishu-app` is `/`, not `-`), so no cross-app read.
+    const names = resolveSlug(props.slug ?? "");
     this.runtimeRole.addToPolicy(new iam.PolicyStatement({
       actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:lark-mcp-on-agentcore/feishu-app-*`],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${names.feishuSecret}-*`],
     }));
 
     // Outputs consumed by deploy.sh to wire AgentCore Runtime + Lambda env.

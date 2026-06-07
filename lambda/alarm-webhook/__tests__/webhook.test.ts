@@ -113,6 +113,31 @@ describe('alarm-webhook Lambda', () => {
     expect(fetchCalls).toHaveLength(2);
   });
 
+  it('prefixes the card title with APP_ALIAS so a shared channel can tell apps apart', async () => {
+    const orig = process.env.APP_ALIAS;
+    process.env.APP_ALIAS = 'HR 生产环境';
+    vi.resetModules();
+    const { handler } = await import('../index');
+    await handler(snsEvent({ AlarmName: 'token-lost', NewStateValue: 'ALARM' }) as any);
+    const body = JSON.parse(fetchCalls[0].init.body);
+    expect(body.card.header.title.content).toContain('HR 生产环境');
+    // Restore WITHOUT assigning undefined (which would become the string "undefined").
+    if (orig === undefined) delete process.env.APP_ALIAS; else process.env.APP_ALIAS = orig;
+  });
+
+  it('omits the app prefix when APP_ALIAS is empty (default app)', async () => {
+    const orig = process.env.APP_ALIAS;
+    delete process.env.APP_ALIAS;
+    vi.resetModules();
+    const { handler } = await import('../index');
+    await handler(snsEvent({ AlarmName: 'token-lost', NewStateValue: 'ALARM' }) as any);
+    const body = JSON.parse(fetchCalls[0].init.body);
+    // No leading "[...]" app tag, but the alarm name still shows.
+    expect(body.card.header.title.content).toContain('token-lost');
+    expect(body.card.header.title.content).not.toMatch(/\]\s*\[/); // no double-bracket from empty alias
+    if (orig !== undefined) process.env.APP_ALIAS = orig;
+  });
+
   it('uses English labels when DEPLOY_LANG=en', async () => {
     const orig = process.env.DEPLOY_LANG;
     process.env.DEPLOY_LANG = 'en';

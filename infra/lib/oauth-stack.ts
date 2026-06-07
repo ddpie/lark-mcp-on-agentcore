@@ -17,8 +17,11 @@ import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import { Construct } from "constructs";
 import * as path from "path";
 import * as fs from "fs";
+import { resolveSlug } from "./slug-names";
 
 export interface OAuthStackProps extends cdk.StackProps {
+  /** Per-app slug; empty = default sentinel (byte-identical names). */
+  slug?: string;
   runtimeArn?: string;
   customDomain?: string;
   webAclArn?: string;
@@ -66,7 +69,7 @@ export class OAuthStack extends cdk.Stack {
     }
     const lang = process.env.LARK_LANG || "zh";
     const dt = i18n.dashboard[lang] || i18n.dashboard.en;
-    const an = i18n.alarmNames?.[lang] || i18n.alarmNames?.en || {};
+    const anRaw = i18n.alarmNames?.[lang] || i18n.alarmNames?.en || {};
 
     const thresholdsPath = path.join(__dirname, "../../config/alarm-thresholds.json");
     const localOverridesPath = path.join(__dirname, "../../.local/alarm-thresholds.json");
@@ -85,9 +88,40 @@ export class OAuthStack extends cdk.Stack {
     }
     const th = (key: string) => thresholds[key] || { threshold: 5, period: 300, evaluationPeriods: 2 };
 
-    this.secretPrefix = "lark-mcp-on-agentcore/users";
-    this.appSecretId = "lark-mcp-on-agentcore/feishu-app";
-    const stateSecretParam = "/lark-mcp-on-agentcore/state-secret";
+    // Per-app names. Empty slug = default sentinel = today's byte-identical
+    // literals, so the default deployment synthesizes unchanged.
+    const names = resolveSlug(props.slug ?? "");
+
+    this.secretPrefix = names.secretUsersPrefix;
+    this.appSecretId = names.feishuSecret;
+    const stateSecretParam = names.stateParam;
+    const metricNs = names.metricNamespace;
+
+    // Cross-app IAM isolation for the DEFAULT app's user-secret grant.
+    // The grant resource is `secret:${secretPrefix}/*`; for the default app that
+    // is `users/*`, and IAM `*` matches `/`, so it would also cover every slugged
+    // app's nested `users/<slug>/<openid>`. The runtime [^/]+ screen only limits
+    // enumeration, not the IAM privilege. Add an explicit Deny on the 2+-segment
+    // shape so the default role can touch only single-segment `users/<openid>`.
+    // Slugged apps need no Deny: their `users/<slug>/*` already cannot reach a
+    // sibling or the default. Empty slug = default = the only over-broad case.
+    const denyNestedUserSecrets = (fn: lambda.Function) => {
+      if (names.slug !== "") return; // slugged apps are already fenced
+      fn.addToRolePolicy(new iam.PolicyStatement({
+        effect: iam.Effect.DENY,
+        actions: ["secretsmanager:*"],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${this.secretPrefix}/*/*`],
+      }));
+    };
+
+    // Slug-suffix every alarm name so per-app alarms don't collide on the
+    // account-unique name. Default slug = empty suffix = byte-identical names.
+    // Applied once here so both the Alarm `alarmName` and the dashboard's
+    // fromAlarmArn reconstructions (which read the same `an.*`) stay in sync.
+    const an: Record<string, string> = {};
+    for (const [k, v] of Object.entries(anRaw)) {
+      an[k] = names.suffix ? `${v} (${names.slug})` : v;
+    }
 
     // Import the secret by name — deploy.sh creates/updates it outside CDK
     // so that `cdk deploy` never overwrites the real credentials with placeholders.
@@ -95,7 +129,7 @@ export class OAuthStack extends cdk.Stack {
       this, "FeishuAppSecret", this.appSecretId
     );
 
-    const oauthClientId = "lark-mcp-on-agentcore";
+    const oauthClientId = names.oauthClientId;
 
     const oauthFnName = `${this.stackName}-oauth`;
     const oauthLogGroup = createLogGroup(this, "OAuthLogGroup", oauthFnName, logRetention);
@@ -152,6 +186,7 @@ export class OAuthStack extends cdk.Stack {
       ],
       resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${this.secretPrefix}/*`],
     }));
+    denyNestedUserSecrets(oauthFn);
     // ListSecrets is an account-level action and does not honor resource-scoping
     oauthFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ["secretsmanager:ListSecrets"],
@@ -160,7 +195,7 @@ export class OAuthStack extends cdk.Stack {
 
     // OAuth authorization codes
     const codeTable = new dynamodb.Table(this, "OAuthCodes", {
-      tableName: "lark-mcp-on-agentcore-oauth-codes",
+      tableName: names.codeTable,
       partitionKey: { name: "code", type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: "ttl",
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -172,7 +207,7 @@ export class OAuthStack extends cdk.Stack {
 
     // OpenID → stable userId mapping (migrated from Secrets Manager to DDB for cost)
     const openidTable = new dynamodb.Table(this, "OpenIdMap", {
-      tableName: "lark-mcp-on-agentcore-openid-map",
+      tableName: names.openidTable,
       partitionKey: { name: "openId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
@@ -211,6 +246,7 @@ export class OAuthStack extends cdk.Stack {
       actions: ["secretsmanager:GetSecretValue"],
       resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${this.secretPrefix}/*`],
     }));
+    denyNestedUserSecrets(middlewareFn);
     middlewareFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ["ssm:GetParameter"],
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter${stateSecretParam}`],
@@ -225,7 +261,7 @@ export class OAuthStack extends cdk.Stack {
     // CloudFront WAF is skipped (SKIP_WAF) or bypassed by hitting execute-api
     // directly — without it the OAuth/MCP endpoints would have no rate control.
     const api = new apigateway.RestApi(this, "OAuthApi", {
-      restApiName: "lark-mcp-on-agentcore-oauth",
+      restApiName: names.apiName,
       deployOptions: {
         throttlingRateLimit: parseInt(process.env.APIGW_RATE_LIMIT || "50", 10),
         throttlingBurstLimit: parseInt(process.env.APIGW_BURST_LIMIT || "100", 10),
@@ -287,7 +323,7 @@ export class OAuthStack extends cdk.Stack {
     // Subscribe an email/Slack/Lark webhook after deploy:
     //   aws sns subscribe --topic-arn <AlarmTopicArn> --protocol email --notification-endpoint you@example.com
     const alarmTopic = new sns.Topic(this, "AlarmTopic", {
-      topicName: "lark-mcp-on-agentcore-alarms",
+      topicName: names.snsTopic,
       displayName: "Lark MCP on AgentCore alarms",
     });
     const alarmAction = new cwActions.SnsAction(alarmTopic);
@@ -297,7 +333,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: oauthFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "store_token_lost"),
       metricName: "TokenLost",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
     new cloudwatch.Alarm(this, "TokenLossAlarm", {
       alarmName: an.token_lost,
@@ -317,7 +353,7 @@ export class OAuthStack extends cdk.Stack {
         logs.FilterPattern.exists("$.failed"),
       ),
       metricName: "RefreshFailed",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
       metricValue: "$.failed",
     });
     new cloudwatch.Alarm(this, "RefreshFailedAlarm", {
@@ -349,7 +385,7 @@ export class OAuthStack extends cdk.Stack {
     new cloudwatch.Alarm(this, "McpLatencyAlarm", {
       alarmName: an.mcp_latency,
       metric: new cloudwatch.Metric({
-        namespace: "LarkMcpOnAgentCore", metricName: "McpLatencyMs",
+        namespace: metricNs, metricName: "McpLatencyMs",
         statistic: "p95", period: cdk.Duration.seconds(th("mcp_latency").period),
       }),
       threshold: th("mcp_latency").threshold,
@@ -362,7 +398,7 @@ export class OAuthStack extends cdk.Stack {
     new cloudwatch.Alarm(this, "FeishuNotAuthAlarm", {
       alarmName: an.feishu_not_auth,
       metric: new cloudwatch.Metric({
-        namespace: "LarkMcpOnAgentCore", metricName: "FeishuNotAuthorized",
+        namespace: metricNs, metricName: "FeishuNotAuthorized",
         statistic: "Sum", period: cdk.Duration.seconds(th("feishu_not_auth").period),
       }),
       threshold: th("feishu_not_auth").threshold,
@@ -373,7 +409,7 @@ export class OAuthStack extends cdk.Stack {
     // Lambda concurrent executions — concurrency_pct.threshold is percentage of account quota
     const concurrencyQuota = parseInt(process.env.LAMBDA_CONCURRENCY_QUOTA || "1000", 10);
     new cloudwatch.Alarm(this, "MiddlewareConcurrencyAlarm", {
-      alarmName: an.concurrency,
+      alarmName: an.concurrency_pct,
       metric: middlewareFn.metric("ConcurrentExecutions", { statistic: "Maximum", period: cdk.Duration.seconds(th("concurrency_pct").period) }),
       threshold: Math.floor(concurrencyQuota * th("concurrency_pct").threshold / 100),
       evaluationPeriods: th("concurrency_pct").evaluationPeriods,
@@ -394,7 +430,7 @@ export class OAuthStack extends cdk.Stack {
       alarmName: an.apigw_5xx,
       metric: new cloudwatch.Metric({
         namespace: "AWS/ApiGateway", metricName: "5XXError",
-        dimensionsMap: { ApiName: "lark-mcp-on-agentcore-oauth" },
+        dimensionsMap: { ApiName: names.apiName },
         statistic: "Sum", period: cdk.Duration.seconds(th("apigw_5xx").period),
       }),
       threshold: th("apigw_5xx").threshold,
@@ -409,7 +445,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: middlewareFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "agentcore_5xx"),
       metricName: "AgentCore5xx",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
     new cloudwatch.Alarm(this, "AgentCore5xxAlarm", {
       alarmName: an.upstream_5xx,
@@ -424,7 +460,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: oauthFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "feishu_slow"),
       metricName: "FeishuSlow",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
 
     // AgentCore slow calls (>5s)
@@ -432,7 +468,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: middlewareFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "agentcore_slow"),
       metricName: "AgentCoreSlow",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
 
     // MCP proxy request success (for traffic volume + latency dashboarding)
@@ -440,7 +476,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: middlewareFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "mcp_request_ok"),
       metricName: "McpRequestOk",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
 
     // MCP proxy latency (extract durationMs from successful requests)
@@ -448,7 +484,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: middlewareFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "mcp_request_ok"),
       metricName: "McpLatencyMs",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
       metricValue: "$.durationMs",
     });
 
@@ -457,7 +493,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: middlewareFn.logGroup,
       filterPattern: logs.FilterPattern.anyTerm("token_verify_failed", "auth_missing_or_invalid"),
       metricName: "AuthFail",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
 
     // OAuth authorize started (funnel top)
@@ -465,7 +501,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: oauthFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "oauth_authorize_start"),
       metricName: "OAuthAuthorizeStart",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
 
     // OAuth callback success (funnel bottom)
@@ -473,7 +509,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: oauthFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "oauth_callback_success"),
       metricName: "OAuthCallbackSuccess",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
 
     // New user authorized
@@ -481,7 +517,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: oauthFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "new_user_authorized"),
       metricName: "NewUserAuthorized",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
 
     // Active users (from refresh cycle)
@@ -489,7 +525,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: oauthFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "refresh_cycle"),
       metricName: "ActiveUsers",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
       metricValue: "$.total",
     });
 
@@ -498,7 +534,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: middlewareFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "feishu_not_authorized"),
       metricName: "FeishuNotAuthorized",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
     });
 
     // Feishu API slow call latency (extract durationMs for percentile tracking)
@@ -506,7 +542,7 @@ export class OAuthStack extends cdk.Stack {
       logGroup: oauthFn.logGroup,
       filterPattern: logs.FilterPattern.stringValue("$.event", "=", "feishu_slow"),
       metricName: "FeishuSlowLatencyMs",
-      metricNamespace: "LarkMcpOnAgentCore",
+      metricNamespace: metricNs,
       metricValue: "$.durationMs",
     });
 
@@ -530,18 +566,22 @@ export class OAuthStack extends cdk.Stack {
           FEISHU_WEBHOOK_SECRET: process.env.ALARM_WEBHOOK_SECRET || "",
           FEISHU_WEBHOOK_KEYWORD: process.env.ALARM_WEBHOOK_KEYWORD || "",
           DEPLOY_LANG: lang,
+          // App display name shown on the alert card so a shared channel can tell
+          // apps apart. Default app has no slug -> empty (card omits the suffix).
+          APP_ALIAS: process.env.APP_ALIAS || names.slug,
         },
         bundling: { externalModules: [], minify: true, target: "node20" },
       });
       alarmTopic.addSubscription(new snsSubscriptions.LambdaSubscription(webhookFn));
+      new cdk.CfnOutput(this, "AlarmWebhookFunctionName", { value: webhookFn.functionName });
     }
 
     // --- CloudWatch Dashboard ---
-    const ns = "LarkMcpOnAgentCore";
+    const ns = metricNs;
     const m = (metricName: string, opts: Partial<cloudwatch.MetricProps> = {}) =>
       new cloudwatch.Metric({ namespace: ns, metricName, statistic: "Sum", period: cdk.Duration.minutes(5), label: opts.label || `${metricName}${opts.statistic && opts.statistic !== "Sum" ? ` (${opts.statistic})` : ""}`, ...opts });
     const dashboard = new cloudwatch.Dashboard(this, "ObservabilityDashboard", {
-      dashboardName: "lark-mcp-on-agentcore",
+      dashboardName: names.dashboardName,
     });
 
     // Section: Alarm Overview (top of dashboard for at-a-glance status)
@@ -555,7 +595,7 @@ export class OAuthStack extends cdk.Stack {
           cloudwatch.Alarm.fromAlarmArn(this, "RefUpstream5xx", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.upstream_5xx}`),
           cloudwatch.Alarm.fromAlarmArn(this, "RefLatency", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.mcp_latency}`),
           cloudwatch.Alarm.fromAlarmArn(this, "RefNotAuth", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.feishu_not_auth}`),
-          cloudwatch.Alarm.fromAlarmArn(this, "RefConcurrency", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.concurrency}`),
+          cloudwatch.Alarm.fromAlarmArn(this, "RefConcurrency", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.concurrency_pct}`),
           cloudwatch.Alarm.fromAlarmArn(this, "RefThrottle", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.throttles}`),
           cloudwatch.Alarm.fromAlarmArn(this, "RefApiGw5xx", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.apigw_5xx}`),
           cloudwatch.Alarm.fromAlarmArn(this, "RefOAuthErr", `arn:aws:cloudwatch:${this.region}:${this.account}:alarm:${an.oauth_errors}`),
@@ -659,8 +699,8 @@ export class OAuthStack extends cdk.Stack {
       new cloudwatch.GraphWidget({
         title: dt.api_4xx_5xx,
         left: [
-          new cloudwatch.Metric({ namespace: "AWS/ApiGateway", metricName: "4XXError", dimensionsMap: { ApiName: "lark-mcp-on-agentcore-oauth" }, statistic: "Sum", period: cdk.Duration.minutes(5), label: "4xx" }),
-          new cloudwatch.Metric({ namespace: "AWS/ApiGateway", metricName: "5XXError", dimensionsMap: { ApiName: "lark-mcp-on-agentcore-oauth" }, statistic: "Sum", period: cdk.Duration.minutes(5), label: "5xx" }),
+          new cloudwatch.Metric({ namespace: "AWS/ApiGateway", metricName: "4XXError", dimensionsMap: { ApiName: names.apiName }, statistic: "Sum", period: cdk.Duration.minutes(5), label: "4xx" }),
+          new cloudwatch.Metric({ namespace: "AWS/ApiGateway", metricName: "5XXError", dimensionsMap: { ApiName: names.apiName }, statistic: "Sum", period: cdk.Duration.minutes(5), label: "5xx" }),
         ],
         width: 8,
       }),

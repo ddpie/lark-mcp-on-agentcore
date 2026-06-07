@@ -379,6 +379,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
             "Ref": "AlarmTopicD01E77F9",
           },
         ],
+        "AlarmName": "Lambda 并发过高 (%)",
         "ComparisonOperator": "GreaterThanOrEqualToThreshold",
         "Dimensions": [
           {
@@ -527,6 +528,11 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
               "Action": "secretsmanager:GetSecretValue",
               "Effect": "Allow",
               "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/users/*",
+            },
+            {
+              "Action": "secretsmanager:*",
+              "Effect": "Deny",
+              "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/users/*/*",
             },
             {
               "Action": "ssm:GetParameter",
@@ -2039,7 +2045,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
       "Properties": {
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-west-2",
-          "S3Key": "cc8c7c15db90d19442a1c36489cec4904af77df24ca0db5a70c62807809efc67.zip",
+          "S3Key": "a25c84ee2b079e2986b0873461c103bfa43d81269207badbb5ed8819da644015.zip",
         },
         "Environment": {
           "Variables": {
@@ -2161,6 +2167,11 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
               ],
               "Effect": "Allow",
               "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/users/*",
+            },
+            {
+              "Action": "secretsmanager:*",
+              "Effect": "Deny",
+              "Resource": "arn:aws:secretsmanager:us-west-2:123456789012:secret:lark-mcp-on-agentcore/users/*/*",
             },
             {
               "Action": "secretsmanager:ListSecrets",
@@ -2292,7 +2303,7 @@ exports[`CDK Snapshot Tests > OAuthStack matches snapshot 1`] = `
           "Fn::Join": [
             "",
             [
-              "{"widgets":[{"type":"text","width":24,"height":1,"x":0,"y":0,"properties":{"markdown":"## 告警状态"}},{"type":"alarm","width":24,"height":3,"x":0,"y":1,"properties":{"title":"告警状态","alarms":["arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 丢失 (刷新已消耗但未存储)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 刷新失败","arn:aws:cloudwatch:us-west-2:123456789012:alarm:AgentCore 上游 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:MCP 延迟 P95 >10s","arn:aws:cloudwatch:us-west-2:123456789012:alarm:飞书未授权突增","arn:aws:cloudwatch:us-west-2:123456789012:alarm:undefined","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 被限流","arn:aws:cloudwatch:us-west-2:123456789012:alarm:API Gateway 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:OAuth Lambda 错误","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Middleware Lambda 错误"]}},{"type":"text","width":24,"height":1,"x":0,"y":4,"properties":{"markdown":"## MCP 请求量"}},{"type":"metric","width":8,"height":6,"x":0,"y":5,"properties":{"view":"timeSeries","title":"MCP 请求量","region":"",
+              "{"widgets":[{"type":"text","width":24,"height":1,"x":0,"y":0,"properties":{"markdown":"## 告警状态"}},{"type":"alarm","width":24,"height":3,"x":0,"y":1,"properties":{"title":"告警状态","alarms":["arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 丢失 (刷新已消耗但未存储)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Token 刷新失败","arn:aws:cloudwatch:us-west-2:123456789012:alarm:AgentCore 上游 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:MCP 延迟 P95 >10s","arn:aws:cloudwatch:us-west-2:123456789012:alarm:飞书未授权突增","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 并发过高 (%)","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Lambda 被限流","arn:aws:cloudwatch:us-west-2:123456789012:alarm:API Gateway 5xx","arn:aws:cloudwatch:us-west-2:123456789012:alarm:OAuth Lambda 错误","arn:aws:cloudwatch:us-west-2:123456789012:alarm:Middleware Lambda 错误"]}},{"type":"text","width":24,"height":1,"x":0,"y":4,"properties":{"markdown":"## MCP 请求量"}},{"type":"metric","width":8,"height":6,"x":0,"y":5,"properties":{"view":"timeSeries","title":"MCP 请求量","region":"",
               {
                 "Ref": "AWS::Region",
               },

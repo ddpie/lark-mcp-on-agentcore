@@ -33,19 +33,62 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 LOCAL_DIR="${PROJECT_DIR}/.local"
 mkdir -p "$LOCAL_DIR"
-DEPLOY_CONFIG="${LOCAL_DIR}/deploy-config"
 
-# --yes / -y: non-interactive mode. Uses saved config from DEPLOY_CONFIG.
+# --app <slug> / --alias <name>: multi-app support. Resolve all per-app physical
+# names from the slug (empty slug = default sentinel = today's byte-identical
+# names). See scripts/lib/slug.sh and .claude/specs/2026-06-07-multi-app-*.
+APP_SLUG="${APP_SLUG:-}"
+APP_ALIAS="${APP_ALIAS:-}"
 AUTO_YES=0
-for arg in "$@"; do
-  case "$arg" in
+_args=("$@")
+for ((_i=0; _i<${#_args[@]}; _i++)); do
+  case "${_args[_i]}" in
     --yes|-y) AUTO_YES=1 ;;
+    --app)    APP_SLUG="${_args[_i+1]:-}"; _i=$((_i+1)) ;;
+    --app=*)  APP_SLUG="${_args[_i]#--app=}" ;;
+    --alias)  APP_ALIAS="${_args[_i+1]:-}"; _i=$((_i+1)) ;;
+    --alias=*) APP_ALIAS="${_args[_i]#--alias=}" ;;
   esac
 done
+
+# shellcheck source=lib/slug.sh
+source "${SCRIPT_DIR}/lib/slug.sh"
+if ! resolve_slug "$APP_SLUG"; then
+  exit 1
+fi
+# resolve_slug exports: SLUG SFX RUNTIME_NAME FEISHU_SECRET SECRET_USERS_PREFIX
+# STATE_PARAM OAUTH_SECRET_PARAM WEBHOOK_SSM_NAME CODE_TABLE OPENID_TABLE
+# OAUTH_CLIENT_ID OAUTH_STACK RUNTIME_STACK WAF_STACK
+
+# Per-slug deploy-config so deploying app B never clobbers app A's saved config.
+# Default slug keeps the original .local/deploy-config path (backward compat).
+if [ -n "$SLUG" ]; then
+  APP_LOCAL_DIR="${LOCAL_DIR}/apps/${SLUG}"
+  mkdir -p "$APP_LOCAL_DIR"
+  DEPLOY_CONFIG="${APP_LOCAL_DIR}/deploy-config"
+else
+  DEPLOY_CONFIG="${LOCAL_DIR}/deploy-config"
+fi
+
+# App registry + HARD alias uniqueness (only for named apps; the default app has
+# no alias). Claim the alias ATOMICALLY before creating any resource, so a
+# collision aborts cleanly with no half-built stack.
+APPS_REGISTRY="${LOCAL_DIR}/apps.json"
+export APPS_REGISTRY
+if [ -n "$SLUG" ]; then
+  # shellcheck source=lib/registry.sh
+  source "${SCRIPT_DIR}/lib/registry.sh"
+  [ -z "$APP_ALIAS" ] && APP_ALIAS="$SLUG"   # default the alias to the slug
+  if ! claim_alias "$SLUG" "$APP_ALIAS"; then
+    echo "  ERROR: alias '${APP_ALIAS}' is already used by another app. Pick a unique --alias." >&2
+    exit 1
+  fi
+fi
+
 if [ "$AUTO_YES" = "1" ]; then
   if [ ! -f "$DEPLOY_CONFIG" ]; then
     echo "  ERROR: --yes requires a previous deployment config (${DEPLOY_CONFIG})." >&2
-    echo "  Run once interactively first, then use --yes for subsequent deploys." >&2
+    echo "  Run once interactively first (for app '${SLUG:-default}'), then use --yes." >&2
     exit 1
   fi
   # Load all saved config values as env vars
@@ -320,8 +363,8 @@ step configure_feishu
 # Check if credentials already exist in Secrets Manager (from a prior deploy)
 EXISTING_CREDS=""
 EXISTING_APP_ID=""
-if aws secretsmanager describe-secret --secret-id "lark-mcp-on-agentcore/feishu-app" --region "$REGION" &>/dev/null; then
-  EXISTING_CREDS=$(aws secretsmanager get-secret-value --secret-id "lark-mcp-on-agentcore/feishu-app" --region "$REGION" \
+if aws secretsmanager describe-secret --secret-id "$FEISHU_SECRET" --region "$REGION" &>/dev/null; then
+  EXISTING_CREDS=$(aws secretsmanager get-secret-value --secret-id "$FEISHU_SECRET" --region "$REGION" \
     --query 'SecretString' --output text 2>/dev/null || echo "")
   if [ -n "$EXISTING_CREDS" ]; then
     EXISTING_APP_ID=$(echo "$EXISTING_CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin).get('appId',''))" 2>/dev/null || echo "")
@@ -787,7 +830,9 @@ fi
 
 # Alarm webhook. Persisted in SSM so re-deploys can read the previous value.
 # Honor ALARM_WEBHOOK_URL env override; on non-interactive stdin, skip prompt.
-WEBHOOK_SSM_NAME="/lark-mcp-on-agentcore/alarm-webhook-url"
+# WEBHOOK_SSM_NAME is per-slug (exported by slug.sh) — a single global param
+# would silently re-point app A's webhook Lambda at app B's channel on the
+# non-interactive --yes redeploy path (major fix).
 if [ -z "${ALARM_WEBHOOK_URL+x}" ]; then
   EXISTING_WEBHOOK=$(aws ssm get-parameter --name "$WEBHOOK_SSM_NAME" --region "$REGION" \
     --query 'Parameter.Value' --output text 2>/dev/null || echo "")
@@ -890,7 +935,7 @@ DEPLOY_STARTED=true
 
 # 清理残留资源
 info "${L[clean_residuals]}"
-for STACK_NAME in LarkMcpOnAgentCoreOAuth LarkMcpOnAgentCoreRuntime; do
+for STACK_NAME in "$OAUTH_STACK" "$RUNTIME_STACK"; do
   STACK_STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
     --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
   if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STACK_STATUS" = "DELETE_FAILED" ]; then
@@ -900,27 +945,49 @@ for STACK_NAME in LarkMcpOnAgentCoreOAuth LarkMcpOnAgentCoreRuntime; do
   fi
 done
 
-# WAF lives in us-east-1 regardless of deploy region.
-WAF_STATUS=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreWaf --region "us-east-1" \
+# WAF lives in us-east-1 regardless of deploy region. It is SHARED across all
+# apps (WAF_STACK is never slug-suffixed).
+WAF_STATUS=$(aws cloudformation describe-stacks --stack-name "$WAF_STACK" --region "us-east-1" \
   --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
-# H4: if user opted out of WAF this run but a WAF stack from a prior run still
-# exists in any healthy state, destroy it before the new deploy so it doesn't
-# silently keep charging.
+# count_oauth_consumers: how many LarkMcpOnAgentCoreOAuth* stacks still exist
+# (across all slugs). The shared WAF's cross-region export is read by each OAuth
+# stack, so the WAF must NOT be destroyed while any consumer remains.
+count_oauth_consumers() {
+  aws cloudformation list-stacks --region "$REGION" \
+    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE ROLLBACK_COMPLETE \
+    --query "StackSummaries[?starts_with(StackName, 'LarkMcpOnAgentCoreOAuth')].StackName" \
+    --output text 2>/dev/null | tr '\t' '\n' | grep -c . || true
+}
+# H4: if the user opted out of WAF this run but a WAF stack from a prior run
+# still exists, destroy it ONLY when no OAuth consumer remains — otherwise
+# destroying the cross-region export producer throws and/or breaks other apps.
 if [ "${SKIP_WAF:-0}" = "1" ] && [ "$WAF_STATUS" != "NOT_FOUND" ] && \
    [ "$WAF_STATUS" != "DELETE_IN_PROGRESS" ] && \
    [ "$WAF_STATUS" != "DELETE_COMPLETE" ]; then
-  warn "WAF disabled this run but Stack LarkMcpOnAgentCoreWaf still exists (${WAF_STATUS}). Destroying..."
-  ( cd "${PROJECT_DIR}/infra" && AWS_REGION="us-east-1" SKIP_WAF=0 npx cdk destroy LarkMcpOnAgentCoreWaf --force ) || \
-    warn "WAF stack destroy failed; manual cleanup may be required."
-  WAF_STATUS="NOT_FOUND"
+  if [ "$(count_oauth_consumers)" -gt 0 ]; then
+    warn "WAF disabled this run but ${WAF_STACK} is shared and still has OAuth consumers; leaving it in place."
+  else
+    warn "WAF disabled this run but Stack ${WAF_STACK} still exists (${WAF_STATUS}) with no consumers. Destroying..."
+    ( cd "${PROJECT_DIR}/infra" && AWS_REGION="us-east-1" SKIP_WAF=0 npx cdk destroy "$WAF_STACK" --force ) || \
+      warn "WAF stack destroy failed; manual cleanup may be required."
+    WAF_STATUS="NOT_FOUND"
+  fi
 fi
+# A failed/rolled-back WAF stack normally needs deleting before re-create — but
+# the WAF is SHARED, so a DELETE_FAILED that occurs AFTER it was consumed must
+# not be force-deleted while another app's OAuth stack still imports its
+# cross-region export. Guard with the same consumer count as the SKIP_WAF branch.
 if [ "$WAF_STATUS" = "ROLLBACK_COMPLETE" ] || [ "$WAF_STATUS" = "DELETE_FAILED" ]; then
-  warn "Stack LarkMcpOnAgentCoreWaf status: ${WAF_STATUS}, deleting..."
-  aws cloudformation delete-stack --stack-name LarkMcpOnAgentCoreWaf --region "us-east-1" 2>/dev/null || true
-  aws cloudformation wait stack-delete-complete --stack-name LarkMcpOnAgentCoreWaf --region "us-east-1" 2>/dev/null || true
+  if [ "$(count_oauth_consumers)" -gt 0 ]; then
+    warn "Shared WAF (${WAF_STACK}) is ${WAF_STATUS} but still has OAuth consumers; NOT deleting. Manual intervention may be needed."
+  else
+    warn "Stack ${WAF_STACK} status: ${WAF_STATUS}, deleting..."
+    aws cloudformation delete-stack --stack-name "$WAF_STACK" --region "us-east-1" 2>/dev/null || true
+    aws cloudformation wait stack-delete-complete --stack-name "$WAF_STACK" --region "us-east-1" 2>/dev/null || true
+  fi
 fi
 
-SECRET_NAME="lark-mcp-on-agentcore/feishu-app"
+SECRET_NAME="$FEISHU_SECRET"
   SECRET_STATUS=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --region "$REGION" \
     --query 'DeletedDate' --output text 2>/dev/null || echo "NOT_FOUND")
   if [ "$SECRET_STATUS" != "NOT_FOUND" ] && [ "$SECRET_STATUS" != "None" ]; then
@@ -928,7 +995,7 @@ SECRET_NAME="lark-mcp-on-agentcore/feishu-app"
     aws secretsmanager delete-secret --secret-id "$SECRET_NAME" --region "$REGION" \
       --force-delete-without-recovery 2>/dev/null || true
   elif [ "$SECRET_STATUS" = "None" ]; then
-    OWNING_STACK=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region "$REGION" \
+    OWNING_STACK=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region "$REGION" \
       --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
     if [ "$OWNING_STACK" = "NOT_FOUND" ]; then
       warn "Orphaned secret ${SECRET_NAME}, cleaning..."
@@ -937,13 +1004,13 @@ SECRET_NAME="lark-mcp-on-agentcore/feishu-app"
     fi
   fi
 
-SSM_EXISTS=$(aws ssm get-parameter --name "/lark-mcp-on-agentcore/state-secret" --region "$REGION" \
+SSM_EXISTS=$(aws ssm get-parameter --name "$STATE_PARAM" --region "$REGION" \
   --query 'Parameter.Name' --output text 2>/dev/null || echo "NOT_FOUND")
-OAUTH_STACK_EXISTS=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region "$REGION" \
+OAUTH_STACK_EXISTS=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region "$REGION" \
   --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
 if [ "$SSM_EXISTS" != "NOT_FOUND" ] && [ "$OAUTH_STACK_EXISTS" = "NOT_FOUND" ]; then
-  info "Cleaning orphaned SSM: /lark-mcp-on-agentcore/state-secret"
-  aws ssm delete-parameter --name "/lark-mcp-on-agentcore/state-secret" --region "$REGION" 2>/dev/null || true
+  info "Cleaning orphaned SSM: ${STATE_PARAM}"
+  aws ssm delete-parameter --name "$STATE_PARAM" --region "$REGION" 2>/dev/null || true
 fi
 
 info "Clean up done ✓"
@@ -955,14 +1022,14 @@ SECRET_FILE=$(mktemp); chmod 600 "$SECRET_FILE"
 trap 'rm -f "$SECRET_FILE"' EXIT
 APP_ID="$APP_ID" APP_SECRET="$APP_SECRET" python3 -c \
   'import json,os; print(json.dumps({"appId":os.environ["APP_ID"],"appSecret":os.environ["APP_SECRET"]}))' > "$SECRET_FILE"
-if aws secretsmanager describe-secret --secret-id "lark-mcp-on-agentcore/feishu-app" --region "$REGION" &>/dev/null; then
-  aws secretsmanager put-secret-value --secret-id "lark-mcp-on-agentcore/feishu-app" \
+if aws secretsmanager describe-secret --secret-id "$FEISHU_SECRET" --region "$REGION" &>/dev/null; then
+  aws secretsmanager put-secret-value --secret-id "$FEISHU_SECRET" \
     --secret-string "file://$SECRET_FILE" --region "$REGION" >/dev/null 2>&1
   info "Secret updated ✓"
 else
-  aws secretsmanager create-secret --name "lark-mcp-on-agentcore/feishu-app" \
+  aws secretsmanager create-secret --name "$FEISHU_SECRET" \
     --secret-string "file://$SECRET_FILE" --region "$REGION" \
-    --tags Key=project,Value=lark-mcp-on-agentcore >/dev/null 2>&1
+    --tags Key=project,Value=lark-mcp-on-agentcore Key=app,Value="${SLUG:-default}" >/dev/null 2>&1
   info "Secret created ✓"
 fi
 rm -f "$SECRET_FILE"
@@ -980,21 +1047,24 @@ put_secure_param() {
   rm -f "$f"
 }
 
-if ! aws ssm get-parameter --name "/lark-mcp-on-agentcore/state-secret" --region "$REGION" &>/dev/null; then
+# Create-if-absent (per slug): the signing root must NOT rotate on re-deploy or
+# all live MCP tokens for this app would be invalidated. Per-slug param name
+# (Killer Fix #2) keeps each app's signing domain disjoint.
+if ! aws ssm get-parameter --name "$STATE_PARAM" --region "$REGION" &>/dev/null; then
   STATE_SECRET_VAL=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-  put_secure_param "/lark-mcp-on-agentcore/state-secret" "$STATE_SECRET_VAL"
+  put_secure_param "$STATE_PARAM" "$STATE_SECRET_VAL"
   info "State secret created ✓"
 else
-  STATE_SECRET_VAL=$(aws ssm get-parameter --name "/lark-mcp-on-agentcore/state-secret" --region "$REGION" --with-decryption --query 'Parameter.Value' --output text)
+  STATE_SECRET_VAL=$(aws ssm get-parameter --name "$STATE_PARAM" --region "$REGION" --with-decryption --query 'Parameter.Value' --output text)
   info "State secret exists ✓"
 fi
 
-if ! aws ssm get-parameter --name "/lark-mcp-on-agentcore/oauth-client-secret" --region "$REGION" &>/dev/null; then
+if ! aws ssm get-parameter --name "$OAUTH_SECRET_PARAM" --region "$REGION" &>/dev/null; then
   OAUTH_SECRET_VAL=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-  put_secure_param "/lark-mcp-on-agentcore/oauth-client-secret" "$OAUTH_SECRET_VAL"
+  put_secure_param "$OAUTH_SECRET_PARAM" "$OAUTH_SECRET_VAL"
   info "OAuth Client Secret created ✓"
 else
-  OAUTH_SECRET_VAL=$(aws ssm get-parameter --name "/lark-mcp-on-agentcore/oauth-client-secret" --region "$REGION" --with-decryption --query 'Parameter.Value' --output text)
+  OAUTH_SECRET_VAL=$(aws ssm get-parameter --name "$OAUTH_SECRET_PARAM" --region "$REGION" --with-decryption --query 'Parameter.Value' --output text)
   info "OAuth Client Secret exists ✓"
 fi
 
@@ -1007,11 +1077,18 @@ npm install --silent 2>/dev/null
 export CUSTOM_DOMAIN="${CUSTOM_DOMAIN:-}"
 export EXTRA_ALLOWED_DOMAINS="${EXTRA_ALLOWED_DOMAINS:-}"
 export DOMAIN_VERIFICATION="${DOMAIN_VERIFICATION:-}"
-CDK_STACKS=(LarkMcpOnAgentCoreRuntime LarkMcpOnAgentCoreOAuth)
-if [ "${SKIP_WAF:-0}" != "1" ]; then
-  CDK_STACKS=(LarkMcpOnAgentCoreRuntime LarkMcpOnAgentCoreWaf LarkMcpOnAgentCoreOAuth)
+CDK_STACKS=("$RUNTIME_STACK" "$OAUTH_STACK")
+# Shared-WAF deploy-set exclusion (BLOCKER fix): the WAF stack is shared across
+# all apps and is NOT slug-suffixed. Re-synthing it on a 2nd+ app deploy would
+# drop the first app's still-strong-ref'd cross-region reader export and make the
+# CDK cross-region SSM writer THROW `Exports cannot be updated: ... in use by
+# stack(s)`. So include the WAF in CDK_STACKS ONLY on its first-ever creation
+# (WAF_STATUS == NOT_FOUND). Once it exists, every OAuth stack just imports it by
+# name; the producer is never re-synthed.
+if [ "${SKIP_WAF:-0}" != "1" ] && [ "$WAF_STATUS" = "NOT_FOUND" ]; then
+  CDK_STACKS=("$RUNTIME_STACK" "$WAF_STACK" "$OAUTH_STACK")
 fi
-if ! AWS_REGION="$REGION" npx cdk deploy "${CDK_STACKS[@]}" --require-approval never 2>&1 | tee /tmp/cdk-deploy.log; then
+if ! AWS_REGION="$REGION" npx cdk deploy "${CDK_STACKS[@]}" -c "slug=${SLUG}" --require-approval never 2>&1 | tee /tmp/cdk-deploy.log; then
   echo ""
   err "${L[cdk_failed]}"
   tail -20 /tmp/cdk-deploy.log
@@ -1019,13 +1096,13 @@ if ! AWS_REGION="$REGION" npx cdk deploy "${CDK_STACKS[@]}" --require-approval n
 fi
 
 # 提取输出
-IMAGE_URI=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreRuntime --region $REGION \
+IMAGE_URI=$(aws cloudformation describe-stacks --stack-name "$RUNTIME_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`ImageUri`].OutputValue' --output text 2>/dev/null || echo "")
-ROLE_ARN=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreRuntime --region $REGION \
+ROLE_ARN=$(aws cloudformation describe-stacks --stack-name "$RUNTIME_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`RuntimeRoleArn`].OutputValue' --output text 2>/dev/null || echo "")
-OAUTH_ENDPOINT=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
+OAUTH_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`OAuthEndpoint`].OutputValue' --output text 2>/dev/null || echo "")
-REDIRECT_URL=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
+REDIRECT_URL=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`FeishuRedirectUrl`].OutputValue' --output text 2>/dev/null || echo "")
 
 if [ -z "$IMAGE_URI" ] || [ -z "$ROLE_ARN" ]; then
@@ -1036,10 +1113,10 @@ info "Image: ${IMAGE_URI}"
 info "OAuth: ${OAUTH_ENDPOINT}"
 
 # 设置 OAuth Lambda
-OAUTH_FN=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
+OAUTH_FN=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`OAuthFunctionName`].OutputValue' --output text 2>/dev/null || echo "")
-STATE_SECRET_VAL=$(aws ssm get-parameter --name /lark-mcp-on-agentcore/state-secret --region $REGION --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || echo 'fallback')
-OAUTH_SECRET_VAL=$(aws ssm get-parameter --name /lark-mcp-on-agentcore/oauth-client-secret --region $REGION --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || echo 'fallback')
+STATE_SECRET_VAL=$(aws ssm get-parameter --name "$STATE_PARAM" --region $REGION --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || echo 'fallback')
+OAUTH_SECRET_VAL=$(aws ssm get-parameter --name "$OAUTH_SECRET_PARAM" --region $REGION --with-decryption --query 'Parameter.Value' --output text 2>/dev/null || echo 'fallback')
 
 # Read OAuth scopes from config file
 SCOPES_FILE="${PROJECT_DIR}/config/oauth-scopes.json"
@@ -1068,18 +1145,27 @@ if [ -n "$OAUTH_FN" ] && [ -n "$OAUTH_ENDPOINT" ]; then
     CUSTOM_DOMAIN="${CUSTOM_DOMAIN:-}" \
     EXTRA_ALLOWED_DOMAINS="${EXTRA_ALLOWED_DOMAINS:-}" \
     DOMAIN_VERIFICATION="${DOMAIN_VERIFICATION:-}" \
+    SECRET_USERS_PREFIX="$SECRET_USERS_PREFIX" \
+    FEISHU_SECRET="$FEISHU_SECRET" \
+    STATE_PARAM="$STATE_PARAM" \
+    OAUTH_CLIENT_ID="$OAUTH_CLIENT_ID" \
+    CODE_TABLE="$CODE_TABLE" \
+    OPENID_TABLE="$OPENID_TABLE" \
     python3 -c '
 import json, os
+# update-function-configuration REPLACES the whole env, so every per-slug value
+# must be threaded through here (a missed one regresses isolation even if CDK is
+# correct). All names come from the slug resolver via os.environ.
 vars = {
   "CALLBACK_URL": os.environ["CALLBACK_URL"],
-  "SECRET_PREFIX": "lark-mcp-on-agentcore/users",
-  "APP_SECRET_ID": "lark-mcp-on-agentcore/feishu-app",
-  "STATE_SECRET_PARAM": "/lark-mcp-on-agentcore/state-secret",
-  "OAUTH_CLIENT_ID": "lark-mcp-on-agentcore",
+  "SECRET_PREFIX": os.environ["SECRET_USERS_PREFIX"],
+  "APP_SECRET_ID": os.environ["FEISHU_SECRET"],
+  "STATE_SECRET_PARAM": os.environ["STATE_PARAM"],
+  "OAUTH_CLIENT_ID": os.environ["OAUTH_CLIENT_ID"],
   "OAUTH_CLIENT_SECRET": os.environ["OAUTH_SECRET_VAL"],
   "FEISHU_SCOPES": os.environ.get("FEISHU_SCOPES", ""),
-  "CODE_TABLE": "lark-mcp-on-agentcore-oauth-codes",
-  "OPENID_TABLE": "lark-mcp-on-agentcore-openid-map",
+  "CODE_TABLE": os.environ["CODE_TABLE"],
+  "OPENID_TABLE": os.environ["OPENID_TABLE"],
 }
 # ALLOWED_DOMAINS = the custom domain (if any) + any extra OAuth redirect hosts
 # (for non-loopback clients), comma-joined. Emitted unconditionally so the value
@@ -1112,13 +1198,21 @@ fi
 # only backfills pre-existing SM entries. SM entries use the default 30-day recovery
 # window (no ForceDeleteWithoutRecovery) to allow rollback if needed.
 OPENID_SM_PREFIX="lark-mcp-on-agentcore/openid-map"
-OPENID_DDB_TABLE="lark-mcp-on-agentcore-openid-map"
-# length(@) is applied per-page by the CLI paginator (prints "10\n6" past one
-# page), which would break the -gt test and over/under-report the migration
-# count; count names client-side. (--no-paginate would undercount to page 1.)
-OPENID_COUNT=$(aws secretsmanager list-secrets --region "$REGION" \
-  --filters "Key=name,Values=${OPENID_SM_PREFIX}" \
-  --query 'SecretList[].Name' --output text 2>/dev/null | tr '\t' '\n' | grep -c . || true)
+OPENID_DDB_TABLE="$OPENID_TABLE"
+# This is a one-time backfill of legacy Secrets-Manager-based openid mappings
+# that only the ORIGINAL (default) deployment can ever have. A fresh per-slug app
+# has no such legacy entries, so gate the whole migration on the default sentinel
+# (empty SLUG). NOTE: the sentinel is the empty string — a literal `= default`
+# test would never fire and would skip the backfill on the deploy that needs it.
+OPENID_COUNT=0
+if [ -z "$SLUG" ]; then
+  # length(@) is applied per-page by the CLI paginator (prints "10\n6" past one
+  # page), which would break the -gt test and over/under-report the migration
+  # count; count names client-side. (--no-paginate would undercount to page 1.)
+  OPENID_COUNT=$(aws secretsmanager list-secrets --region "$REGION" \
+    --filters "Key=name,Values=${OPENID_SM_PREFIX}" \
+    --query 'SecretList[].Name' --output text 2>/dev/null | tr '\t' '\n' | grep -c . || true)
+fi
 if [ "${OPENID_COUNT:-0}" -gt 0 ]; then
   info "Migrating ${OPENID_COUNT} openid-map entries from Secrets Manager to DynamoDB..."
   python3 -c "
@@ -1150,9 +1244,11 @@ step step_2
 RUNTIME_ID=$(APP_ID="$APP_ID" REGION="$REGION" ROLE_ARN="$ROLE_ARN" \
   IMAGE_URI="$IMAGE_URI" OAUTH_ENDPOINT="$OAUTH_ENDPOINT" \
   AGENTCORE_IDLE_TIMEOUT="$AGENTCORE_IDLE_TIMEOUT" \
+  RUNTIME_NAME="$RUNTIME_NAME" APP_SECRET_ID_VAL="$FEISHU_SECRET" APP_TAG="${SLUG:-default}" \
   python3 << 'PYEOF'
 import os, boto3, sys
 region = os.environ['REGION']
+runtime_name = os.environ['RUNTIME_NAME']
 c = boto3.client('bedrock-agentcore-control', region_name=region)
 runtime_config = {
     'roleArn': os.environ['ROLE_ARN'],
@@ -1163,7 +1259,7 @@ runtime_config = {
     'requestHeaderConfiguration': {'requestHeaderAllowlist': ['X-User-Access-Token', 'X-Runtime-User-Id', 'X-Incr-Auth-Token']},
     'environmentVariables': {
         'APP_ID': os.environ['APP_ID'],
-        'APP_SECRET_ID': 'lark-mcp-on-agentcore/feishu-app',
+        'APP_SECRET_ID': os.environ['APP_SECRET_ID_VAL'],
         'AWS_REGION': region,
         'LARKSUITE_CLI_BRAND': 'feishu',
         'AUTHORIZE_BASE': os.environ['OAUTH_ENDPOINT'],
@@ -1171,9 +1267,9 @@ runtime_config = {
 }
 try:
     resp = c.create_agent_runtime(
-        agentRuntimeName='lark_mcp_on_agentcore',
+        agentRuntimeName=runtime_name,
         description='Lark MCP Server (lark-cli)',
-        tags={'project': 'lark-mcp-on-agentcore'},
+        tags={'project': 'lark-mcp-on-agentcore', 'app': os.environ['APP_TAG']},
         **runtime_config,
     )
     print(resp['agentRuntimeId'])
@@ -1184,7 +1280,7 @@ except Exception as e:
             kwargs = {'nextToken': next_token} if next_token else {}
             runtimes = c.list_agent_runtimes(**kwargs)
             for r in runtimes.get('agentRuntimes', []):
-                if r.get('agentRuntimeName') == 'lark_mcp_on_agentcore':
+                if r.get('agentRuntimeName') == runtime_name:
                     rid = r['agentRuntimeId']
                     # update_agent_runtime does not accept tags; tags persist from create
                     c.update_agent_runtime(agentRuntimeId=rid, **runtime_config)
@@ -1243,23 +1339,23 @@ RUNTIME_ARN="arn:aws:bedrock-agentcore:${REGION}:${ACCOUNT_ID}:runtime/${RUNTIME
 
 # 配置 Middleware
 step step_4
-MIDDLEWARE_FN=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
+MIDDLEWARE_FN=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`MiddlewareFunctionName`].OutputValue' --output text 2>/dev/null || echo "")
 
 if [ -n "$MIDDLEWARE_FN" ]; then
   aws lambda update-function-configuration \
     --function-name "$MIDDLEWARE_FN" \
-    --environment "Variables={RUNTIME_ARN=${RUNTIME_ARN},SECRET_PREFIX=lark-mcp-on-agentcore/users,STATE_SECRET_PARAM=/lark-mcp-on-agentcore/state-secret,AUTHORIZE_BASE=${OAUTH_ENDPOINT},DEPLOY_REGION=${REGION}}" \
+    --environment "Variables={RUNTIME_ARN=${RUNTIME_ARN},SECRET_PREFIX=${SECRET_USERS_PREFIX},STATE_SECRET_PARAM=${STATE_PARAM},AUTHORIZE_BASE=${OAUTH_ENDPOINT},DEPLOY_REGION=${REGION}}" \
     --region $REGION >/dev/null 2>&1
   info "Middleware configured ✓"
 else
-  warn "Middleware Lambda not found. Check LarkMcpOnAgentCoreOAuth Stack."
+  warn "Middleware Lambda not found. Check ${OAUTH_STACK} Stack."
 fi
 
 # MCP endpoint
-MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
+MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`McpEndpoint`].OutputValue' --output text 2>/dev/null || echo "N/A")
-DASHBOARD_URL=$(aws cloudformation describe-stacks --stack-name LarkMcpOnAgentCoreOAuth --region $REGION \
+DASHBOARD_URL=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region $REGION \
   --query 'Stacks[0].Outputs[?OutputKey==`DashboardUrl`].OutputValue' --output text 2>/dev/null || echo "")
 
 # 验证
@@ -1303,12 +1399,21 @@ ALARM_WEBHOOK_KEYWORD=${ALARM_WEBHOOK_KEYWORD:-}
 CFGEOF
 chmod 600 "$DEPLOY_CONFIG"
 
-# OAuth Client 信息
-OAUTH_CLIENT_ID="lark-mcp-on-agentcore"
+# Record/refresh this app in the registry (for `ops.sh list-apps` and
+# `upgrade.sh --all`). Only named apps; the default app is implicit.
+if [ -n "$SLUG" ]; then
+  upsert_app "$SLUG" "$APP_ALIAS" "$REGION" "$MCP_ENDPOINT" "$RUNTIME_NAME"
+fi
+
+# OAuth Client 信息 (OAUTH_CLIENT_ID is exported per-slug by slug.sh)
 OAUTH_CLIENT_SECRET_VAL="${OAUTH_SECRET_VAL}"
 
-# 保存部署信息
-DEPLOY_INFO="${LOCAL_DIR}/deploy-output.md"
+# 保存部署信息 (per-slug so apps don't overwrite each other's output)
+if [ -n "$SLUG" ]; then
+  DEPLOY_INFO="${APP_LOCAL_DIR}/deploy-output.md"
+else
+  DEPLOY_INFO="${LOCAL_DIR}/deploy-output.md"
+fi
 umask 077
 cat > "$DEPLOY_INFO" << INFOEOF
 # Lark MCP on AgentCore - Deployment Info

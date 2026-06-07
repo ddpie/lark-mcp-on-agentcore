@@ -31,9 +31,19 @@ npm run lint                # eslint (no Prettier); npm run lint:fix to autofix
 npm run knip                # dead-code scan
 
 ./scripts/deploy.sh         # interactive deploy (re-run uses saved config)
-./scripts/ops.sh status     # operations toolkit (status/list-users/revoke/refresh-all/logs/rotate-secret/destroy)
+./scripts/ops.sh status     # operations toolkit (status/list-users/list-apps/rename/revoke/refresh-all/logs/rotate-secret/destroy)
 ./scripts/teardown.sh       # destroy all resources
+./scripts/upgrade.sh --all  # multi-app: canary the default app, then upgrade the rest
+
+# Multi-Feishu-app (one AWS account/region hosts N apps; design in .claude/specs/2026-06-07-multi-app-*):
+./scripts/deploy.sh --app <slug> --alias "<name>"   # deploy/onboard a named app (slug = a-z0-9-, ≤20)
+./scripts/ops.sh --app <slug> status                # operate one app (default app omits --app)
+./scripts/teardown.sh --app <slug>                  # tear down one app (shared WAF kept if others remain)
 ```
+
+No `--app` (or `--app` omitted) = the reserved **default** app, byte-identical to
+the original single-app deployment. Per-app physical names are derived by
+`scripts/lib/slug.sh` (shell) and `infra/lib/slug-names.ts` (CDK) from the slug.
 
 ## Project structure
 

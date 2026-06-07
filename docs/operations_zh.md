@@ -244,3 +244,89 @@ npm run knip                       # 死代码/未使用依赖检测
 ```bash
 ./scripts/teardown.sh              # 销毁所有资源（AgentCore Runtime + 跨区域 WAF + CDK stacks）
 ```
+
+## 多应用（多个飞书 App）
+
+一个 AWS 账号 + 区域可以托管 **N 个相互独立的飞书 App**。每个 App 以 **slug 命名空间**
+隔离：`deploy.sh` 每个 App 运行一次，创建一套完全隔离的资源栈（独立的飞书 App secret、
+state-secret、DynamoDB 表、AgentCore Runtime 和 CloudFront 端点）。App 由**端点**选择 ——
+请求到达 App X 的 CloudFront 域名，按构造即属于 App X；没有按请求传递的 App header，
+也不改变 MCP Token 格式。
+
+原有的单 App 部署是保留的 **default 应用**：不带 `--app` 运行时，所有物理资源名与今天
+**完全一致**（无后缀、无变换）。`./scripts/upgrade.sh`、`./scripts/ops.sh`、`teardown.sh`
+不带 `--app` 即操作 default 应用。
+
+**Slug 规则**（`scripts/lib/slug.sh`）：`^[a-z][a-z0-9-]{0,18}[a-z0-9]$` —— 1–20 字符、
+小写、无前导/末尾/连续连字符、无下划线/斜杠/大写。以下保留词被拒绝：`default, users,
+feishu, feishu-app, state, state-secret, oauth, oauth-codes, openid, openid-map,
+alarms, app, admin, waf, runtime`。
+
+### 接入一个新 App
+
+**前置条件：** 必须**先**在[飞书开放平台](https://open.feishu.cn/app)控制台创建飞书 App
+并授予所需权限（scopes）。`deploy.sh` 无法创建飞书 App —— 它只能关联并验证已存在的
+App ID + App Secret。
+
+```bash
+./scripts/deploy.sh --app <slug> --alias "<显示名称>"
+```
+
+- `--alias` 是人类可读标签（UTF-8，可含中文/空格），显示在 `ops.sh list-apps`、
+  Dashboard 标题和告警卡片中；缺省取 slug 值。别名在账号+区域内**强制唯一**：
+  冲突会在**创建任何资源之前**中止部署。
+- 从 slug 解析出所有 per-slug 名称：`lark-mcp-on-agentcore/feishu-app/<slug>` secret、
+  per-slug 的 state-secret/oauth-client-secret SSM、`…-oauth-codes-<slug>` /
+  `…-openid-map-<slug>` 表、Runtime `lark_mcp_on_agentcore_<slug>` 以及独立的
+  CloudFront 端点。WAF stack 在所有 App 之间**共享**。
+
+**部署后：** 把输出的 Redirect URL（`<OAuth 端点>/callback`）注册到该 App 的飞书控制台，
+再把输出的 MCP 端点粘贴到你的 MCP 客户端。
+
+### 操作单个 App
+
+```bash
+./scripts/ops.sh --app <slug> <命令>   # status | list-users | revoke | refresh-all | logs | rotate-secret | destroy
+./scripts/ops.sh list-apps            # 列出 default + 所有命名 App，格式为 "别名 (slug)"
+./scripts/ops.sh rename --app <slug> "<新别名>"   # 修改别名（同时更新告警卡片中的标签）
+```
+
+省略 `--app` 即操作 default 应用。`--app` 可放在子命令前或后。
+
+### 升级整个应用群
+
+重新运行 `deploy.sh` **本身就是**升级：内容寻址镜像只构建一次，每个 App 的 Runtime
+重指向共享的 ECR tag（**构建一次 / 重指向 N 个**）。`upgrade.sh` 在注册表上编排这一过程：
+
+```bash
+./scripts/upgrade.sh --canary          # 仅升级 default 应用，然后验证
+./scripts/upgrade.sh --rest            # 升级注册表中的每个命名 App
+./scripts/upgrade.sh --all             # 先 canary（default）再 --rest
+./scripts/upgrade.sh --rollback <slug> # 把 <slug> 的端点重指向其上一个 Runtime 版本
+./scripts/upgrade.sh --list            # 显示已注册的 App
+```
+
+> 仅镜像的 `--rollback` **只有在两个版本间 OAuth scopes 未变更时**才安全。若升级改动了
+> scopes，请改用 `git checkout <prev>` 后 `./scripts/deploy.sh --app <slug> --yes`。
+
+### 销毁单个 App
+
+```bash
+./scripts/teardown.sh --app <slug>
+```
+
+销毁该 App 的 Runtime 和 CDK stacks。只要还有其它 App 在使用，**共享 WAF 会被保留**。
+`…-openid-map-<slug>` 表带有 `RETAIN`，不会被 `cdk destroy` 删除 —— 在**重新部署同一
+slug 之前必须手动删除它**，否则重新部署会以 "table already exists" 失败：
+
+```bash
+aws dynamodb delete-table --table-name lark-mcp-on-agentcore-openid-map-<slug> --region <region>
+```
+
+### 约束 / 注意事项
+
+- **仅限单账号 + 单区域** —— 不支持跨账号、跨区域。
+- **别名在账号+区域内强制唯一**；冲突时换一个。
+- **default 应用的名称永不改变**（default sentinel 是空 slug，而非字面量 `default`）。
+- **slug 不可变** —— 重命名 slug 意味着 CFN 资源替换和数据丢失。只有**别名**可改
+  （通过 `ops.sh rename`）。

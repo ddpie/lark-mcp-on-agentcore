@@ -86,7 +86,9 @@ if [ "$DO_TYPECHECK" = 1 ] && [ ! -d "$ROOT/infra/node_modules" ]; then
 fi
 
 [ "$DO_LINT" = 1 ] && run_tier "lint (bash -n)" bash -c '
-  for f in "'"$ROOT"'"/scripts/*.sh; do bash -n "$f" || exit 1; done
+  for f in "'"$ROOT"'"/scripts/*.sh "'"$ROOT"'"/scripts/lib/*.sh "'"$ROOT"'"/scripts/lib/__tests__/*.sh; do
+    [ -e "$f" ] && { bash -n "$f" || exit 1; }
+  done
 '
 [ "$DO_LINT" = 1 ] && run_tier "lint (eslint)" bash -c "cd '$ROOT' && npm run lint"
 [ "$DO_LINT" = 1 ] && run_tier "lint (invariants)" bash -c "cd '$ROOT' && ./scripts/check-invariants.sh"
@@ -98,6 +100,12 @@ if [ "$DO_UNIT" = 1 ]; then
   else
     run_tier "unit (vitest)" bash -c "cd '$ROOT' && npm test --silent"
   fi
+  # Pure-shell unit tests (slug resolver, etc.) — no vitest, run each *.test.sh.
+  run_tier "unit (shell lib)" bash -c '
+    for t in "'"$ROOT"'"/scripts/lib/__tests__/*.test.sh; do
+      [ -e "$t" ] && { bash "$t" || exit 1; }
+    done
+  '
 fi
 [ "$DO_MUTATION" = 1 ] && run_tier "mutation (stryker)" bash -c "cd '$ROOT' && npx stryker run"
 [ "$DO_SMOKE" = 1 ] && run_tier "smoke (docker container)" "$ROOT/scripts/test-smoke-docker.sh"

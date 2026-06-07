@@ -244,3 +244,97 @@ npm run knip                       # Dead code / unused dependency detection
 ```bash
 ./scripts/teardown.sh              # Destroy everything (AgentCore Runtime + cross-region WAF + CDK stacks)
 ```
+
+## Multi-app (multiple Feishu apps)
+
+One AWS account + region can host **N independent Feishu apps** on this service.
+Each app is **slug-namespaced**: `deploy.sh` runs once per app and creates a fully
+isolated stack (its own Feishu-app secret, state-secret, DynamoDB tables, AgentCore
+Runtime, and CloudFront endpoint). Apps are selected by **endpoint** — a request that
+reaches app X's CloudFront domain is, by construction, for app X; there is no
+per-request app header and no MCP-token format change.
+
+The original single deployment is the reserved **default** app: run without `--app`
+and every physical resource name is **byte-identical** to today's (no suffix, no
+transform). Run `./scripts/upgrade.sh` and `./scripts/ops.sh`/`teardown.sh` without
+`--app` to operate on it.
+
+**Slug rules** (`scripts/lib/slug.sh`): `^[a-z][a-z0-9-]{0,18}[a-z0-9]$` — 1–20 chars,
+lowercase, no leading/trailing/double hyphen, no underscore/slash/uppercase. Reserved
+words are rejected: `default, users, feishu, feishu-app, state, state-secret, oauth,
+oauth-codes, openid, openid-map, alarms, app, admin, waf, runtime`.
+
+### Onboard a new app
+
+**Prerequisite:** create the Feishu app and grant its scopes in the
+[Feishu Open Platform](https://open.feishu.cn/app) console **first**. `deploy.sh`
+cannot create a Feishu app — it only associates and validates an existing App ID +
+App Secret.
+
+```bash
+./scripts/deploy.sh --app <slug> --alias "<display name>"
+```
+
+- `--alias` is a human-readable label (UTF-8; Chinese/spaces OK) shown in
+  `ops.sh list-apps`, dashboard titles, and alarm cards. It defaults to the slug.
+  The alias is **hard-unique** within the account+region: a collision aborts the
+  deploy **before any resource is created**.
+- Resolves all per-slug names from the slug: `lark-mcp-on-agentcore/feishu-app/<slug>`
+  secret, per-slug state-secret/oauth-client-secret SSM, `…-oauth-codes-<slug>` /
+  `…-openid-map-<slug>` tables, runtime `lark_mcp_on_agentcore_<slug>`, and a dedicated
+  CloudFront endpoint. The WAF stack is **shared** across all apps.
+
+**After deploy:** register the printed Redirect URL (`<OAuth endpoint>/callback`) in
+that app's Feishu console, then paste the printed MCP endpoint into your MCP client.
+
+### Operate one app
+
+```bash
+./scripts/ops.sh --app <slug> <cmd>   # status | list-users | revoke | refresh-all | logs | rotate-secret | destroy
+./scripts/ops.sh list-apps            # lists default + every named app as "alias (slug)"
+./scripts/ops.sh rename --app <slug> "<new alias>"   # change the alias (also updates the alarm card label)
+```
+
+Omit `--app` to target the default app. `--app` may go before or after the subcommand.
+
+### Upgrade the fleet
+
+Re-running `deploy.sh` **is** an upgrade: the content-addressed image is built once
+and each app's runtime repoints to the shared ECR tag (**build-once / repoint-N**).
+`upgrade.sh` orchestrates this over the registry:
+
+```bash
+./scripts/upgrade.sh --canary          # upgrade ONLY the default app, then verify
+./scripts/upgrade.sh --rest            # upgrade every named app in the registry
+./scripts/upgrade.sh --all             # canary (default) then --rest
+./scripts/upgrade.sh --rollback <slug> # repin <slug>'s endpoint to its previous runtime version
+./scripts/upgrade.sh --list            # show registered apps
+```
+
+> Image-only `--rollback` is safe **only if OAuth scopes did not change** between
+> versions. If the upgrade touched scopes, instead `git checkout <prev>` and
+> `./scripts/deploy.sh --app <slug> --yes`.
+
+### Tear down one app
+
+```bash
+./scripts/teardown.sh --app <slug>
+```
+
+Destroys that app's Runtime and CDK stacks. The **shared WAF is kept** while any
+other app still uses it. The `…-openid-map-<slug>` table has `RETAIN`, so it
+survives `cdk destroy` — you **must delete it manually before re-deploying the same
+slug**, or the redeploy fails with "table already exists":
+
+```bash
+aws dynamodb delete-table --table-name lark-mcp-on-agentcore-openid-map-<slug> --region <region>
+```
+
+### Constraints / caveats
+
+- **Single account + region only** — no cross-account, no cross-region.
+- **Alias is hard-unique** within the account+region; pick another on collision.
+- **The default app's names never change** (default sentinel = empty slug, not the
+  literal `default`).
+- **The slug is immutable** — renaming a slug means CFN resource replacement and data
+  loss. Only the **alias** is changeable (via `ops.sh rename`).

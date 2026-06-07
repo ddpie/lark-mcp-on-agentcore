@@ -291,15 +291,36 @@ async function preflightWritable(secretId: string, userId: string): Promise<bool
 }
 
 
-async function listAllUserSecrets(): Promise<string[]> {
+// Multi-app isolation (Killer Fix #3): the Secrets Manager `name` filter is a
+// PREFIX match, not exact, so filtering by `SECRET_PREFIX` alone also matches a
+// sibling app's `SECRET_PREFIX-<other>/...` AND any per-app `SECRET_PREFIX/<slug>/...`
+// secrets. The 30-min refresh loop auto-DELETES secrets on terminal Feishu codes,
+// so a cross-app match would silently destroy another app's live tokens. Two-part
+// screen, both required:
+//   1. filter on `SECRET_PREFIX + '/'` (stops `users-other/...` sibling bleed), and
+//   2. keep only single-segment names `^SECRET_PREFIX/[^/]+$` (drops a nested
+//      `users/<slug>/<openid>` belonging to another app).
+// The userId is a Feishu open_id (`ou_*`) or a stable hex id — never contains '/',
+// so a single trailing segment is exactly one user. NOTE: must NOT screen on a hex
+// shape — real userIds are `ou_*` open_ids, and a hex-only screen would silently
+// drop every real user (data-destructive).
+export async function listAllUserSecrets(): Promise<string[]> {
   const names: string[] = [];
   let nextToken: string | undefined;
+  const prefix = `${SECRET_PREFIX}/`;
+  const singleSegment = new RegExp(`^${escapeRegExp(SECRET_PREFIX)}/[^/]+$`);
   do {
-    const resp = await sm.send(new ListSecretsCommand({ Filters: [{ Key: "name", Values: [SECRET_PREFIX] }], NextToken: nextToken }));
-    for (const s of resp.SecretList || []) if (s.Name) names.push(s.Name);
+    const resp = await sm.send(new ListSecretsCommand({ Filters: [{ Key: "name", Values: [prefix] }], NextToken: nextToken }));
+    for (const s of resp.SecretList || []) {
+      if (s.Name && s.Name.startsWith(prefix) && singleSegment.test(s.Name)) names.push(s.Name);
+    }
     nextToken = resp.NextToken;
   } while (nextToken);
   return names;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseBody(event: LambdaEvent): Record<string, string> {

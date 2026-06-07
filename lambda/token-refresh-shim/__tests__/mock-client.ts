@@ -121,7 +121,16 @@ class SecretsManagerClient {
     }
 
     if (cmd instanceof ListSecretsCommand) {
-      return Promise.resolve({ SecretList: listNames.map(n => ({ Name: n })) });
+      // Model the real Secrets Manager `name` filter: it is a PREFIX match, not
+      // exact. Returning only exact matches would hide the cross-app bleed that
+      // Killer Fix #3's [^/]+ screen exists to defend against.
+      const filters = cmd.input?.Filters as Array<{ Key: string; Values: string[] }> | undefined;
+      const nameFilter = filters?.find(f => f.Key === 'name');
+      const prefixes = nameFilter?.Values ?? [];
+      const matched = prefixes.length === 0
+        ? listNames
+        : listNames.filter(n => prefixes.some(p => n.startsWith(p)));
+      return Promise.resolve({ SecretList: matched.map(n => ({ Name: n })) });
     }
 
     if (cmd instanceof DeleteSecretCommand) {
