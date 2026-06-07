@@ -1106,19 +1106,31 @@ if [ "$WAF_STATUS" = "ROLLBACK_COMPLETE" ] || [ "$WAF_STATUS" = "DELETE_FAILED" 
 fi
 
 SECRET_NAME="$FEISHU_SECRET"
+# Force-delete a secret AND wait until it is actually gone. force-delete-without-
+# recovery is ASYNC: it returns immediately but the secret lingers in a deleting
+# state for a moment, during which describe/create/put race and fail. Poll until
+# describe returns ResourceNotFound (or timeout) so the recreate below is safe.
+force_delete_secret_and_wait() {
+  local id="$1" i
+  aws secretsmanager delete-secret --secret-id "$id" --region "$REGION" \
+    --force-delete-without-recovery >/dev/null 2>&1 || true
+  for i in $(seq 1 30); do
+    aws secretsmanager describe-secret --secret-id "$id" --region "$REGION" >/dev/null 2>&1 || return 0
+    sleep 1
+  done
+  warn "Secret ${id} still present after force-delete; continuing anyway."
+}
   SECRET_STATUS=$(aws secretsmanager describe-secret --secret-id "$SECRET_NAME" --region "$REGION" \
     --query 'DeletedDate' --output text 2>/dev/null || echo "NOT_FOUND")
   if [ "$SECRET_STATUS" != "NOT_FOUND" ] && [ "$SECRET_STATUS" != "None" ]; then
     info "Cleaning pending-delete secret: ${SECRET_NAME}"
-    aws secretsmanager delete-secret --secret-id "$SECRET_NAME" --region "$REGION" \
-      --force-delete-without-recovery 2>/dev/null || true
+    force_delete_secret_and_wait "$SECRET_NAME"
   elif [ "$SECRET_STATUS" = "None" ]; then
     OWNING_STACK=$(aws cloudformation describe-stacks --stack-name "$OAUTH_STACK" --region "$REGION" \
       --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
     if [ "$OWNING_STACK" = "NOT_FOUND" ]; then
       warn "Orphaned secret ${SECRET_NAME}, cleaning..."
-      aws secretsmanager delete-secret --secret-id "$SECRET_NAME" --region "$REGION" \
-        --force-delete-without-recovery 2>/dev/null || true
+      force_delete_secret_and_wait "$SECRET_NAME"
     fi
   fi
 
@@ -1140,14 +1152,25 @@ SECRET_FILE=$(mktemp); chmod 600 "$SECRET_FILE"
 trap 'rm -f "$SECRET_FILE"' EXIT
 APP_ID="$APP_ID" APP_SECRET="$APP_SECRET" python3 -c \
   'import json,os; print(json.dumps({"appId":os.environ["APP_ID"],"appSecret":os.environ["APP_SECRET"]}))' > "$SECRET_FILE"
+# Don't swallow errors here: a failed create/put used to discard stderr and let
+# `set -e` exit silently (user saw only the shell prompt, no reason). Capture the
+# AWS error and surface it before exiting.
 if aws secretsmanager describe-secret --secret-id "$FEISHU_SECRET" --region "$REGION" &>/dev/null; then
-  aws secretsmanager put-secret-value --secret-id "$FEISHU_SECRET" \
-    --secret-string "file://$SECRET_FILE" --region "$REGION" >/dev/null 2>&1
+  if ! SECRET_ERR=$(aws secretsmanager put-secret-value --secret-id "$FEISHU_SECRET" \
+      --secret-string "file://$SECRET_FILE" --region "$REGION" 2>&1 >/dev/null); then
+    rm -f "$SECRET_FILE"; trap - EXIT
+    err "Failed to update secret ${FEISHU_SECRET}:"; echo "    ${SECRET_ERR}" >&2
+    exit 1
+  fi
   info "Secret updated ✓"
 else
-  aws secretsmanager create-secret --name "$FEISHU_SECRET" \
-    --secret-string "file://$SECRET_FILE" --region "$REGION" \
-    --tags Key=project,Value=lark-mcp-on-agentcore Key=app,Value="${SLUG:-default}" >/dev/null 2>&1
+  if ! SECRET_ERR=$(aws secretsmanager create-secret --name "$FEISHU_SECRET" \
+      --secret-string "file://$SECRET_FILE" --region "$REGION" \
+      --tags Key=project,Value=lark-mcp-on-agentcore Key=app,Value="${SLUG:-default}" 2>&1 >/dev/null); then
+    rm -f "$SECRET_FILE"; trap - EXIT
+    err "Failed to create secret ${FEISHU_SECRET}:"; echo "    ${SECRET_ERR}" >&2
+    exit 1
+  fi
   info "Secret created ✓"
 fi
 rm -f "$SECRET_FILE"
