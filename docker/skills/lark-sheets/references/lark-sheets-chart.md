@@ -92,7 +92,7 @@
 **示例**：21 列 sheet 放 600×400 图 → `needCols=6, needRows=15`
 - ❌ `{row: 0, col: "W"}` — col=22 越界
 - ✅ `{row: 42, col: "A"}` — 放数据下方
-- ✅ 先 `lark_sheets_dim_insert(dimension="column", start=21, end=27)`（在 U 列后插 6 列；U=index 20，after 即从 21 起），再放图到 `{row: 0, col: "V"}`
+- ✅ 先 `lark_sheets_dim_insert(position="V", count=6)`（在 U 列后插 6 列；U=index 20，after 即从 21 起），再放图到 `{row: 0, col: "V"}`
 
 ## Shortcuts
 
