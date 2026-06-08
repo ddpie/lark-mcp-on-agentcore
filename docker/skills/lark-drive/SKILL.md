@@ -127,7 +127,7 @@ Drive Folder (云空间/云盘/云存储文件夹)
 
 | 操作 | 需要的 Token | 说明 |
 |------|-------------|------|
-| 读取文档内容 | `file_token` / 通过 `lark_doc_fetch` 自动处理 | `lark_doc_fetch` 支持直接传入 URL |
+| 读取文档内容 | `file_token` / 通过 `lark_docs_fetch` 自动处理 | `lark_docs_fetch` 支持直接传入 URL |
 | 添加局部评论（划词评论） | `file_token` | 传 `block_id` 时，`lark_drive_add_comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`sheet` 使用 `<sheetId>!<cell>`，`slides` 使用 `<slide-block-type>!<xml-id>`，且都支持最终解析到对应类型的 wiki URL；Drive file 不支持局部评论 |
 | 添加全文评论 | `file_token` | 不传 `block_id` 时，`lark_drive_add_comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL |
 | 下载文件 | `file_token` | 从文件 URL 中直接提取 |

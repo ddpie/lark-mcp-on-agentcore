@@ -20,7 +20,7 @@ MUST:
 
 1. Build `low_confidence_items`.
 2. Apply `Low-Confidence Partial Read`.
-3. Read only supported docs through `lark_doc_fetch`.
+3. Read only supported docs through `lark_docs_fetch`.
 4. Switch to `lark-sheets` / `lark-base` only when sheet / bitable title and path are insufficient.
 5. Record read evidence for classification.
 6. Continue reading low-confidence resources in internal batches until all supported low-confidence resources in the current inventory are processed or a blocker occurs.
@@ -42,9 +42,9 @@ Low-confidence resources include:
 | Condition | Agent MUST Do | Agent MUST NOT Do |
 |-----------|---------------|-------------------|
 | Title / path / type clearly determine classification | Classify directly | Do not perform content read |
-| Resource is low-confidence and docs-fetch-supported | Read outline via `lark_doc_fetch` | Do not skip partial read |
+| Resource is low-confidence and docs-fetch-supported | Read outline via `lark_docs_fetch` | Do not skip partial read |
 | Candidate project / customer / business / document-type terms exist | After outline, run keyword partial read with candidate terms | Do not use broad generic keywords |
-| Partial read returns usable block id and classification is still unclear | Read the relevant section via `lark_doc_fetch` | Do not read the full document |
+| Partial read returns usable block id and classification is still unclear | Read the relevant section via `lark_docs_fetch` | Do not read the full document |
 | Partial read still cannot classify | Set `needs_review=true`; classify to manual confirmation target | Do not invent classification |
 | Read fails or permission is insufficient | Set `needs_review=true`; record failure reason | Do not retry indefinitely |
 

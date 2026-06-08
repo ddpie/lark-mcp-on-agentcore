@@ -165,7 +165,7 @@ Use only command families allowed for the current state. Detailed syntax belongs
 |-------|---------------|---------|
 | `PARSE_SCOPE` | `lark_drive_inspect`, `lark_wiki_node_get`, `lark_wiki_space_list`, `lark_invoke(tool_name="lark_wiki_spaces_get", ...)`, `lark_drive_search` | Resolve target scope |
 | `INVENTORY` | `lark_wiki_node_list`, `lark_invoke(tool_name="lark_drive_files_list", ...)`, `lark_invoke(tool_name="lark_drive_metas_batch_query", ...)` | Recursively list and enrich resources |
-| `CONTENT_READ` | `lark_doc_fetch`, plus `lark-sheets` / `lark-base` tools when conditionally required | Partial content read for low-confidence items |
+| `CONTENT_READ` | `lark_docs_fetch`, plus `lark-sheets` / `lark-base` tools when conditionally required | Partial content read for low-confidence items |
 | `ISSUE_ANALYSIS` | No write tools | Analyze `resource_items` only |
 | `RULE_GENERATION` | No write tools | Generate classification rules and target tree |
 | `PLAN_GENERATION` | No write tools | Generate internal plan and user-facing pages |

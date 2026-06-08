@@ -92,10 +92,10 @@ lark_invoke(tool_name="lark_drive_metas_batch_query", args={
 调用 `lark_get_skill(domain="doc")` 学习云文档技能。
 
 ```
-lark_doc_create(api_version="v2", doc_format="markdown", content="<title>会议纪要汇总 (<start> - <end>)</title>\n<内容>")
+lark_docs_create(api_version="v2", doc_format="markdown", content="<title>会议纪要汇总 (<start> - <end>)</title>\n<内容>")
 
 # 或追加到已有文档
-lark_doc_update(api_version="v2", doc="<url_or_token>", command="append", doc_format="markdown", content="<内容>")
+lark_docs_update(api_version="v2", doc="<url_or_token>", command="append", doc_format="markdown", content="<内容>")
 ```
 
 ## 参考

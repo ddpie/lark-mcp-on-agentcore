@@ -375,6 +375,24 @@ find docker/skills -name "*.md" -exec grep -ln "\.\./lark-" {} \;      # no dead
 find docker/skills -name "*.md" -exec grep -ln "\-\-as " {} \;         # no --as leaks
 find docker/skills -name "*.md" -exec grep -ln "Read 工具\|Read tool" {} \;  # no Read tool refs
 
+# Tool-name existence: every lark_*() call in skills must reference a real tool.
+# Extracts call-form tool names and diffs against shortcut-scopes.json.
+python3 -c "
+import json, re, glob, sys
+sc = json.load(open('docker/shortcut-scopes.json'))['shortcuts']
+real = {f'lark_{e[\"service\"]}_{e[\"command\"].lstrip(\"+\").replace(\"-\",\"_\")}' for e in sc}
+real |= {'lark_discover','lark_invoke','lark_get_skill','lark_drive_import'}
+bad = set()
+for f in glob.glob('docker/skills/**/*.md', recursive=True):
+    for m in re.finditer(r'(lark_[a-z0-9_]+)\(', open(f).read()):
+        t = m.group(1)
+        if t not in real and not t.endswith('_'): bad.add((t,f))
+if bad:
+    for t,f in sorted(bad): print(f'  ✗ {t}  <- {f}')
+    print(f'\n{len(bad)} tool-name references to non-existent tools'); sys.exit(1)
+print('Tool-name check: all references valid ✓')
+"
+
 # Every SKILL.md must keep a non-empty, single-quoted description frontmatter that itself
 # contains no CLI leaks. The authoritative gate is the vitest skill-quality test (it parses
 # the value exactly as server.js does); run it rather than relying on a weak grep:
@@ -447,6 +465,8 @@ re-review the affected files only.
 - [ ] Bot-only operations flagged with warning
 - [ ] Every resource file (references/, routes/, scenes/) is mentioned by at least one .md in the same skill
 - [ ] Subdir sections use full path: `section="style/lark-doc-style"` not `section="style"`
+- [ ] **Tool-name existence**: every `lark_*()` call references a tool that exists in `shortcut-scopes.json` (or `lark_discover`/`lark_invoke`/`lark_get_skill`/`lark_drive_import`). Common pitfall: the CLI service is `docs` (plural), so the tool is `lark_docs_create` — not `lark_doc_create`. The skill directory name (`lark-doc`) does NOT dictate the tool name.
+- [ ] **Parameter-name accuracy**: every named argument inside a tool call (`flag="value"`) must match that tool's actual `--flags` (in snake_case). Verify against `lark-cli <service> +<command> --help` or the generated catalog. Don't invent parameter names from the semantic intent (e.g. `dimension/start/end` when the real flags are `position/count`).
 
 ## Correct and incorrect examples
 
