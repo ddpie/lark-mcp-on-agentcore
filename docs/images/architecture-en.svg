@@ -59,7 +59,8 @@
 
   <!-- API GW split: left L-shape, right straight line -->
   <path d="M 510 180 L 510 215 L 280 215 L 280 240" stroke="#333" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
-  <text x="320" y="232" fill="#666" font-size="10">/authorize /callback /token</text>
+  <text x="290" y="196" fill="#666" font-size="10">/authorize /callback /token /register</text>
+  <text x="290" y="209" fill="#666" font-size="10">.well-known/* (metadata + DCR discovery)</text>
 
   <line x1="630" y1="180" x2="630" y2="240" stroke="#333" stroke-width="1.5" marker-end="url(#arr)"/>
   <text x="638" y="216" fill="#666" font-size="10">/mcp</text>

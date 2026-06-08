@@ -79,7 +79,13 @@ The endpoint serves both kinds of MCP client at once; `/token` tells them apart 
 
 In both styles **the PKCE `code_verifier` is the identity-binding check**. For self-registering public clients it is the only client credential; for Amazon Quick the shared `client_secret` is one extra defense-in-depth layer that does not itself bind identity.
 
-The sequence below shows a full authorization-and-exchange flow and the checks at the `/token` endpoint:
+A self-registering client first discovers the server and registers itself (Amazon Quick skips this and uses its pre-shared credentials):
+
+<p align="center">
+  <img src="images/dcr-register-sequence-en.svg" alt="Dynamic Client Registration sequence: discover the server, register, receive a client_id with no secret, then continue into the OAuth + PKCE login" width="820">
+</p>
+
+The sequence below then shows a full authorization-and-exchange flow and the checks at the `/token` endpoint:
 
 <p align="center">
   <img src="images/oauth-pkce-sequence-en.svg" alt="OAuth 2.0 Authorization Code + PKCE sequence: the checks at /token, code_verifier binds identity (client_secret only for Amazon Quick)" width="900">
