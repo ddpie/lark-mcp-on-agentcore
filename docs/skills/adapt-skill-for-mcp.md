@@ -21,6 +21,7 @@ local files) into a format suitable for downstream agents calling our Remote MCP
 | 6b | Bot-only ops → add ⚠️ warning |
 | 7 | Preserve orchestration logic, CRITICAL markers, language |
 | 8 | Text assets (`.html`/`.txt`/`.csv`): copy verbatim; `cat local-file` → `lark_get_skill(section="assets/...")` |
+| 9 | Scripts (`scripts/`): copy `.py` verbatim; rewrite `python3 ...` → `lark_exec_script(...)` in `.md` |
 
 ## When to use
 
@@ -255,6 +256,37 @@ Some skills ship **non-markdown text assets** alongside their `.md` files — e.
   a skill depends on a binary asset, add a ⚠️ note that it is unavailable via the MCP server
   rather than inventing a broken reference.
 
+### 9. Handle executable scripts (`scripts/` directories)
+
+Some skills ship **executable scripts** (e.g. `lark-slides/scripts/iconpark_tool.py`) that
+agents are instructed to run locally. The MCP server provides `lark_exec_script` — a generic
+Python script executor that can run any script bundled under `docker/skills/*/scripts/`.
+
+Handle them like this:
+
+- **Copy `scripts/` directories verbatim** to `docker/skills/lark-<domain>/scripts/`. Do NOT
+  apply CLI→MCP text rules to `.py` files — they are executable code, not skill prose.
+- **Rewrite script invocations** in the `.md` files. Replace `python3 ...` with
+  `lark_exec_script(script="<relative-path>", args=[...])`. The `script` value is relative to
+  the skills dir (e.g. `lark-slides/scripts/iconpark_tool.py`). Arguments are passed as a JSON
+  array of strings.
+- **For scripts that read input from a file** (e.g. `--input <file>`): use the `stdin` parameter
+  if the script supports `--input -` (reading from stdin). The server pipes the `stdin` string to
+  the child process. If the script doesn't support stdin, note it in the skill and propose adding
+  the 2-line stdin support (see `xml_text_overlap_lint.py` for the pattern).
+- **Data files consumed by scripts** (e.g. `references/iconpark-index.json`,
+  `assets/templates/*.xml`) stay at their current paths — the scripts locate them via
+  `Path(__file__).parent.parent` which resolves correctly in the container.
+- **The `scripts/` whitelist regex**: only paths matching
+  `lark-[a-z-]+/scripts/[a-z0-9_]+\.py` are executable. Scripts in other locations or with
+  non-lowercase names will be rejected.
+
+| Original (script invocation) | Adapted (MCP) |
+|------------------------------|---------------|
+| `python3 scripts/iconpark_tool.py search --query "增长趋势" --limit 8` | `lark_exec_script(script="lark-slides/scripts/iconpark_tool.py", args=["search", "--query", "增长趋势", "--limit", "8"])` |
+| `python3 scripts/template_tool.py summarize --template office--work_report --label 内容` | `lark_exec_script(script="lark-slides/scripts/template_tool.py", args=["summarize", "--template", "office--work_report", "--label", "内容"])` |
+| `python3 scripts/xml_text_overlap_lint.py --input <file>` | `lark_exec_script(script="lark-slides/scripts/xml_text_overlap_lint.py", args=["--input", "-"], stdin="<XML content>")` |
+
 ## Excluded skills (do not adapt)
 
 - `lark-shared` — auth-only, not relevant
@@ -314,7 +346,7 @@ domain in `READAPT` (see Phase 1).
 
 **Force a FULL re-adapt (ignore the diff; `N` = every adaptable domain) when:**
 
-- The transformation RULES below (Rules 1–8, section-resolution, tool-naming, quality checklist)
+- The transformation RULES below (Rules 1–9, section-resolution, tool-naming, quality checklist)
   change — the diff only tells you which *upstream* skills changed, not whether already-committed
   output still complies with the *current* rules. A rule change makes even upstream-unchanged
   output stale, and is invisible to both the diff and `npm test` (skill-quality only re-validates
@@ -363,7 +395,8 @@ Each agent, per skill:
    - Use the per-skill diff to confirm every file added/renamed/deleted upstream is reflected (added files written, deleted files removed)
    - Note: files in subdirs like `references/style/` are accessible to agents via full SKILL.md text but not individually via `lark_get_skill(section=...)`. Preserve their directory structure as-is.
    - For **text assets** (`.html`/`.txt`/`.csv`, e.g. `assets/templates/*.html`): copy verbatim (Rule 8 — no CLI→MCP transform on the asset body), and rewrite any `cat local-file` / relative-link reads of them in the `.md` to `lark_get_skill(section="assets/...")`. Skip binary assets (flag as unavailable).
-5. Self-verify: `grep -c "lark-cli"` on all output files — must be 0 (asset bodies are exempt — they are copied verbatim, so a literal `lark-cli` inside a template is fine; check the `.md` files)
+   - For **`scripts/` directories** (Rule 9): copy `.py` files verbatim to `docker/skills/lark-<domain>/scripts/`. Rewrite `python3 ...` invocations in `.md` to `lark_exec_script(script="lark-<domain>/scripts/<name>.py", args=[...])`. Data files consumed by the scripts (e.g. `.json` indexes, `assets/templates/`) should also be copied verbatim.
+5. Self-verify: `grep -c "lark-cli"` on all output files — must be 0 (asset bodies and `.py` scripts are exempt — they are copied verbatim; check only the `.md` files). Also verify: no raw `python3 ...` invocations remain in `.md` files.
 
 ### Phase 2: Verify
 
@@ -374,6 +407,7 @@ find docker/skills -name "*.md" -exec grep -l "lark-cli" {} \;         # must be
 find docker/skills -name "*.md" -exec grep -ln "\.\./lark-" {} \;      # no dead cross-links
 find docker/skills -name "*.md" -exec grep -ln "\-\-as " {} \;         # no --as leaks
 find docker/skills -name "*.md" -exec grep -ln "Read 工具\|Read tool" {} \;  # no Read tool refs
+find docker/skills -name "*.md" -exec grep -ln "^python3\|python3 " {} \; # no raw python3 invocations in .md (lark_exec_script only)
 
 # Tool-name existence: every lark_*() call in skills must reference a real tool.
 # Extracts call-form tool names and diffs against shortcut-scopes.json.
@@ -381,7 +415,7 @@ python3 -c "
 import json, re, glob, sys
 sc = json.load(open('docker/shortcut-scopes.json'))['shortcuts']
 real = {f'lark_{e[\"service\"]}_{e[\"command\"].lstrip(\"+\").replace(\"-\",\"_\")}' for e in sc}
-real |= {'lark_discover','lark_invoke','lark_get_skill','lark_drive_import'}
+real |= {'lark_discover','lark_invoke','lark_get_skill','lark_drive_import','lark_exec_script'}
 bad = set()
 for f in glob.glob('docker/skills/**/*.md', recursive=True):
     for m in re.finditer(r'(lark_[a-z0-9_]+)\(', open(f).read()):
@@ -467,6 +501,8 @@ re-review the affected files only.
 - [ ] Subdir sections use full path: `section="style/lark-doc-style"` not `section="style"`
 - [ ] **Tool-name existence**: every `lark_*()` call references a tool that exists in `shortcut-scopes.json` (or `lark_discover`/`lark_invoke`/`lark_get_skill`/`lark_drive_import`). Common pitfall: the CLI service is `docs` (plural), so the tool is `lark_docs_create` — not `lark_doc_create`. The skill directory name (`lark-doc`) does NOT dictate the tool name.
 - [ ] **Parameter-name accuracy**: every named argument inside a tool call (`flag="value"`) must match that tool's actual `--flags` (in snake_case). Verify against `lark-cli <service> +<command> --help` or the generated catalog. Don't invent parameter names from the semantic intent (e.g. `dimension/start/end` when the real flags are `position/count`).
+- [ ] **`scripts/` contain only `.py` files** copied verbatim from upstream — no `.md` transformation applied to them
+- [ ] **No raw `python3 ...` invocations** in `.md` files — must be replaced with `lark_exec_script(script="...", args=[...])` calls
 
 ## Correct and incorrect examples
 

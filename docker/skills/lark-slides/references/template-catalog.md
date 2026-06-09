@@ -2,40 +2,19 @@
 
 > **创建 PPT 前必读。** 先根据用户需求匹配 1-2 个最佳模板，再根据每个模板下方的“页型索引”确定需要的页面类型。模板 XML 位于 `assets/templates/*.xml`，属于机器资源；默认通过脚本摘要或裁切，**不要阅读全文模板 XML**，尤其不要默认读取 `light_general.xml` / `dark_general.xml` 这类 54/56 页通用变体库全文。
 
-> **机器优先路径。** 优先运行 [`../scripts/template_tool.py`](../scripts/template_tool.py) 的 `search` 做低成本路由；锁定模板后运行 `summarize` 获取主题和布局摘要；只有需要具体布局骨架时才运行 `extract` 裁切目标页型 XML。`template-index.json` 是脚本缓存/轻量路由索引，不是默认阅读入口。
-
-> **降级路径。** 如果 `template_tool.py` 不可用，使用本文按场景确定候选模板和页型，但不要因为脚本不可用就直接阅读全文模板 XML。
+> **机器优先路径。** 优先使用 `lark_exec_script` 调用 `template_tool.py` 的 `search` 做低成本路由；锁定模板后运行 `summarize` 获取主题和布局摘要；只有需要具体布局骨架时才运行 `extract` 裁切目标页型 XML。`template-index.json` 是脚本缓存/轻量路由索引，不是默认阅读入口。不要因为可以执行脚本就直接阅读全文模板 XML。
 
 > **对话输出规则。** 当处于需求澄清阶段时，应该把匹配结果整理成 **2-3 个用户可选模板候选**，不要默认把整份目录贴给用户。每个候选至少包含：模板名、适用场景、风格/色调、简短推荐理由。优先展示场景强相关模板；`light_general.xml` / `dark_general.xml` 这类通用模板只作为兜底或补充选项。
 
 ## 使用方法
 
-1. 先运行 `python3 skills/lark-slides/scripts/template_tool.py search --query "<主题>" --limit 3`，根据用户描述的 **场景、风格、色调** 做初筛
+1. 先运行 `lark_exec_script(script="lark-slides/scripts/template_tool.py", args=["search", "--query", "<主题>", "--limit", "3"])`，根据用户描述的 **场景、风格、色调** 做初筛
 2. 整理出 **2-3 个**最匹配的用户可选模板候选；优先选场景强相关模板，没有明显场景模板时再用标 ⭐ 的通用模板兜底
 3. 用户选定后，再锁定 **1-2 个**最匹配的模板作为实际参考
 4. 先看模板下方的 **页型索引**，锁定你真正需要的页型：封面 / 目录 / 分节 / 内容 / 结尾
-5. 优先运行 `template_tool.py summarize` 查看 `<theme>` / 页型摘要；只有需要具体布局骨架时，再运行 `template_tool.py extract`
+5. 运行 `lark_exec_script(script="lark-slides/scripts/template_tool.py", args=["summarize", "--template", "<template_id>", "--label", "<页型>"])` 查看主题/布局摘要；只有需要具体布局骨架时，再运行 `extract`
 6. 从模板中提取并复用：`<theme>` 配色、页面流、shape 排列布局、装饰元素风格
 7. 将用户的实际内容填充到模板的结构框架中，**不要照搬模板的占位文字**
-
-### 脚本快捷命令
-
-```bash
-# 先找候选模板
-python3 skills/lark-slides/scripts/template_tool.py search --query "工作汇报" --tone light --limit 3
-
-# 看指定页型的紧凑摘要
-python3 skills/lark-slides/scripts/template_tool.py summarize --template office--work_report --label 内容
-
-# 只裁切目标页型，避免把整份 XML 拉进上下文
-python3 skills/lark-slides/scripts/template_tool.py extract --template office--work_report --label 封面 --out /tmp/work-report-cover.xml
-```
-
-如果脚本路径不可用，按这个顺序手动降级：
-
-1. 回到本文对应分类，确认页数、色调、适用场景，选 2-3 个候选
-2. 根据“页型索引”确定需要的目标页型
-3. 等脚本可用后再用 `summarize` / `extract` 获取详细布局数据；不要整份展开 `assets/templates/*.xml`
 
 ## 匹配维度
 

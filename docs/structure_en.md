@@ -17,6 +17,8 @@ docker/
   server-lib.js       Extracted unit-tested helpers (patchPermissionError, createSemaphore)
   tier1.json          28 high-frequency tools
   skills/             MCP-adapted Skills (transformed from lark-cli skills, served by lark_get_skill)
+    */scripts/        Python scripts bundled with skills (executed by lark_exec_script)
+    */assets/         Data assets consumed by scripts (e.g. template XML files)
 infra/
   lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront + user-token KMS CMK
   lib/runtime-stack.ts  Docker image + IAM (with SM read access)

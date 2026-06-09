@@ -6,8 +6,8 @@ This tool maps to: `lark_im_flag_create`. Underlying API: `POST /open-apis/im/v1
 
 - **Message-layer flag** (default): `item_type=default, flag_type=message`
 - **Feed-layer flag**: Use `flag_type="feed"` — automatically detects chat type to determine `item_type`:
-  - Topic-style chat (`chat_mode=topic`) -> `item_type=thread`
-  - Regular chat (`chat_mode=group`) -> `item_type=msg_thread`
+  - Topic-style chat (`chat_mode=topic`) → `item_type=thread`
+  - Regular chat (`chat_mode=group`) → `item_type=msg_thread`
 
 ## Commands
 

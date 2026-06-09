@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.48",
-    "extracted_at": "2026-06-04",
+    "lark_cli_version": "1.0.49",
+    "extracted_at": "2026-06-09",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -911,7 +911,7 @@
       "service": "drive",
       "command": "+secure-label-list",
       "scopes": [
-        "drive:file.meta.sec_label.read_only"
+        "docs:secure_label:readonly"
       ]
     },
     {
@@ -1021,6 +1021,51 @@
       "command": "+chat-update",
       "scopes": [
         "im:chat:update"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+feed-group-list",
+      "scopes": [
+        "im:feed_group_v1:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+feed-group-list-item",
+      "scopes": [
+        "im:feed_group_v1:read",
+        "im:chat:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+feed-group-query-item",
+      "scopes": [
+        "im:feed_group_v1:read",
+        "im:chat:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+feed-shortcut-create",
+      "scopes": [
+        "im:feed.shortcut:write"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+feed-shortcut-list",
+      "scopes": [
+        "im:feed.shortcut:read",
+        "im:chat:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+feed-shortcut-remove",
+      "scopes": [
+        "im:feed.shortcut:write"
       ]
     },
     {

@@ -11,6 +11,9 @@ lark_markdown_patch(file_token="boxcnxxxx", pattern="hello markdown", content="h
 # 正则替换（RE2）
 lark_markdown_patch(file_token="boxcnxxxx", regex=true, pattern="hello (.+)", content="hi $1")
 
+# 正则 pattern 含特殊字符时要显式转义
+lark_markdown_patch(file_token="boxcnxxxx", regex=true, pattern="version \\(1\\.0\\)", content="version (2.0)")
+
 # 删除匹配内容
 lark_markdown_patch(file_token="boxcnxxxx", pattern=" debug", content="")
 ```
@@ -31,8 +34,18 @@ lark_markdown_patch(file_token="boxcnxxxx", pattern=" debug", content="")
 - `content` 必须显式传入，但允许为空字符串
 - 未加 `regex` 时，行为等价于对整份 Markdown 文本执行 `strings.ReplaceAll`
 - 加了 `regex` 时，行为等价于对整份 Markdown 文本执行 RE2 全量替换；`content` 里的 `$1`、`${name}` 会按 Go regexp replacement template 解释，字面 `$` 请写成 `$$`
-- 替换后的最终 Markdown 不能为空；如果 patch 结果是空字符串，工具会直接报错，不会上传空文件
+- 替换后的最终 Markdown 不能为空；如果 patch 结果是空字符串，工具会直接报错，不会上传空文件，因为 Drive 不支持零字节 Markdown，且空文件通常是误操作
 - `0` 命中时命令仍然成功返回，但不会上传新版本
+
+## Good / Bad
+
+```
+# BAD: pattern 含正则特殊字符但未转义，容易匹配错误位置
+lark_markdown_patch(file_token="boxcnxxxx", regex=true, pattern="version (1.0)", content="version (2.0)")
+
+# GOOD: 显式转义括号和点号
+lark_markdown_patch(file_token="boxcnxxxx", regex=true, pattern="version \\(1\\.0\\)", content="version (2.0)")
+```
 
 ## 实现边界
 

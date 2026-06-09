@@ -17,6 +17,8 @@ docker/
   server-lib.js       抽取的可单测 helper (patchPermissionError, createSemaphore)
   tier1.json          28 个高频工具
   skills/             MCP 适配后的 Skill (从 lark-cli skills 转换，由 lark_get_skill 提供)
+    */scripts/        Skill 内置 Python 脚本 (由 lark_exec_script 执行)
+    */assets/         脚本依赖的数据资产 (如模板 XML 文件)
 infra/
   lib/oauth-stack.ts  OAuth + MCP + DDB + CloudWatch (Alarms + Dashboard + Webhook) + CloudFront + 用户 Token KMS CMK
   lib/runtime-stack.ts  Docker 镜像 + IAM (含 SM 读权限)

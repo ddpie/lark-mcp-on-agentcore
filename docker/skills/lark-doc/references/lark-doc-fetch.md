@@ -1,8 +1,6 @@
 
 # docs +fetch（获取飞书云文档）
 
-> **前置条件：** (authentication is handled automatically by the MCP server)
-
 ## 命令
 
 ```

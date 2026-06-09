@@ -237,6 +237,7 @@ The key uses `RemovalPolicy.RETAIN` (a deleted key would make every secret encry
 | OAuth CSRF | HMAC-SHA256 signed state (timing-safe, 5-min expiry) |
 | MCP auth | OAuth 2.0 (PKCE; RFC 7591 DCR for self-registering clients, shared client_secret for Amazon Quick), HMAC signed token (30-day validity) |
 | Container | Stateless per-request, non-root; SIGTERM graceful shutdown with child-process tracking |
+| Script execution (`lark_exec_script`) | Boot-time frozen allowlist (only `.py` files present at build time can run); scripts/ dirs chmod 555 to prevent overwrite; path regex whitelist; `execFile` (no shell) + `cwd=/tmp` + 30s timeout + 10MB output cap; curated env (PATH/HOME/LANG only, no AWS credentials); shares concurrency semaphore and graceful-shutdown tracking |
 | App Secret | Container kicks off the Secrets Manager fetch at startup asynchronously; until it loads, `/ping` returns 503 and `tools/call` returns `server_initializing`, so traffic is gated; the secret never enters the AgentCore control plane, logs, or argv |
 | Edge protection | CloudFront; optional WAFv2 (interactive prompt during deploy, default off) |
 | OAuth code | DynamoDB with TTL + ConditionExpression (replay protection) |

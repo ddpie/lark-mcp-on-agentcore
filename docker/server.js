@@ -157,6 +157,64 @@ const INVOKE_TOOL = {
   },
 };
 
+// lark_exec_script — generic Python script executor for skill-bundled scripts
+// Security: ALLOWED_SCRIPTS is frozen at startup (populated after SKILLS_DIR).
+const SCRIPTS_WHITELIST_RE = /^lark-[a-z-]+\/scripts\/[a-z0-9_]+\.py$/;
+const EXEC_SCRIPT_TIMEOUT_MS = 30_000;
+const ALLOWED_SCRIPTS = new Set();
+const EXEC_SCRIPT_TOOL = {
+  name: 'lark_exec_script',
+  description: '[read] Execute a Python script bundled with a lark skill. Scripts are pre-installed in the container and accept CLI arguments. Returns stdout as JSON. Use for icon search, template operations, XML validation, etc.',
+  inputSchema: {
+    type: 'object',
+    required: ['script'],
+    properties: {
+      script: { type: 'string', description: 'Script path relative to skills dir, e.g. "lark-slides/scripts/iconpark_tool.py"' },
+      args: { type: 'array', items: { type: 'string' }, description: 'CLI arguments to pass to the script' },
+      stdin: { type: 'string', description: 'Optional string to pipe as stdin (for scripts that accept --input -)' },
+    },
+  },
+};
+
+function execScript(script, args, stdin, abortSignal) {
+  if (!SCRIPTS_WHITELIST_RE.test(script) || !ALLOWED_SCRIPTS.has(script)) {
+    return Promise.resolve({ error: 'script_not_found', message: `Script not found or not allowed: ${script}` });
+  }
+  return withSemaphore(() => new Promise((resolve) => {
+    const scriptPath = `${SKILLS_DIR}/${script}`;
+    const safeArgs = Array.isArray(args) ? args.filter(a => typeof a === 'string') : [];
+    const child = execFile('python3', [scriptPath, ...safeArgs], {
+      timeout: EXEC_SCRIPT_TIMEOUT_MS,
+      maxBuffer: 10 * 1024 * 1024,
+      cwd: '/tmp',
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        LANG: process.env.LANG || 'en_US.UTF-8',
+        PYTHONIOENCODING: 'utf-8',
+        NO_COLOR: '1',
+      },
+    }, (err, stdout, stderr) => {
+      activeChildren.delete(child);
+      if (err) {
+        const code = typeof err.code === 'number' ? err.code : err.killed ? 'TIMEOUT' : err.code;
+        resolve({ error: 'exec_failed', message: stderr || err.message, exit_code: code });
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch {
+        resolve({ output: stdout.trim() });
+      }
+    });
+    activeChildren.add(child);
+    if (stdin && child.stdin) {
+      child.stdin.write(stdin);
+      child.stdin.end();
+    }
+  }), abortSignal);
+}
+
 // Skills — usage guides for multi-step orchestration of lark tools
 const SKILLS_DIR = '/app/skills';
 
@@ -173,6 +231,16 @@ if (fs.existsSync(SKILLS_DIR)) {
     });
   }
   console.log(`Skills loaded: ${skillIndex.length} domains`);
+  // Freeze allowed script list — only scripts present at boot can be executed.
+  // Prevents runtime file-write attacks (e.g. malicious file via lark_drive_download).
+  for (const dir of fs.readdirSync(SKILLS_DIR)) {
+    const scriptsDir = `${SKILLS_DIR}/${dir}/scripts`;
+    if (!fs.existsSync(scriptsDir)) continue;
+    for (const file of fs.readdirSync(scriptsDir)) {
+      if (file.endsWith('.py')) ALLOWED_SCRIPTS.add(`${dir}/scripts/${file}`);
+    }
+  }
+  if (ALLOWED_SCRIPTS.size > 0) console.log(`Exec scripts: ${ALLOWED_SCRIPTS.size} allowed`);
 }
 
 const LIST_SKILLS_TOOL = {
@@ -415,6 +483,7 @@ async function handleRequest(req, res, body) {
       })),
       { ...DISCOVER_TOOL, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } },
       { ...INVOKE_TOOL, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true } },
+      ...(ALLOWED_SCRIPTS.size > 0 ? [{ ...EXEC_SCRIPT_TOOL, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } }] : []),
       ...(skillIndex.length > 0 ? [
         { ...LIST_SKILLS_TOOL, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
         { ...GET_SKILL_TOOL, annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } },
@@ -473,6 +542,13 @@ async function handleRequest(req, res, body) {
         }
       }
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: content }] } });
+      return;
+    }
+
+    // lark_exec_script
+    if (toolName === 'lark_exec_script') {
+      const result = await execScript(toolArgs.script, toolArgs.args, toolArgs.stdin, ac.signal);
+      sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify(result) }] } });
       return;
     }
 
