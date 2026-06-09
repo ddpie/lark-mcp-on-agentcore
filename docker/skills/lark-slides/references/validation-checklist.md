@@ -24,10 +24,10 @@ lark_invoke(tool_name="lark_slides_xml_presentations_get", args={params: {"xml_p
 
 ## Automated XML Text Overlap Lint
 
-回读 XML 保存到本地文件后，优先运行 XML 语法和文本重叠静态检查：
+回读 XML 后，运行静态检查：
 
-```bash
-python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation.xml>
+```
+lark_exec_script(script="lark-slides/scripts/xml_text_overlap_lint.py", args=["--input", "-"], stdin="<回读的完整 XML>")
 ```
 
 通过标准：

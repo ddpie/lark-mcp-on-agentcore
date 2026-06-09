@@ -1,48 +1,28 @@
 ---
 name: lark-approval
-description: "飞书审批：审批实例、审批任务管理。"
+description: "飞书审批：当前用户审批的查询与全部处理操作，覆盖待本人审批的任务与本人发起的实例。审批待办不是飞书任务（任务类待办走 lark-task）；不负责创建审批定义和发起新审批。"
 ---
 
-# approval (v4)
+所有操作默认以当前用户身份执行（审批是人的动作）。调用前先 `lark_discover(query="approval.<resource>.<method>")` 查参数结构，不要猜字段。
 
-## API Resources
+## 选哪个命令
+
+| 想做什么 | 调用 |
+|---|---|
+| 查待办/已办 | `lark_invoke(tool_name="lark_approval_tasks_query", args={params: {"topic":"1"}})`（`topic`：1待办 2已办 17未读 18已读）|
+| 看表单/进度/当前节点 | `lark_invoke(tool_name="lark_approval_instances_get", args={...})` |
+| 同意/拒绝 | `lark_invoke(tool_name="lark_approval_tasks_approve", args={...})` / `lark_invoke(tool_name="lark_approval_tasks_reject", args={...})` |
+| 转交/加签/退回 | `lark_invoke(tool_name="lark_approval_tasks_transfer", args={...})` / `lark_invoke(tool_name="lark_approval_tasks_add_sign", args={...})` / `lark_invoke(tool_name="lark_approval_tasks_rollback", args={...})` |
+| 催办 | `lark_invoke(tool_name="lark_approval_tasks_remind", args={...})` |
+| 撤回/抄送/按定义查已发起 | `lark_invoke(tool_name="lark_approval_instances_cancel", args={...})` / `lark_invoke(tool_name="lark_approval_instances_cc", args={...})` / `lark_invoke(tool_name="lark_approval_instances_initiated", args={...})` |
+
+处理链：`tasks query` 拿 `instance_code` + `task_id`（操作必须成对带上）→ 需要细节再 `instances get` → 执行操作。
 
 ```
-lark_discover(query="approval.<resource>.<method>")   # 调用 API 前必须先查看参数结构
-lark_invoke(tool_name="lark_approval_<resource>_<method>", args={...}) # 调用 API
+lark_invoke(tool_name="lark_approval_tasks_query", args={params: {"topic":"1"}})
+lark_invoke(tool_name="lark_approval_tasks_approve", args={data: {"instance_code":"<ic>","task_id":"<tid>","comment":"同意"}})
 ```
 
-> **重要**：使用原生 API 时，必须先用 `lark_discover` 查看 `params` / `data` 参数结构，不要猜测字段格式。
+## 不在本 skill 范围
 
-### instances
-
-  - `get` — 获取单个审批实例详情
-  - `cancel` — 撤回审批实例
-  - `cc` — 抄送审批实例
-  - `initiated` — 查询用户的已发起列表
-
-### tasks
-
-  - `remind` — 催办审批人
-  - `approve` — 同意审批任务
-  - `reject` — 拒绝审批任务
-  - `transfer` — 转交审批任务
-  - `query` — 查询用户的任务列表
-  - `add_sign` — 审批任务加签
-  - `rollback` — 退回审批任务
-
-## 权限表
-
-| 方法 | 所需 scope |
-|------|-----------|
-| `instances.get` | `approval:instance:read` |
-| `instances.cancel` | `approval:instance:write` |
-| `instances.cc` | `approval:instance:write` |
-| `instances.initiated` | `approval:instance:read` |
-| `tasks.remind` | `approval:instance:write` |
-| `tasks.approve` | `approval:task:write` |
-| `tasks.reject` | `approval:task:write` |
-| `tasks.transfer` | `approval:task:write` |
-| `tasks.query` | `approval:task:read` |
-| `tasks.add_sign` | `approval:task:write` |
-| `tasks.rollback` | `approval:task:write` |
+创建审批定义/发起新审批（走飞书客户端或审批管理后台）；非审批类待办 → `lark_get_skill(domain="task")`

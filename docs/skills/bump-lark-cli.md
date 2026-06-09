@@ -215,8 +215,22 @@ above errors out and yields nothing, so adapt those FRESH by reading the entire 
 (`/tmp/lark-cli-$NEW_VER/skills/lark-<domain>`) directly. After re-adapting, review the diff and
 verify the quality checklist.
 
-After Step 9 regenerates `docker/skills/`, confirm no orphan adapted dirs remain (runs against
-the **regenerated** tree, so do it here, not in Step 8):
+After re-adapting `.md` files, also copy **scripts and data assets** from the NEW upstream
+clone for each domain in `READAPT` that has them:
+
+```bash
+for d in "${READAPT[@]}"; do
+  # scripts/ — copy .py files verbatim (executed by lark_exec_script)
+  SRC="/tmp/lark-cli-$NEW_VER/skills/$d/scripts"
+  [ -d "$SRC" ] && cp -r "$SRC" "docker/skills/$d/"
+  # assets/ — copy data files verbatim (consumed by scripts)
+  SRC="/tmp/lark-cli-$NEW_VER/skills/$d/assets"
+  [ -d "$SRC" ] && cp -r "$SRC" "docker/skills/$d/"
+done
+```
+
+Then confirm no orphan adapted dirs remain (runs against the **regenerated** tree, so do it
+here, not in Step 8):
 
 ```bash
 comm -13 <(ls -1 /tmp/lark-cli-$NEW_VER/skills | sort) <(ls -1 docker/skills | sort) || true   # → empty

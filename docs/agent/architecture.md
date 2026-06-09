@@ -70,11 +70,14 @@ allowlist.
 
 `docker/server.js` speaks three MCP methods: `initialize`, `tools/list`,
 `tools/call`. Of the catalog, **28 tier-1 (high-frequency) tools are exposed
-directly**; the long tail is reached via `lark_discover` → `lark_invoke`. Two
-meta-tools, `lark_list_skills` and `lark_get_skill`, serve the domain guides under
-`docker/skills/**` and clients are instructed (via tool descriptions) to call them
-FIRST. So "tier-1" means direct-exposed vs the discover/invoke fallback, and
-editing tool exposure or skill-serving lives in `docker/server.js`.
+directly**; the long tail is reached via `lark_discover` → `lark_invoke`. In
+addition, three skill-serving meta-tools — `lark_list_skills`, `lark_get_skill`,
+and `lark_exec_script` — serve the domain guides under `docker/skills/**` and
+execute bundled Python scripts; clients are instructed (via tool descriptions)
+to call them FIRST. Together with `lark_discover`/`lark_invoke`, these form the 5
+meta-tools listed in the README. So "tier-1" means direct-exposed vs the
+discover/invoke fallback, and editing tool exposure or skill-serving lives in
+`docker/server.js`.
 
 ## Risk classification & destructive-write gating
 
