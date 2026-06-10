@@ -22,14 +22,14 @@
 2. 设计大纲——每个 h1/h2 章节至少规划 1 个非文本 block；承载重要信息的章节优先规划画板
 3. `lark_docs_create(api_version="v2")` **只建骨架**：标题 + 开头 `<callout>` + 各级标题 + 每节一句占位摘要
    - **不要**一次性把完整章节内容塞进 `content`。超长 `content` 容易触发字符/参数限制。
-   - 完整内容留到第二波，由各 Agent 用 `lark_docs_update(command="append")` 或 `block_insert_after` 分段写入。
+   - 完整内容留到第二波，由各 Agent 用 `lark_docs_update(command="block_insert_after", block_id="<章节标题 block_id>")` 分段写入。
 
 ### 第二波 — 内容撰写（并行 Agent）
 
 4. Spawn Agent 并行撰写各章节。每个 Agent 需收到：
    - 文档 token、负责的章节范围、期望的 block 类型
    - `lark_get_skill(domain="doc", section="xml")` 和 `lark_get_skill(domain="doc", section="style")` 的引用（Agent 须先读取）
-   - 使用 `lark_docs_update(command="append")` 或 `block_insert_after` 写入
+   - 使用 `lark_docs_update(command="block_insert_after", block_id="<章节标题 block_id>")` 写入对应章节内容
 
 ### 第三波 — 整合审查 + 画板意图识别（串行）
 
