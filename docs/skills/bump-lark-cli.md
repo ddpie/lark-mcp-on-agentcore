@@ -79,13 +79,22 @@ The script (`scripts/extract-shortcut-scopes.py`) handles:
 - Service name constants
 - Empty scope arrays (included as `[]`)
 
-### 5. Regenerate scope-allowlist.ts
+### 5. Regenerate rawapi-scopes.json and scope-allowlist.ts
+
+Raw API scope metadata lives in the lark-cli binary's embedded registry (injected
+at lark-cli release time — NOT present in the source clone), so extracting it
+requires a **built image**. Build first, then extract, then rebuild the allowlist:
 
 ```bash
-scripts/build-scope-allowlist.sh
+docker build -f docker/Dockerfile -t lark-mcp-bump:tmp docker/   # NEW pin from Step 2
+scripts/extract-rawapi-scopes.sh lark-mcp-bump:tmp               # → docker/rawapi-scopes.json
+scripts/build-scope-allowlist.sh                                  # → scope-allowlist.ts
 ```
 
-This regenerates `lambda/token-refresh-shim/scope-allowlist.ts` from `docker/shortcut-scopes.json` + `config/oauth-scopes.json`.
+This regenerates `lambda/token-refresh-shim/scope-allowlist.ts` from
+`docker/shortcut-scopes.json` + `docker/rawapi-scopes.json` + `config/oauth-scopes.json`.
+Without the rawapi step, incremental auth for raw APIs (via `lark_invoke`) breaks:
+the OAuth Lambda rejects their scopes as "unknown or malformed".
 
 ### 6. Verify consistency
 

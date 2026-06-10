@@ -9,8 +9,9 @@ same change. Where an automated check exists, it is named; `scripts/check-invari
 | Source of truth | Generated / derived (do not edit) | Regenerate with |
 |---|---|---|
 | `docker/Dockerfile` (`ARG LARK_CLI_VERSION`) | `docker/shortcut-scopes.json._meta.lark_cli_version` | `scripts/extract-shortcut-scopes.py` (via bump runbook) |
-| `docker/shortcut-scopes.json` + `config/oauth-scopes.json` | `lambda/token-refresh-shim/scope-allowlist.ts` | `scripts/build-scope-allowlist.sh` |
-| `docker/shortcut-scopes.json` | container `generated-tools.json` | container build (`docker/generate-tools.js`) |
+| built lark-cli image (`lark-cli schema` `_meta.scopes`) | `docker/rawapi-scopes.json` | `scripts/extract-rawapi-scopes.sh <image>` (needs a built image) |
+| `docker/shortcut-scopes.json` + `docker/rawapi-scopes.json` + `config/oauth-scopes.json` | `lambda/token-refresh-shim/scope-allowlist.ts` | `scripts/build-scope-allowlist.sh` |
+| `docker/shortcut-scopes.json` | container `generated-tools.json` (`tools[]` + `rawApis[]`) | container build (`docker/generate-tools.js`) |
 | upstream lark-cli skills | `docker/skills/**` | re-adapt per `docs/skills/adapt-skill-for-mcp.md` |
 | CDK source (`infra/lib/*.ts`) | `infra/cdk.out/**`, CDK snapshot | `cd infra && npm run test:update` |
 
@@ -18,10 +19,12 @@ Also never hand-edit: `node_modules/`, `coverage/`, `.stryker-tmp/`.
 
 ## Code ↔ code couplings
 
-- **Bump lark-cli** ⇒ update Dockerfile pin, re-extract scopes, regenerate
-  `scope-allowlist.ts`, re-adapt changed `docker/skills/**`, update CDK snapshot,
-  reconcile `config/oauth-scopes.json`. Full procedure: `docs/skills/bump-lark-cli.md`.
-  Check: `scripts/check-lark-cli-version.sh`.
+- **Bump lark-cli** ⇒ update Dockerfile pin, re-extract scopes (both
+  `scripts/extract-shortcut-scopes.py` AND `scripts/extract-rawapi-scopes.sh`
+  against a built image), regenerate `scope-allowlist.ts`, re-adapt changed
+  `docker/skills/**`, update CDK snapshot, reconcile `config/oauth-scopes.json`.
+  Full procedure: `docs/skills/bump-lark-cli.md`.
+  Check: `scripts/check-lark-cli-version.sh`, `infra/test/scope-coverage.test.ts`.
 - **Add/curate an OAuth scope** ⇒ it must exist in the generated allowlist
   (`scope-allowlist.ts`); regenerate, don't hand-add. Check: `scripts/audit-tools.sh`.
 - **Change CDK stacks** ⇒ update the snapshot (`cd infra && npm run test:update`).

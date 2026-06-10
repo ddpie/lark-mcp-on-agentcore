@@ -3,8 +3,8 @@
 
 > **前置条件（MUST READ）：** 生成文档内容前，必须先调用以下技能参考，缺一不可：
 > 1. `lark_get_skill(domain="doc", section="xml")` — XML 语法规则（使用 Markdown 格式时改读 `lark_get_skill(domain="doc", section="md")`）
-> 2. `lark_get_skill(domain="doc", section="style")` — 排版指南（元素选择、丰富度规则、颜色语义）
-> 3. `lark_get_skill(domain="doc", section="update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
+> 2. `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 排版指南（元素选择、丰富度规则、颜色语义）
+> 3. `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
 >
 > **未读完以上参考就生成内容会导致格式错误或样式不达标。**
 
@@ -26,7 +26,7 @@
 | `doc_format` | 否 | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
 | `content` | 视指令 | 写入内容（`str_replace` 传空字符串可实现删除） |
 | `pattern` | 视指令 | 匹配文本（str_replace） |
-| `block_id` | 视指令 | 目标 block ID（block_* 操作）,-1 表示末尾 |
+| `block_id` | 视指令 | 目标 block ID（block_* 操作），逗号分隔可批量删除，-1 表示末尾 |
 | `src_block_ids` | 视指令 | 源 block ID（逗号分隔），用于 block_copy_insert_after / block_move_after |
 | `revision_id` | 否 | 基准版本号，-1 = 最新（默认 `-1`） |
 
@@ -40,8 +40,8 @@
 | `block_replace` | 替换指定 block（同一 block 仅限一次） | `block_id` `content` |
 | `block_delete` | 删除指定 block（逗号分隔可批量） | `block_id` |
 | `overwrite` | 清空文档后全文重写（可能丢失图片、评论） | `content` |
-| `append` | 在文档末尾追加内容（等价于 `block_insert_after` with `block_id="-1"`） | `content` |
-| `block_move_after` | 移动已有 block 到指定位置 | `block_id` + (`content` 或 `src_block_ids`) |
+| `append` | ⚠️ 在文档**末尾**追加内容（等价于 `block_insert_after` with `block_id="-1"`）。**不适用于逐章填充**——逐章写入请用 `block_insert_after` 并指定对应标题的 `block_id` | `content` |
+| `block_move_after` | 移动已有 block 到指定位置 | `block_id` `src_block_ids` |
 
 ## 指令示例
 
@@ -89,7 +89,8 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="block_replace", bloc
 ### block_delete — 删除指定 block
 
 ```
-lark_docs_update(api_version="v2", doc="<doc_id>", command="block_delete", block_id="目标 block_id")
+# 删除多个块时用逗号 "," 分隔
+lark_docs_update(api_version="v2", doc="<doc_id>", command="block_delete", block_id="block_id_1,block_id_2,block_id_3")
 ```
 
 ### overwrite — 全文覆盖
@@ -185,7 +186,7 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", patter
 
 > **`lark_docs_update` 不能直接编辑已有画板的内容。** 本工具只能**新增**画板块；要修改已有画板，先用 `lark_docs_fetch(api_version="v2")` 取到 `<whiteboard token="...">`，再按 `lark_get_skill(domain="doc", section="whiteboard")` 启动 SubAgent 读取 `lark_get_skill(domain="whiteboard")` 并写入。
 
-画板的语法选型与插入示例见 `lark_get_skill(domain="doc", section="style")` 的「画板语法与插入」章节。
+画板的语法选型与插入示例见 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的「画板语法与插入」章节。
 
 ## 最佳实践
 
@@ -201,12 +202,12 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", patter
   1. 用 `block_insert_after` 在目标位置插入新的富文本结构
   2. 用 `block_delete` 批量删除旧的 block
   3. 这样可以保留文档中其他不相关的内容（图片、评论等）
-- **视觉丰富度**：插入或替换内容时，同样遵循 `lark_get_skill(domain="doc", section="style")` 中的样式指南，主动使用结构化 block
+- **视觉丰富度**：插入或替换内容时，同样遵循 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 中的样式指南，主动使用结构化 block
 
 ## 参考
 
-- `lark_get_skill(domain="doc", section="update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
-- `lark_get_skill(domain="doc", section="style")` — 文档样式指南（元素选择 + 丰富度规则 + 颜色语义）
+- `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
+- `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 文档样式指南（元素选择 + 丰富度规则 + 颜色语义）
 - `lark_get_skill(domain="doc", section="xml")` — XML 语法规范
 - `lark_get_skill(domain="doc", section="fetch")` — 获取文档
 - `lark_get_skill(domain="doc", section="create")` — 创建文档

@@ -25,14 +25,14 @@
    - 用户明确要改整篇 → `lark_docs_fetch(api_version="v2", detail="with-ids")`
    - 详见 `lark_get_skill(domain="doc", section="fetch")` "意图引导：选择正确的 scope"
 2. 系统性评估：结构清晰度、富 block 密度（≥40%）、元素多样性（≥3种）、连续 `<p>` 是否超过 3 段、是否有开头 callout 和章节 `<hr/>`
-3. **画板意图识别**：逐章节扫描，按 `lark_get_skill(domain="doc", section="style")` 「画板意图识别」表判断哪些段落的信息适合用图表达。重要信息优先画板化，记录需要插图的章节（block ID）、推荐画板类型、mermaid/SVG路径和源内容片段
+3. **画板意图识别**：逐章节扫描，按 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 「画板意图识别」表判断哪些段落的信息适合用图表达。重要信息优先画板化，记录需要插图的章节（block ID）、推荐画板类型、mermaid/SVG路径和源内容片段
 4. 向用户简要说明改进计划（包含识别出的画板机会）
 
 ### 第二波 — 定向改写（并行 Agent）
 
 5. **优先处理第一波识别出的画板候选段落**：
    参考 `lark_get_skill(domain="doc", section="whiteboard")` 中的方式，插入图表画板。
-6. Spawn 内容改写 Agent 在不重叠的章节上并行改进，各 Agent 收到文档 token 和特定 block ID：（见 `lark_get_skill(domain="doc", section="style")`）
+6. Spawn 内容改写 Agent 在不重叠的章节上并行改进，各 Agent 收到文档 token 和特定 block ID：（见 `lark_get_skill(domain="doc", section="style/lark-doc-style")`）
    - 开头适当添加 `<callout>`、重组引言
    - 纯文本转为 `<grid>`/`<table>`/`<callout>`
    - 添加低重要度对比分栏、关键提示等富 block；画板类需求只走第 5 步
@@ -44,7 +44,7 @@
 
 ## Agent 子任务要求
 
-内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark_get_skill(domain="doc", section="xml")` 和 `lark_get_skill(domain="doc", section="style")` 的引用、具体的 `lark_docs_update` command 和 `block_id`。
+内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark_get_skill(domain="doc", section="xml")` 和 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的引用、具体的 `lark_docs_update` command 和 `block_id`。
 
 Mermaid 图由主 Agent 直接插入 `<whiteboard type="mermaid">...</whiteboard>`，无需 SubAgent。
 

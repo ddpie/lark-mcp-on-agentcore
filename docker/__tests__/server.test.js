@@ -230,6 +230,53 @@ describe('patchPermissionError', () => {
     expect(parsed.error.user_action).toContain('not automatically determined');
     expect(parsed.error.authorize_url).toBeUndefined();
   });
+  it('matches typed envelope with type=authorization + subtype=missing_scope (no code)', () => {
+    const output = JSON.stringify({
+      ok: false, error: {
+        type: 'authorization', subtype: 'missing_scope',
+        message: 'missing required scope(s): docs:document.comment:create',
+        missing_scopes: ['docs:document.comment:create', 'docs:document.comment:write_only'],
+        identity: 'user',
+      },
+    });
+    const parsed = JSON.parse(patch(output, 'lark_drive_add_comment', ''));
+    expect(parsed.error.authorize_url).toContain('docs%3Adocument.comment%3Acreate');
+    expect(parsed.error.authorize_url).toContain('docs%3Adocument.comment%3Awrite_only');
+    expect(parsed.error.required_scopes).toEqual(['docs:document.comment:create', 'docs:document.comment:write_only']);
+  });
+  it('matches typed envelope with subtype=token_scope_insufficient', () => {
+    const output = JSON.stringify({
+      ok: false, error: {
+        type: 'authorization', subtype: 'token_scope_insufficient',
+        message: 'token has no permission for this operation',
+        hint: 'check the token\'s granted scopes',
+      },
+    });
+    const parsed = JSON.parse(patch(output, 'lark_im_messages_send', 'tok'));
+    expect(parsed.error.authorize_url).toContain('im%3Amessage%3Asend');
+    expect(parsed.error.authorize_url).toContain('&t=tok');
+  });
+  it('prefers missing_scopes array from typed envelope over toolScopeMap', () => {
+    const output = JSON.stringify({
+      ok: false, error: {
+        type: 'authorization', subtype: 'missing_scope', code: 99991679,
+        message: 'unauthorized',
+        missing_scopes: ['calendar:calendar.event:create'],
+      },
+    });
+    const parsed = JSON.parse(patch(output, 'lark_im_messages_send', ''));
+    expect(parsed.error.required_scopes).toEqual(['calendar:calendar.event:create']);
+    expect(parsed.error.required_scopes).not.toContain('im:message:send');
+  });
+  it('does not match typed envelope with unrelated authorization subtypes', () => {
+    const output = JSON.stringify({
+      ok: false, error: {
+        type: 'authorization', subtype: 'app_unavailable',
+        message: 'app is not available',
+      },
+    });
+    expect(patch(output, 'lark_im_messages_send', '')).toBe(output);
+  });
   it('passes through output unchanged when error code is not 99991679', () => {
     const output = JSON.stringify({ error: { code: 12345, message: 'Other error' } });
     expect(patch(output, 'lark_im_messages_send', '')).toBe(output);

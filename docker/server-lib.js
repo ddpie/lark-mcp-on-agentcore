@@ -100,19 +100,34 @@ function findByName(catalogIndex, name) {
 }
 
 // Rewrite a lark-cli permission-denied error into an actionable hint with an
-// incremental-auth URL. Layered scope discovery: local scope map → console_url
-// query param → scope tokens parsed out of the error message.
+// incremental-auth URL. Two detection paths:
+//   1. Legacy/API-classified: error.code === 99991679 or 99991668
+//   2. Typed envelope (lark-cli ≥1.0.50 pre-flight): error.type === "authorization"
+//      with subtype "missing_scope" or "token_scope_insufficient" (no code field)
+//
+// Scope discovery layers (in priority order):
+//   a. error.missing_scopes array (typed envelope, most authoritative)
+//   b. local scope map (toolScopeMap, generated at build time)
+//   c. console_url query param
+//   d. scope tokens parsed from error message text
 function patchPermissionError(toolScopeMap, authorizeBase, output, toolName, incrAuthToken) {
   try {
     const data = JSON.parse(output);
     const code = Number(data.error?.code);
-    if (code === PERMISSION_ERROR_CODE || code === AUTH_ERROR_CODE) {
+    const isCodeMatch = code === PERMISSION_ERROR_CODE || code === AUTH_ERROR_CODE;
+    const isTypedMatch = data.error?.type === 'authorization' &&
+      (data.error.subtype === 'missing_scope' || data.error.subtype === 'token_scope_insufficient');
+    if (isCodeMatch || isTypedMatch) {
       const missing = new Set();
-      // Layer 2: check local scope mapping table first
-      if (toolName && toolScopeMap.has(toolName)) {
+      // Layer 1: typed envelope carries authoritative missing_scopes array
+      if (Array.isArray(data.error.missing_scopes)) {
+        for (const s of data.error.missing_scopes) if (s) missing.add(s);
+      }
+      // Layer 2: check local scope mapping table
+      if (missing.size === 0 && toolName && toolScopeMap.has(toolName)) {
         for (const s of toolScopeMap.get(toolName)) missing.add(s);
       }
-      // Layer 3: extract from lark-cli error response
+      // Layer 3: extract from lark-cli error response console_url
       if (missing.size === 0 && data.error.console_url) {
         try {
           const u = new URL(data.error.console_url);
@@ -120,6 +135,7 @@ function patchPermissionError(toolScopeMap, authorizeBase, output, toolName, inc
           for (const s of raw.split(/[,\s]+/).filter(Boolean)) missing.add(s);
         } catch {}
       }
+      // Layer 4: regex extraction from error message
       if (missing.size === 0) {
         const matches = [...(data.error.message || '').matchAll(/scopes?[:\s]+([a-z0-9_:.\- ,]+)/gi)];
         for (const m of matches) {
