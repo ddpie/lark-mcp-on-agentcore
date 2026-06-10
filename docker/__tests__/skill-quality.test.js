@@ -155,29 +155,44 @@ describe.skipIf(skipIfNoSkills)('skill quality', () => {
     expect(violations, `Files with lark_get_skill(domain="shared"):\n${violations.map(v => `  ${v}`).join('\n')}`).toEqual([]);
   });
 
-  it.skip('all lark_get_skill section references resolve to actual files (known: ~30 from doc/base subdir refs)', () => {
+  it('all lark_get_skill section references resolve to actual files', () => {
     const violations = [];
     for (const file of allFiles) {
       const content = readFileSync(file, 'utf8');
-      const skillDir = file.replace(/\/(?:references|routes|scenes|style)\/.*$/, '').replace(/\/SKILL\.md$/, '');
-      const domain = skillDir.split('/').pop().replace('lark-', '');
-      const regex = /lark_get_skill\([^)]*section\s*=\s*"([^"]+)"/g;
+      const ownDomain = file
+        .replace(SKILLS_DIR + '/', '')
+        .split('/')[0]
+        .replace('lark-', '');
+      // Capture the full argument list: the target skill dir comes from the
+      // call's own domain= argument (cross-domain refs are common), falling
+      // back to the containing skill for intra-skill calls that omit it.
+      const regex = /lark_get_skill\(([^)]*)\)/g;
       let m;
       while ((m = regex.exec(content)) !== null) {
-        const section = m[1];
-        if (section === '...') continue; // placeholder
-        // Same resolution as server: references/X.md, references/lark-domain-X.md, or X.md (subdir path)
-        const candidates = [
-          join(skillDir, 'references', `${section}.md`),
-          join(skillDir, 'references', `lark-${domain}-${section}.md`),
-          join(skillDir, `${section}.md`),
-        ];
+        const args = m[1];
+        const sectionMatch = args.match(/section\s*=\s*"([^"]+)"/);
+        if (!sectionMatch) continue;
+        const section = sectionMatch[1];
+        if (section === '...' || section.includes('<')) continue; // placeholders like assets/templates/<name>.html
+        const domainMatch = args.match(/domain\s*=\s*"([^"]+)"/);
+        const domain = domainMatch ? domainMatch[1] : ownDomain;
+        const skillDir = join(SKILLS_DIR, `lark-${domain}`);
+        // Same resolution as skill-sections.js resolveSection(): assets are
+        // addressed literally with extension; markdown tries three candidates.
+        const isAsset = ['.html', '.txt', '.csv'].some(ext => section.endsWith(ext));
+        const candidates = isAsset
+          ? [join(skillDir, section)]
+          : [
+              join(skillDir, 'references', `${section}.md`),
+              join(skillDir, 'references', `lark-${domain}-${section}.md`),
+              join(skillDir, `${section}.md`),
+            ];
         if (!candidates.some(p => existsSync(p))) {
-          violations.push({ file: file.replace(SKILLS_DIR + '/', ''), section });
+          violations.push({ file: file.replace(SKILLS_DIR + '/', ''), domain, section });
         }
       }
     }
-    expect(violations, `Unresolvable section references:\n${violations.map(v => `  ${v.file}: section="${v.section}"`).join('\n')}`).toEqual([]);
+    expect(violations, `Unresolvable section references:\n${violations.map(v => `  ${v.file}: domain="${v.domain}" section="${v.section}"`).join('\n')}`).toEqual([]);
   });
 
   it('all resource files are reachable from at least one file in the same skill (except known orphans from upstream)', () => {

@@ -142,7 +142,7 @@ lark_docs_fetch(api_version="v2", doc="<doc_token_or_url>", detail="with-ids")
 
 - `parent_token` 常见格式是 `<spreadsheet_token>_<sheet_id>`；也可能在 `relation.relation` 中看到 `subToken` 为 `3-<spreadsheet_token>`。
 - 评论接口通常只把 `positionInfo.blockID` 指到文档里的 `<sheet>` block，内部 sheet 的 `positionInfo` 可能为空。
-- 如果 `quote` 是 `C3`、`A1` 这类单元格坐标，可拆出 `spreadsheet_token` / `sheet_id` 后用 `lark-sheets` 能力读取该单元格确认：
+- 如果 `quote` 是 `C3`、`A1` 这类单元格坐标，可拆出 `spreadsheet_token` / `sheet_id` 后切到 `lark_get_skill(domain="sheets")` 读取该单元格确认：
 
 ```
 lark_sheets_read(spreadsheet_token="<spreadsheet_token>", sheet_id="<sheet_id>", range="<cell>")
@@ -163,7 +163,7 @@ lark_base_record_list(base_token="<base_token>", table_id="<table_id>", limit="2
 ```
 
 - 如果 `quote` 是某个稳定业务值，优先用字段/记录数据做精确匹配；如果 `quote` 只是“第 N 条”“第 N 行”这类 UI 序号，只能基于当前记录顺序推断对应记录，必须输出为“推断”，并说明评论接口没有返回 `record_id` / `field_id`。
-- 如果 `record-list` 返回 `has_more=true`，不要基于第一页下全局结论；继续分页或说明只能覆盖已读取范围。
+- 如果 `lark_base_record_list` 返回 `has_more=true`，不要基于第一页下全局结论；继续分页或说明只能覆盖已读取范围。
 - 需要写入时，如果评论没有字段信息，不要自行猜字段；除非用户给出默认规则，否则请求用户确认字段，或明确说明将使用哪个字段作为默认。
 
 ### Whiteboard 内部评论

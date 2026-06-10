@@ -21,7 +21,7 @@ lark_docs_update(api_version="v2", doc="文档URL或token", command="append", co
 
 **CRITICAL — 执行对应操作前，MUST 先调用以下技能参考，缺一不可：**
 1. **读取文档（`lark_docs_fetch`）** → 必读 `lark_get_skill(domain="doc", section="fetch")`（`scope` / `detail` 选择、局部读取策略、`<fragment>` / `<excerpt>` 输出结构）
-2. **创建或编辑文档内容** → 必读 `lark_get_skill(domain="doc", section="xml")`（XML 语法规则，仅当用户明确要求 Markdown 时改读 `lark_get_skill(domain="doc", section="md")`）；从零创建时加读 `lark_get_skill(domain="doc", section="create-workflow")`；编辑已有文档时加读 `lark_get_skill(domain="doc", section="update-workflow")`
+2. **创建或编辑文档内容** → 必读 `lark_get_skill(domain="doc", section="xml")`（XML 语法规则，仅当用户明确要求 Markdown 时改读 `lark_get_skill(domain="doc", section="md")`）；从零创建时加读 `lark_get_skill(domain="doc", section="style/lark-doc-create-workflow")`；编辑已有文档时加读 `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")`
 
 **未读完以上参考就执行相应操作会导致参数选择错误、格式错误或样式不达标。**
 

@@ -3,8 +3,8 @@
 
 > **前置条件（MUST READ）：** 生成文档内容前，必须先调用以下技能参考，缺一不可：
 > 1. `lark_get_skill(domain="doc", section="xml")` — XML 语法规则（使用 Markdown 格式时改读 `lark_get_skill(domain="doc", section="md")`）
-> 2. `lark_get_skill(domain="doc", section="style")` — 排版指南（元素选择、丰富度规则、颜色语义）
-> 3. `lark_get_skill(domain="doc", section="update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
+> 2. `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 排版指南（元素选择、丰富度规则、颜色语义）
+> 3. `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
 >
 > **未读完以上参考就生成内容会导致格式错误或样式不达标。**
 
@@ -186,7 +186,7 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", patter
 
 > **`lark_docs_update` 不能直接编辑已有画板的内容。** 本工具只能**新增**画板块；要修改已有画板，先用 `lark_docs_fetch(api_version="v2")` 取到 `<whiteboard token="...">`，再按 `lark_get_skill(domain="doc", section="whiteboard")` 启动 SubAgent 读取 `lark_get_skill(domain="whiteboard")` 并写入。
 
-画板的语法选型与插入示例见 `lark_get_skill(domain="doc", section="style")` 的「画板语法与插入」章节。
+画板的语法选型与插入示例见 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的「画板语法与插入」章节。
 
 ## 最佳实践
 
@@ -202,12 +202,12 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", patter
   1. 用 `block_insert_after` 在目标位置插入新的富文本结构
   2. 用 `block_delete` 批量删除旧的 block
   3. 这样可以保留文档中其他不相关的内容（图片、评论等）
-- **视觉丰富度**：插入或替换内容时，同样遵循 `lark_get_skill(domain="doc", section="style")` 中的样式指南，主动使用结构化 block
+- **视觉丰富度**：插入或替换内容时，同样遵循 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 中的样式指南，主动使用结构化 block
 
 ## 参考
 
-- `lark_get_skill(domain="doc", section="update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
-- `lark_get_skill(domain="doc", section="style")` — 文档样式指南（元素选择 + 丰富度规则 + 颜色语义）
+- `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
+- `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 文档样式指南（元素选择 + 丰富度规则 + 颜色语义）
 - `lark_get_skill(domain="doc", section="xml")` — XML 语法规范
 - `lark_get_skill(domain="doc", section="fetch")` — 获取文档
 - `lark_get_skill(domain="doc", section="create")` — 创建文档
