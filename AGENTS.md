@@ -54,8 +54,9 @@ scope defaults), `docker/` (MCP server + container), `infra/` (CDK stacks),
 `docs/` (human docs) + `docs/agent/` (these AI docs).
 
 **Generated — never hand-edit:** `infra/cdk.out/`, `generated-tools.json`,
-`lambda/token-refresh-shim/scope-allowlist.ts`, `docker/skills/**`,
-`node_modules/`, `coverage/`. Full source-of-truth map: `docs/agent/invariants.md`.
+`lambda/token-refresh-shim/scope-allowlist.ts`, `docker/rawapi-scopes.json`,
+`docker/skills/**`, `node_modules/`, `coverage/`. Full source-of-truth map:
+`docs/agent/invariants.md`.
 
 ## Code style
 

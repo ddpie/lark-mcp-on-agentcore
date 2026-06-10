@@ -434,6 +434,10 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
   if (args.page_all) cliArgs.push('--page-all');
   if (args.page_limit) cliArgs.push('--page-limit', String(args.page_limit));
   if (args.format) cliArgs.push('--format', String(args.format));
+  // lark-cli requires --yes to actually run a high-risk-write; without it the
+  // CLI returns confirmation_required even after the agent passed _confirm=true.
+  // Only inject for commands that declare --yes (recorded at build time).
+  if (entry.risk === 'high-risk-write' && entry.supportsYes) cliArgs.push('--yes');
 
   const env = {
     PATH: process.env.PATH,

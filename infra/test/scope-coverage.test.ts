@@ -20,6 +20,18 @@ const oauthScopes: string[] = JSON.parse(
   readFileSync(resolve(ROOT, "config/oauth-scopes.json"), "utf-8"),
 );
 
+const rawApiScopes: {
+  _meta: { lark_cli_version: string };
+  rawApis: { service: string; resource: string; method: string; scopes: string[] }[];
+} = JSON.parse(
+  readFileSync(resolve(ROOT, "docker/rawapi-scopes.json"), "utf-8"),
+);
+
+const allowlistSrc = readFileSync(
+  resolve(ROOT, "lambda/token-refresh-shim/scope-allowlist.ts"),
+  "utf-8",
+);
+
 function toolNameFromShortcut(service: string, command: string): string {
   return `lark_${service}_${command.replace(/^\+/, "").replace(/-/g, "_")}`;
 }
@@ -105,5 +117,41 @@ describe("scope coverage", () => {
           missing.map((t) => `  ${t}`).join("\n"),
       );
     }
+  });
+
+  it("scope-allowlist.ts is the union of shortcut + rawapi + oauth scopes (re-run scripts/build-scope-allowlist.sh)", () => {
+    const expected = new Set<string>();
+    for (const s of shortcutScopes.shortcuts) for (const sc of s.scopes || []) expected.add(sc);
+    for (const e of rawApiScopes.rawApis) for (const sc of e.scopes || []) expected.add(sc);
+    for (const sc of oauthScopes) expected.add(sc);
+
+    // Parse the actual scopes from the generated allowlist source.
+    const actual = new Set(
+      [...allowlistSrc.matchAll(/^\s*"([^"]+)",/gm)].map((m) => m[1]),
+    );
+
+    const missingFromAllowlist = [...expected].filter((s) => !actual.has(s)).sort();
+    const extraInAllowlist = [...actual].filter((s) => !expected.has(s)).sort();
+    if (missingFromAllowlist.length || extraInAllowlist.length) {
+      expect.fail(
+        "scope-allowlist.ts is out of sync with its sources " +
+          "(run scripts/build-scope-allowlist.sh).\n" +
+          (missingFromAllowlist.length ? `Missing: ${missingFromAllowlist.join(", ")}\n` : "") +
+          (extraInAllowlist.length ? `Extra: ${extraInAllowlist.join(", ")}` : ""),
+      );
+    }
+  });
+
+  it("no bot-only scopes in rawapi-scopes.json (user-only project)", () => {
+    const botScopes: string[] = [];
+    for (const e of rawApiScopes.rawApis) {
+      for (const sc of e.scopes || []) {
+        if (/:send_as_bot$/.test(sc)) botScopes.push(`${e.service}.${e.resource}.${e.method}: ${sc}`);
+      }
+    }
+    expect(
+      botScopes,
+      "bot-only scopes must be filtered by scripts/extract-rawapi-scopes.sh",
+    ).toEqual([]);
   });
 });

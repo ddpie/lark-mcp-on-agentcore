@@ -284,222 +284,6 @@
       ]
     },
     {
-      "service": "docs",
-      "resource": "or",
-      "method": "or",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "or",
-      "method": "workflows",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "or",
-      "method": "to",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "or",
-      "method": "with",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "or",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "or",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "workflows",
-      "method": "or",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "workflows",
-      "method": "workflows",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "workflows",
-      "method": "to",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "workflows",
-      "method": "with",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "workflows",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "workflows",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "to",
-      "method": "or",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "to",
-      "method": "workflows",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "to",
-      "method": "to",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "to",
-      "method": "with",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "to",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "to",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "with",
-      "method": "or",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "with",
-      "method": "workflows",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "with",
-      "method": "to",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "with",
-      "method": "with",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "with",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "with",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "or",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "workflows",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "to",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "with",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "or",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "workflows",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "to",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "with",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "skills",
-      "scopes": []
-    },
-    {
-      "service": "docs",
-      "resource": "skills",
-      "method": "skills",
-      "scopes": []
-    },
-    {
       "service": "drive",
       "resource": "file.comment.reply.reactions",
       "method": "update_reaction",
@@ -904,8 +688,7 @@
       "method": "delete",
       "scopes": [
         "im:message:recall",
-        "im:message",
-        "im:message:send_as_bot"
+        "im:message"
       ]
     },
     {
@@ -913,7 +696,6 @@
       "resource": "messages",
       "method": "forward",
       "scopes": [
-        "im:message:send_as_bot",
         "im:message"
       ]
     },
@@ -922,7 +704,6 @@
       "resource": "pins",
       "method": "create",
       "scopes": [
-        "im:message:send_as_bot",
         "im:message",
         "im:message.pins:write_only"
       ]
@@ -932,7 +713,6 @@
       "resource": "pins",
       "method": "delete",
       "scopes": [
-        "im:message:send_as_bot",
         "im:message",
         "im:message.pins:write_only"
       ]
@@ -988,7 +768,6 @@
       "resource": "threads",
       "method": "forward",
       "scopes": [
-        "im:message:send_as_bot",
         "im:message"
       ]
     },
@@ -1650,92 +1429,6 @@
       "method": "patch",
       "scopes": [
         "okr:okr.content:writeonly"
-      ]
-    },
-    {
-      "service": "sheets",
-      "resource": "spreadsheet.sheet.filters",
-      "method": "create",
-      "scopes": [
-        "sheets:spreadsheet",
-        "drive:drive",
-        "sheets:spreadsheet:write_only"
-      ]
-    },
-    {
-      "service": "sheets",
-      "resource": "spreadsheet.sheet.filters",
-      "method": "delete",
-      "scopes": [
-        "sheets:spreadsheet",
-        "drive:drive",
-        "sheets:spreadsheet:write_only"
-      ]
-    },
-    {
-      "service": "sheets",
-      "resource": "spreadsheet.sheet.filters",
-      "method": "get",
-      "scopes": [
-        "drive:drive",
-        "drive:drive:readonly",
-        "sheets:spreadsheet",
-        "sheets:spreadsheet:readonly",
-        "sheets:spreadsheet:read"
-      ]
-    },
-    {
-      "service": "sheets",
-      "resource": "spreadsheet.sheet.filters",
-      "method": "update",
-      "scopes": [
-        "sheets:spreadsheet",
-        "drive:drive",
-        "sheets:spreadsheet:write_only"
-      ]
-    },
-    {
-      "service": "sheets",
-      "resource": "spreadsheet.sheets",
-      "method": "find",
-      "scopes": [
-        "sheets:spreadsheet",
-        "sheets:spreadsheet:readonly",
-        "drive:drive",
-        "drive:drive:readonly",
-        "sheets:spreadsheet:read"
-      ]
-    },
-    {
-      "service": "sheets",
-      "resource": "spreadsheets",
-      "method": "create",
-      "scopes": [
-        "drive:drive",
-        "sheets:spreadsheet",
-        "sheets:spreadsheet:create"
-      ]
-    },
-    {
-      "service": "sheets",
-      "resource": "spreadsheets",
-      "method": "get",
-      "scopes": [
-        "sheets:spreadsheet",
-        "sheets:spreadsheet:readonly",
-        "drive:drive",
-        "drive:drive:readonly",
-        "sheets:spreadsheet.meta:read"
-      ]
-    },
-    {
-      "service": "sheets",
-      "resource": "spreadsheets",
-      "method": "patch",
-      "scopes": [
-        "sheets:spreadsheet",
-        "drive:drive",
-        "sheets:spreadsheet.meta:write_only"
       ]
     },
     {

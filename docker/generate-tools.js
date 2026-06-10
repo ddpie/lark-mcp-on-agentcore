@@ -86,27 +86,42 @@ for (const service of services) {
   }
 }
 
+// Parse cobra subcommand names from a "--help" output. Only lines inside the
+// "Available Commands:" section count — cobra prefixes service/resource help
+// with free-form prose ("Start here (required for AI agents): ...") that is also
+// 2-space indented and would otherwise be misparsed as command names.
+function parseSubcommands(help, { allowPlus = false } = {}) {
+  const names = [];
+  let inSection = false;
+  for (const line of help.split('\n')) {
+    if (/^[A-Za-z].*:\s*$/.test(line)) { // section header like "Available Commands:"
+      inSection = /^Available Commands:/.test(line);
+      continue;
+    }
+    if (!inSection) continue;
+    if (/^\s*$/.test(line)) { inSection = false; continue; } // blank line ends section
+    const m = line.match(/^\s{2,4}(\+?[a-z][a-z0-9_.-]*)\s+(.+)/);
+    if (!m) continue;
+    if (!allowPlus && m[1].startsWith('+')) continue;
+    if (allowPlus && !m[1].startsWith('+')) continue;
+    names.push({ name: m[1], description: m[2].trim() });
+  }
+  return names;
+}
+
 // Discover raw API commands (non-shortcut service subcommands).
 // These are registered so lark_invoke can execute them directly.
 const rawApis = [];
 for (const service of services) {
   const svcHelp = run('lark-cli', service, '--help');
-  const resources = [];
-  for (const line of svcHelp.split('\n')) {
-    const m = line.match(/^\s{2,4}([a-z][a-z0-9_.]*)\s+.+/);
-    if (m && !m[1].startsWith('+')) resources.push(m[1]);
-  }
+  const resources = parseSubcommands(svcHelp).map(r => r.name);
   for (const resource of resources) {
     const resHelp = run('lark-cli', service, resource, '--help');
-    for (const line of resHelp.split('\n')) {
-      const m = line.match(/^\s{2,4}([a-z][a-z0-9_]*)\s+(.+)/);
-      if (m) {
-        const method = m[1];
-        const description = m[2].trim();
-        const cmdHelp = run('lark-cli', service, resource, method, '--help');
-        const risk = detectRisk(cmdHelp, method);
-        rawApis.push({ service, resource, method, description, risk });
-      }
+    for (const { name: method, description } of parseSubcommands(resHelp)) {
+      const cmdHelp = run('lark-cli', service, resource, method, '--help');
+      const risk = detectRisk(cmdHelp, method);
+      const { supportsYes } = parseFlags(cmdHelp);
+      rawApis.push({ service, resource, method, description, risk, ...(supportsYes && { supportsYes: true }) });
     }
   }
 }
