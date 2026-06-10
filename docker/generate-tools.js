@@ -86,9 +86,35 @@ for (const service of services) {
   }
 }
 
-const output = { _larkCliVersion: version, _scopeMapVersion: scopeMapVersion, tools };
+// Discover raw API commands (non-shortcut service subcommands).
+// These are registered so lark_invoke can execute them directly.
+const rawApis = [];
+for (const service of services) {
+  const svcHelp = run('lark-cli', service, '--help');
+  const resources = [];
+  for (const line of svcHelp.split('\n')) {
+    const m = line.match(/^\s{2,4}([a-z][a-z0-9_.]*)\s+.+/);
+    if (m && !m[1].startsWith('+')) resources.push(m[1]);
+  }
+  for (const resource of resources) {
+    const resHelp = run('lark-cli', service, resource, '--help');
+    for (const line of resHelp.split('\n')) {
+      const m = line.match(/^\s{2,4}([a-z][a-z0-9_]*)\s+(.+)/);
+      if (m) {
+        const method = m[1];
+        const description = m[2].trim();
+        const cmdHelp = run('lark-cli', service, resource, method, '--help');
+        const risk = detectRisk(cmdHelp, method);
+        rawApis.push({ service, resource, method, description, risk });
+      }
+    }
+  }
+}
+console.log(`Found ${rawApis.length} raw API commands`);
+
+const output = { _larkCliVersion: version, _scopeMapVersion: scopeMapVersion, tools, rawApis };
 fs.writeFileSync(OUTPUT, JSON.stringify(output));
-console.log(`Saved ${tools.length} tools to ${OUTPUT} (${scopeMapped} with scope info)`);
+console.log(`Saved ${tools.length} shortcuts + ${rawApis.length} raw APIs to ${OUTPUT} (${scopeMapped} with scope info)`);
 
 const unmapped = tools.length - scopeMapped;
 if (unmapped > 5) {

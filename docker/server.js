@@ -109,7 +109,14 @@ const catalogRaw = JSON.parse(fs.readFileSync('/app/generated-tools.json', 'utf8
 const allToolDefs = catalogRaw.tools || [];
 const tier1Names = new Set(JSON.parse(fs.readFileSync('/app/tier1.json', 'utf8')));
 
-console.log(`Tool catalog: ${allToolDefs.length} tools, Tier 1: ${tier1Names.size}`);
+// Raw API registry: tool_name → {service, resource, method, risk}
+const rawApiMap = new Map();
+for (const entry of catalogRaw.rawApis || []) {
+  const name = `lark_${entry.service}_${entry.resource.replace(/\./g, '_')}_${entry.method}`;
+  rawApiMap.set(name, entry);
+}
+
+console.log(`Tool catalog: ${allToolDefs.length} shortcuts + ${rawApiMap.size} raw APIs, Tier 1: ${tier1Names.size}`);
 
 // Scope mapping: toolName -> required scopes (generated at build time)
 const toolScopeMap = buildToolScopeMap(allToolDefs);
@@ -393,6 +400,91 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
   }
 }
 
+// Raw API pass-through: looks up tool_name in the build-time rawApiMap registry,
+// then executes `lark-cli <service> <resource> <method>` with standard flags.
+async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSignal) {
+  const entry = rawApiMap.get(toolName);
+  if (!entry) {
+    return { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool', tool_name: toolName, hint: 'Use lark_discover(query) to find valid tool names.' }) }], isError: true };
+  }
+
+  if (entry.risk === 'high-risk-write' && args._confirm !== true) {
+    return {
+      content: [{ type: 'text', text: JSON.stringify({
+        error: 'user_approval_required',
+        message: 'This is a destructive operation. STOP. Ask the user to confirm in plain language. Only after explicit approval, re-call with args._confirm=true.',
+        tool: toolName,
+        risk: entry.risk,
+      }) }],
+      isError: true,
+    };
+  }
+
+  const cliArgs = [entry.service, entry.resource, entry.method];
+
+  // Standard raw-API flags
+  if (args.params) {
+    const p = typeof args.params === 'string' ? args.params : JSON.stringify(args.params);
+    cliArgs.push('--params', p);
+  }
+  if (args.data) {
+    const d = typeof args.data === 'string' ? args.data : JSON.stringify(args.data);
+    cliArgs.push('--data', d);
+  }
+  if (args.page_all) cliArgs.push('--page-all');
+  if (args.page_limit) cliArgs.push('--page-limit', String(args.page_limit));
+  if (args.format) cliArgs.push('--format', String(args.format));
+
+  const env = {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    NODE_PATH: process.env.NODE_PATH || '',
+    LANG: process.env.LANG || 'en_US.UTF-8',
+    NO_COLOR: '1',
+    LARKSUITE_CLI_USER_ACCESS_TOKEN: userToken,
+    LARKSUITE_CLI_APP_ID: APP_ID,
+    LARKSUITE_CLI_APP_SECRET: APP_SECRET,
+    LARKSUITE_CLI_BRAND: BRAND,
+    LARKSUITE_CLI_DEFAULT_AS: 'user',
+  };
+
+  try {
+    const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, LARK_CLI_TIMEOUT_MS, abortSignal), abortSignal);
+    const output = stdout.trim() || '{"ok":true,"data":null}';
+    const patched = patchPermissionError(output, toolName, incrAuthToken);
+    if (patched !== output) {
+      return { content: [{ type: 'text', text: patched }], isError: true };
+    }
+    if (isAuthError(output)) {
+      return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
+    }
+    return { content: [{ type: 'text', text: output }] };
+  } catch (err) {
+    if (err instanceof ServerBusyError) {
+      return { content: [{ type: 'text', text: '{"error":"server_busy","message":"Too many concurrent requests, retry shortly"}' }], isError: true };
+    }
+    if (err.message === 'client_aborted' || err.name === 'AbortError') {
+      return { content: [{ type: 'text', text: '{"error":"client_aborted"}' }], isError: true };
+    }
+    if (err.killed || err.signal) {
+      return { content: [{ type: 'text', text: '{"error":"timeout","message":"lark-cli call exceeded the time limit"}' }], isError: true };
+    }
+    if (err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+      return { content: [{ type: 'text', text: '{"error":"output_too_large","message":"lark-cli output exceeded the buffer limit; narrow the query (e.g. pagination/filters)"}' }], isError: true };
+    }
+    const raw = err.stdout?.trim() || err.stderr?.trim() || err.message;
+    const message = extractJson(raw) || raw;
+    const patchedErr = patchPermissionError(message, toolName, incrAuthToken);
+    if (patchedErr !== message) {
+      return { content: [{ type: 'text', text: patchedErr }], isError: true };
+    }
+    if (isAuthError(message)) {
+      return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
+    }
+    return { content: [{ type: 'text', text: message }], isError: true };
+  }
+}
+
 function sseResponse(res, data) {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store' });
   res.end(`event: message\ndata: ${JSON.stringify(data)}\n\n`);
@@ -578,6 +670,22 @@ async function handleRequest(req, res, body) {
         inputSchema: buildInputSchema(e.def),
         annotations: toolAnnotations(e.def),
       }));
+      // Also search raw APIs by dotted query (e.g. "drive.file.comments.list")
+      const q = (toolArgs.query || '').toLowerCase();
+      const cat = (toolArgs.category || '').toLowerCase();
+      for (const [name, entry] of rawApiMap) {
+        if (output.length >= 20) break;
+        const dottedPath = `${entry.service}.${entry.resource}.${entry.method}`;
+        if ((q && (dottedPath.includes(q) || name.includes(q.replace(/\./g, '_')))) ||
+            (cat && entry.service === cat)) {
+          output.push({
+            name,
+            description: `[${entry.risk}] ${entry.description}`,
+            category: entry.service,
+            inputSchema: { type: 'object', properties: { params: { type: 'string' }, data: { type: 'string' }, page_all: { type: 'boolean' } } },
+          });
+        }
+      }
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ tools: output }) }] } });
       return;
     }
@@ -586,16 +694,19 @@ async function handleRequest(req, res, body) {
     if (toolName === 'lark_invoke') {
       const realName = toolArgs.tool_name;
       const realArgs = toolArgs.args || {};
-      const entry = findByName(realName);
-      if (!entry) {
-        sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool', tool_name: realName }) }], isError: true } });
-        return;
-      }
       if (!userToken) {
         sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: '{"error":"no user token"}' }], isError: true } });
         return;
       }
-      const result = await executeTool(entry.def, realArgs, userToken, realName, incrAuthToken, ac.signal);
+      const entry = findByName(realName);
+      if (entry) {
+        const result = await executeTool(entry.def, realArgs, userToken, realName, incrAuthToken, ac.signal);
+        sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result });
+        return;
+      }
+      // Fallback: raw API pass-through. tool_name lark_<svc>_<res...>_<method>
+      // maps to `lark-cli <svc> <res...> <method> --params '...' --data '...'`.
+      const result = await executeRawApi(realName, realArgs, userToken, incrAuthToken, ac.signal);
       sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result });
       return;
     }
