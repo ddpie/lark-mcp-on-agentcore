@@ -280,14 +280,29 @@ function buildReauthResponse(_incrAuthToken) {
   }, null, 2);
 }
 
+// lark-cli writes diagnostic lines to stderr before the JSON error envelope
+// (e.g. "Using explicit block ID: ...\nCreating local comment...\n{...}").
+// Extract the JSON object so patchPermissionError/isAuthError can parse it.
+function extractJson(text) {
+  const idx = text.indexOf('\n{');
+  if (idx >= 0) {
+    const candidate = text.slice(idx + 1);
+    try { JSON.parse(candidate); return candidate; } catch {}
+  }
+  if (text.startsWith('{')) {
+    try { JSON.parse(text); return text; } catch {}
+  }
+  return null;
+}
+
 function isAuthError(output) {
   try {
     const data = JSON.parse(output);
     if (data.error?.type === 'auth') return true;
-    if (data.error?.hint?.includes('auth login')) return true;
+    if (data.error?.type === 'authentication') return true;
     return false;
   } catch {}
-  return /\bauth login\b|token is expired|token is invalid/i.test(output);
+  return /token is expired|token is invalid/i.test(output);
 }
 
 async function executeTool(def, args, userToken, toolName, incrAuthToken, abortSignal) {
@@ -365,7 +380,8 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     if (err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
       return { content: [{ type: 'text', text: '{"error":"output_too_large","message":"lark-cli output exceeded the buffer limit; narrow the query (e.g. pagination/filters)"}' }], isError: true };
     }
-    const message = err.stdout?.trim() || err.stderr?.trim() || err.message;
+    const raw = err.stdout?.trim() || err.stderr?.trim() || err.message;
+    const message = extractJson(raw) || raw;
     const patchedErr = patchPermissionError(message, toolName, incrAuthToken);
     if (patchedErr !== message) {
       return { content: [{ type: 'text', text: patchedErr }], isError: true };
