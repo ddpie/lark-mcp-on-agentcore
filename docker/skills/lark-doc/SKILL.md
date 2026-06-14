@@ -51,6 +51,7 @@ lark_docs_update(api_version="v2", doc="文档URL或token", command="append", co
 | `<bitable token="..." table-id="...">` | `token` -> app_token, `table-id` | `lark-base` |
 | `<cite type="doc" file-type="sheets" token="..." sheet-id="...">` | 同 `<sheet>` | `lark-sheets` |
 | `<cite type="doc" file-type="bitable" token="..." table-id="...">` | 同 `<bitable>` | `lark-base` |
+| `<vc-transcribe-tab vc-node-id="...">` | `vc-node-id` -> note_id | `lark-note`：先 `lark_note_detail(note_id="<vc-node-id>")` |
 | `<synced_reference src-token="..." src-block-id="...">` | `src-token` -> doc_token, `src-block-id` -> block_id | 用 `lark_docs_fetch(api_version="v2")` 读取 src-token 文档，定位 block |
 
 ## Shortcuts（推荐优先使用）

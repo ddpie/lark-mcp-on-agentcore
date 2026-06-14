@@ -2,7 +2,7 @@
 
 Fetch the reply message list inside a thread. When `lark_im_chat_messages_list` returns messages that include a `thread_id` field, use this tool to inspect all replies in that thread.
 
-By default each reply also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. Pass `no_reactions=true` to skip the extra round-trip. See `lark_get_skill(domain="im", section="message-enrichment")` for the full contract.
+By default each reply also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. Pass `no_reactions=true` to skip the extra round-trip. Pass `download_resources=true` to additionally download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block — off by default, no extra requests when omitted. See `lark_get_skill(domain="im", section="message-enrichment")` for the full contract.
 
 This tool maps to: `lark_im_threads_messages_list` (internally calls `GET /open-apis/im/v1/messages` with `container_id_type=thread` to fetch thread messages).
 
@@ -13,7 +13,7 @@ This tool maps to: `lark_im_threads_messages_list` (internally calls `GET /open-
 lark_im_threads_messages_list(thread="omt_xxx")
 
 # Reverse chronological order (latest first)
-lark_im_threads_messages_list(thread="omt_xxx", sort="desc")
+lark_im_threads_messages_list(thread="omt_xxx", order="desc")
 
 # Control page size
 lark_im_threads_messages_list(thread="omt_xxx", page_size="20")
@@ -32,7 +32,9 @@ lark_im_threads_messages_list(thread="omt_xxx", format="csv")
 | Parameter | Required | Description |
 |------|------|------|
 | `thread` | Yes | Thread ID (`om_xxx` or `omt_xxx` format) |
-| `sort` | No | Sort order: `asc` (default) / `desc` |
+| `no_reactions` | No | Skip auto-fetching the `reactions` block |
+| `download_resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default |
+| `order` | No | Sort order: `asc` (default) / `desc` |
 | `page_size` | No | Number of items per page (default 50, range 1-500) |
 | `page_token` | No | Pagination token for the next page |
 | `format` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
@@ -56,9 +58,9 @@ Thread messages do not support `start_time` / `end_time` filtering because of Fe
 
 | Scenario | Recommended Parameters |
 |------|---------|
-| Quickly inspect recent replies | `sort="desc", page_size="10"` |
-| Read the full thread in chronological order | `sort="asc", page_size="50"`, then paginate as needed |
-| Just confirm whether replies exist | `sort="desc", page_size="1"` |
+| Quickly inspect recent replies | `order="desc", page_size="10"` |
+| Read the full thread in chronological order | `order="asc", page_size="50"`, then paginate as needed |
+| Just confirm whether replies exist | `order="desc", page_size="1"` |
 
 ## Usage Scenarios
 
@@ -84,9 +86,9 @@ lark_im_threads_messages_list(thread="omt_xxx", page_token="<PAGE_TOKEN>")
 
 ## Resource Rendering
 
-Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `[Image: img_xxx]`; resource binaries are **not** downloaded automatically.
+Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `[Image: img_xxx]`; by default resource binaries are **not** downloaded.
 
-Other resource types (files, audio, video) still need to be downloaded manually through `lark_im_messages_resources_download`. See `lark_get_skill(domain="im", section="messages-resources-download")`.
+Pass `download_resources=true` to download every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` in one pass and attach a `resources` block to each reply (see `lark_get_skill(domain="im", section="message-enrichment")`). Otherwise download individual resources manually through `lark_im_messages_resources_download` (see `lark_get_skill(domain="im", section="messages-resources-download")`).
 
 ## Common Errors and Troubleshooting
 

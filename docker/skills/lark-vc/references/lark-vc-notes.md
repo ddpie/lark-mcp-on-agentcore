@@ -71,16 +71,33 @@ lark_vc_notes(meeting_ids="69xxxxxxxxxxxxx28", format="json")
 |------|------|
 | `meeting_id` | 会议 ID（`meeting_ids` / `calendar_event_ids` 路径） |
 | `minute_token` | **会议对应的妙记 Token**（`meeting_ids` / `calendar_event_ids` 路径自动通过录制 API 反查并附加）|
-| `note_doc_token` | **AI 智能纪要**文档 Token — AI 生成的总结、待办 |
+| `note_id` | **纪要 ID** — 用于继续进入 Note 域（lark-note 的纪要详情 / 逐字稿） |
+| `note_display_type` | **纪要展示类型**：`unknown` / `normal` / `unified`，区分普通纪要和 unified 纪要 |
+| `note_doc_token` | **AI 智能纪要**文档 Token — AI 生成的总结、待办、章节 |
 | `meeting_notes` | **用户绑定的会议纪要**文档 Token 列表 — 用户主动关联到会议的文档（仅 `calendar_event_ids` 路径返回） |
-| `verbatim_doc_token` | **逐字稿**文档 Token — 完整的逐句文字记录，含说话人和时间戳 |
+| `verbatim_doc_token` | **逐字稿**文档 Token — 完整的逐句文字记录，含说话人和时间戳；unified 纪要的逐字稿请改用 lark-note 的纪要逐字稿 |
 | `shared_doc_tokens` | 会中共享文档 Token 列表 |
 | `creator_id` | 创建者 ID |
 | `create_time` | 创建时间（格式化） |
 
-> **选择哪个 token？** 用户说"会议纪要""总结""待办""纪要内容" → 返回 `note_doc_token` 和 `meeting_notes`（如有）。用户说"逐字稿""完整记录""谁说了什么" → 用 `verbatim_doc_token`。意图不明确时，展示所有文档链接让用户选择。
+> **选择哪个 token？** 用户说"会议纪要""总结""待办""纪要内容" → 返回 `note_doc_token` 和 `meeting_notes`（如有）。用户说"逐字稿""完整记录""谁说了什么" → 见下方「按 `note_display_type` 路由逐字稿」。意图不明确时，展示所有文档链接让用户选择。
 >
 > 📌 不确定该返回哪个 token？参见 `lark_get_skill(domain="vc", section="vc-domain-boundaries")` 的产物链路对比表，了解 AI 总结链路 vs 录制链路的区别。
+
+### 按 `note_display_type` 路由逐字稿 / 原始记录
+
+逐字稿走哪条路由由 `note_display_type` 决定，**不要只看 `verbatim_doc_token` 是否为空**：
+
+| 字段 / 条件 | Agent 动作 |
+|------------|-----------|
+| 用户要纪要正文 / 总结 / 待办 / 章节 | `lark_docs_fetch(api_version="v2", doc="<note_doc_token>")` |
+| `note_display_type=normal` + 用户要逐字稿 | `lark_docs_fetch(api_version="v2", doc="<verbatim_doc_token>")` |
+| `note_display_type=unknown` + `verbatim_doc_token` 非空 + 用户要逐字稿 | `lark_docs_fetch(api_version="v2", doc="<verbatim_doc_token>")`；不要猜成 unified |
+| `note_display_type=unknown` + 无可用逐字稿 token | 先用 lark-note 的纪要详情（按 `note_id`）复核，再按返回的展示类型路由 |
+| `note_display_type=unified` + 用户要逐字稿 / 原始记录 | 用 lark-note 的纪要逐字稿（按 `note_id`）→ 切到 lark-note（`lark_get_skill(domain="note")`） |
+| `minute_token` 存在 + 用户要音视频媒体 | `lark_minutes_download(minute_tokens="<minute_token>")` |
+
+> **`unified` 纪要的逐字稿不是独立文档**，必须用 lark-note 的纪要逐字稿按 `note_id` 拉取，输出更结构化。即使 unified 也返回了非空 `verbatim_doc_token`，仍以 `note_display_type` 为准。
 
 ### minute_tokens 路径的 AI 产物
 
@@ -89,7 +106,7 @@ lark_vc_notes(meeting_ids="69xxxxxxxxxxxxx28", format="json")
 | 字段 | 说明 |
 |------|------|
 | `artifacts.summary` | AI 总结（JSON 内联） |
-| `artifacts.todos` | 待办事项（JSON 内联） |
+| `artifacts.todos` | 待办事项（JSON 内联，**只读**）；每条含 `content`、`is_done` 及 `todo_id`。`todo_id` 仅供 `lark_minutes_todo`（详见 `lark_get_skill(domain="minutes", section="todo")`）更新/删除待办时使用，不必展示给用户。**新建**妙记内待办请用 `lark_minutes_todo`，不要用 lark-task |
 | `artifacts.chapters` | 章节纪要（JSON 内联） |
 | `artifacts.keywords` | 妙记推荐关键词（JSON 内联） |
 | `artifacts.transcript_file` | 逐字稿本地文件路径。默认落到 `./minutes/{minute_token}/transcript.txt`（与 `lark_minutes_download` 聚合）；显式 `output_dir` 时走旧布局 `./{output_dir}/artifact-{title}-{token}/transcript.txt` |

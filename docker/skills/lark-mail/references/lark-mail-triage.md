@@ -110,13 +110,13 @@ lark_mail_triage(page_size="10")
 ```text
 15 message(s)
 next page: lark_mail_triage(query="合同审批", page_token="search:abc123...")
-tip: use lark_mail_message(message_id="<id>") to read full content
+tip: read full content: single message use lark_mail_message(message_id="<id>"); multiple messages use lark_mail_messages(message_ids="<id1>,<id2>,<id3>")
 ```
 
 公共邮箱场景下，`mailbox` 会自动出现在续页和 tip 中：
 ```text
 next page: lark_mail_triage(mailbox="shared@example.com", query="合同审批", page_token="search:abc123...")
-tip: use lark_mail_message(mailbox="shared@example.com", message_id="<id>") to read full content
+tip: read full content: single message use lark_mail_message(mailbox="shared@example.com", message_id="<id>"); multiple messages use lark_mail_messages(mailbox="shared@example.com", message_ids="<id1>,<id2>,<id3>")
 ```
 
 ### 搜索分页注意事项

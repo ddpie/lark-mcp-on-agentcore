@@ -1,72 +1,50 @@
-# apps +html-publish
+# apps html-publish
 
-把本地的 HTML 文件或目录部署为可访问的妙搭应用，响应返回应用的访问链接 `url`。
+把本地 HTML 文件或静态目录发布为妙搭应用访问 URL。
 
-## 用法
+## 何时用
+
+用于把已经存在的本地 HTML 文件或静态产物目录发布成妙搭访问 URL。它不负责生成 HTML 内容，也不负责全栈应用代码发布。
+
+## 命令骨架
+
+- 必填：`app_id`、`path`。
+- `path` 可以是单个文件或目录；入口必须是 `index.html`。
+- 可选：`allow_sensitive=true`，跳过凭据文件扫描。
+- 客户端会打包 tar.gz 并上传发布；压缩包上限当前为 20MB，未压缩候选文件总量也有保护上限。
+
+## 示例
 
 ```
-# 发布整个目录
-lark_apps_html_publish(app_id="app_xxx", path="./dist/")
-
-# 发布单个 HTML 文件
-lark_apps_html_publish(app_id="app_xxx", path="./index.html")
+lark_apps_create(name="Demo", app_type="html")
+lark_apps_html_publish(app_id="app_xxx", path="./dist")
+lark_apps_html_publish(app_id="app_xxx", path="./index.html", dry_run=true)
 ```
 
-## 参数
+## 输出契约
 
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `app_id` | 是 | 应用 ID。从 `lark_apps_create` 响应里拿；或者从用户给的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取 |
-| `path` | 是 | 本地文件或目录路径；目录会递归打包成 tar.gz。**必须含 `index.html`** |
-| `allow_sensitive` | 否 | 跳过 Validate 的凭据文件扫描。默认不传；仅在用户明示要发布凭据示例文件时才加 |
+- 成功默认 JSON envelope 只关心 `data.url`；这是本轮 HTML 发布后的发布态访问链接。
+- 业务失败如构建失败、应用不存在通常带 `error.hint`；优先转述 hint。网络/服务端失败则建议稍后重试。
 
-## 返回值
+## 链接边界
 
-**成功：**
+- 开发态链接可由 `app_id` 拼出：`https://miaoda.feishu.cn/app/{app_id}`，用于进入妙搭编辑/开发态。
+- 发布态访问链接以本命令成功返回的 `data.url` 为准。
+- 重新发布前，`lark_apps_list` 的 `is_published=true` 只能说明历史上发布过，不代表当前本地产物已经部署。
 
-```json
-{
-  "ok": true,
-  "data": {
-    "url": "https://miaoda.feishu.cn/app/app_4k5jepcbjmv6m"
-  }
-}
-```
+## 预览与发布边界
 
-**失败：**
+- 用户只说"用 HTML 写个 PPT/页面给我看看"时，先生成本地文件或目录，返回路径并问是否发布到妙搭分享；不要默认创建应用或部署。
+- 用户明确说"部署出去/发链接/可分享"时，才创建 `html` 应用并用 `lark_apps_html_publish`。
+- 用户要发布但没有 app_id 时，先用 `lark_apps_create(app_type="html")` 创建应用；应用名可从页面/站点主题生成，不要让用户手动提供 app_id。
+- 若产物首页不是 `index.html`，发布前改名或复制为 `index.html`；目录发布时只传干净产物目录，例如 `./dist`。`.git` 目录会被自动排除，不会进入压缩包；`node_modules`、源码缓存等仍建议手动精简以控制包体。
+- 重新部署同一个 HTML 应用时复用原 `app_id`，只重新执行 `lark_apps_html_publish(app_id="<id>", path="<dir-or-index.html>")`。
 
-```json
-{
-  "ok": false,
-  "error": {
-    "type": "api",
-    "message": "html-publish failed (code=90001): build failed: dependency conflict",
-    "hint": "构建失败：检查打包文件清单"
-  }
-}
-```
+## 安全规则
 
-## 凭据文件拦截
+默认会拦截 `.env`、`.npmrc`、`.aws/credentials` 等凭据文件。只有用户明确要发布凭据示例文件或教程内容时，才追加 `allow_sensitive=true`；追加前先说明将包含哪些敏感候选文件。
 
-Validate 阶段会扫描 `path` 下所有候选文件，命中以下任一模式 **直接拒绝**：
+## 常见失败
 
-- `.env` / `.env.*`（环境变量 / API key）
-- `.npmrc` / `.netrc`（HTTP 凭据）
-- `.git-credentials`（Git over HTTPS 凭据）
-- `.aws/credentials`、`.docker/config.json`、`.kube/config`（云 SDK 凭据）
-
-**Agent 行为契约**：
-
-- 默认必须从产物里清掉命中的文件后再 publish
-- 只有当用户**明确**意图是 shipping 凭据示例（文档 / 教程站等）时，才追加 `allow_sensitive=true` 旁路
-
-## 提示
-
-- `path` 既可以是 cwd（`.`）也可以是子目录或单文件；cwd 干净（没有命中凭据列表）就能发。仍然建议传具体子目录（`./dist`、`./public/` 等）以减少误打包风险
-- `path` **必须**是 cwd 内的相对路径（如 `./dist`、`./index.html`）；绝对路径或越界路径会被拒绝
-- 目录打包成 tar.gz 时**不做过滤**（`.git` / `node_modules` 等会一并打包，只有凭据 list 才会被 Validate 拦），让用户传干净的产物目录
-- **不要**原样把 envelope JSON 转述给用户
-
-## 参考
-
-- `lark_get_skill(domain="apps")` — 妙搭应用全部命令
+- 缺少 `index.html`：目录根放置 `index.html`，或单文件路径直接指向名为 `index.html` 的文件。
+- 包体过大：让用户精简 `path`，不要把源码、依赖目录、构建缓存一起发布。

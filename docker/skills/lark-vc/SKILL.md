@@ -28,14 +28,15 @@ description: "飞书视频会议：搜索历史会议记录、查询会议纪要
 | 查"昨天的会议""上周的会""已结束的会议" | 本 skill（`lark_vc_search`，含即时会议） |
 | 查日历/日程或未来时间的会议 | lark-calendar |
 | 查"今天有哪些会议" | `lark_vc_search`（已结束）+ lark-calendar（未开始），合并展示 |
+| 只按自然语言标题查"xx 纪要的逐字稿 / 原始记录 / 谁说了什么" | 先到 lark-drive / lark-doc；仅在已拿到 `note_id` / `vc-node-id` 后再到 lark-note |
 | Agent 真实入会/离会、会中实时事件 | lark-vc-agent |
 | 本地音视频文件转纪要/逐字稿 | 先走 lark-minutes 上传，再回 `lark_vc_notes(minute_tokens="<minute_token>")` |
 
 ## 核心概念
 
-- **视频会议（Meeting）**：飞书视频会议实例，通过 meeting_id 标识。已结束的会议支持通过关键词、时间段、参会人、组织者、会议室等条件搜索。
-- **会议纪要（Note）**：视频会议结束后生成的结构化文档，包含纪要文档（总结+待办）和逐字稿文档。
-- **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，包含总结、待办、章节和文字记录，通过 minute_token 标识。
+- **视频会议（Meeting）**：飞书视频会议实例，通过 meeting_id 标识。已结束的会议支持通过关键词、时间段、参会人、组织者、会议室等条件搜索（见 `lark_vc_search`）。
+- **会议纪要（Note）**：视频会议结束后生成的结构化文档，通过 `note_id` 标识，包含纪要文档（总结、待办）和逐字稿文档。`note_display_type` 区分**普通纪要（`normal`）**和 **unified 纪要**；已知 `note_id` 的直查与 unified 原始记录请用 lark-note。
+- **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写，包含总结、待办、章节和文字记录，通过 minute_token 标识。
 - **纪要文档（MainDoc）**：AI 智能纪要的主文档，包含 AI 生成的总结和待办，对应 `note_doc_token`。
 - **用户会议纪要（MeetingNotes）**：用户主动绑定到会议的纪要文档，对应 `meeting_notes`。仅通过 `calendar_event_ids` 路径返回。
 - **逐字稿（VerbatimDoc）**：会议的逐句文字记录，包含说话人和时间戳。
@@ -44,13 +45,15 @@ description: "飞书视频会议：搜索历史会议记录、查询会议纪要
 
 | 用户意图 | 必须读取的产物 | 禁止 |
 |---------|-------------|------|
-| 提炼/总结/重新总结/整理会议内容/回顾会议 | 逐字稿（`verbatim_doc_token`）或妙记文字记录（Transcript），基于原始对话独立分析 | 禁止直接搬运 AI 纪要（`note_doc_token`）的总结作为最终输出 |
+| 提炼/总结/重新总结/整理会议内容/回顾会议 | 原始对话记录（按下方逐字稿路由取得）或妙记文字记录（Transcript），基于原始对话独立分析 | 禁止直接搬运 AI 纪要（`note_doc_token`）的总结作为最终输出 |
 | 查看待办/章节 | AI 纪要（`note_doc_token`）或妙记产物 — AI 待办更友好（含提出人和负责人），章节按话题划分更结构化 | — |
 | 查看纪要链接/文档地址 | 仅返回文档链接，无需读取内容 | — |
 | 直接看 AI 总结结果 | AI 纪要（`note_doc_token`） | — |
-| 谁说了什么/完整发言记录 | 逐字稿（`verbatim_doc_token`） | — |
+| 谁说了什么/完整发言记录 | 原始对话记录（按下方逐字稿路由取得） | — |
 
-> **为什么"提炼/总结"必须从逐字稿出发？** AI 纪要是模型对会议的二次压缩，可能遗漏讨论细节、争论过程和隐含决策。用户要求"提炼"或"重新总结"时，期望的是基于原始对话的独立分析，而非对 AI 产物的重新排版。
+> **逐字稿路由**：先看 `lark_vc_notes` 返回的 `note_display_type`，不要只看 `verbatim_doc_token` 是否为空。具体路由以 `lark_get_skill(domain="vc", section="notes")` 和 lark-note 为准。
+>
+> **为什么"提炼/总结"必须从原始对话记录出发？** AI 纪要是模型对会议的二次压缩，可能遗漏讨论细节、争论过程和隐含决策。用户要求"提炼"或"重新总结"时，期望的是基于原始对话的独立分析，而非对 AI 产物的重新排版。
 
 ## 核心场景
 
@@ -58,6 +61,7 @@ description: "飞书视频会议：搜索历史会议记录、查询会议纪要
 1. 仅支持搜索已结束的会议，对于还未开始的未来会议，需要使用 lark-calendar 技能。
 2. 仅支持使用关键词、时间段、参会人、组织者、会议室等筛选条件搜索会议记录，对于不支持的筛选条件，需要提示用户。
 3. 搜索结果存在多条数据时，务必注意分页数据获取，不要遗漏任何会议记录。
+4. 只有自然语言纪要标题、没有会议线索时，不要把标题当会议关键词；按上方意图路由切到文档搜索。
 
 ### 2. 整理会议纪要
 
@@ -80,7 +84,7 @@ lark_docs_media_download(type="whiteboard", token="<whiteboard_token>", output="
 > **纪要相关文档 — 根据用户意图选择：**
 > - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办）
 > - `meeting_notes` → **用户绑定的会议纪要**（用户主动关联到会议的文档，仅 `calendar_event_ids` 路径返回）
-> - `verbatim_doc_token` → **逐字稿**（完整的逐句文字记录，含说话人和时间戳）— 用户说"逐字稿""完整记录""谁说了什么"时用这个
+> - 用户说"逐字稿""完整记录""谁说了什么"时 → 按 `note_display_type` 路由，详见 `lark_get_skill(domain="vc", section="notes")`
 > - 用户说"纪要""总结""纪要内容"时，应同时返回 `note_doc_token` 和 `meeting_notes`（如有）
 > - 用户意图不明确时，应展示所有文档链接让用户选择，而不是替用户决定
 > - 如果用户提供的是**本地音视频文件**并说"转纪要""转逐字稿"，不要直接从 `lark_vc_notes` 开始；应先用 lark-minutes 的上传流程生成 `minute_url`，再提取 `minute_token` 调用 `lark_vc_notes(minute_tokens="<minute_token>")`
@@ -118,18 +122,19 @@ lark_invoke(tool_name="lark_vc_meeting_get", args={
 | 用户意图 | 推荐工具 | 所在 skill |
 |---------|---------|--------|
 | 参会人快照（谁参加过、何时入/离会，任意时点）| `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id":"...", "with_participants": true}})` | 本 skill |
-| 已结束会议的发言内容 | `lark_vc_notes` 取 `verbatim_doc_token` 再 `lark_docs_fetch(api_version="v2")` | 本 skill |
+| 已结束会议的发言内容 | 先 `lark_vc_notes`，再按 `note_display_type` 路由 | 本 skill / lark-note |
 | **进行中会议**的实时事件流（转写、聊天、共享、会中加入/离开）| `lark_vc_meeting_events` | lark-vc-agent |
 | **Agent 真实入会 / 离会** | `lark_vc_meeting_join` / `lark_vc_meeting_leave` | lark-vc-agent |
 
 ## 资源关系
 
-```
+```text
 Meeting (视频会议)
-├── Note (会议纪要)
+├── Note (会议纪要) ← note_id 标识，note_display_type: normal / unified
 │   ├── MainDoc (AI 智能纪要文档, note_doc_token)
 │   ├── MeetingNotes (用户绑定的会议纪要文档, meeting_notes)
-│   ├── VerbatimDoc (逐字稿, verbatim_doc_token)
+│   ├── VerbatimDoc (逐字稿, verbatim_doc_token) ← normal 路径
+│   ├── UnifiedTranscript (unified 原始记录) ← unified 路径，用 lark-note 的纪要逐字稿（按 note_id）
 │   └── SharedDoc (会中共享文档)
 └── Minutes (妙记) ← minute_token 标识，lark_vc_recording 从 meeting_id 获取
     ├── Transcript (文字记录)
@@ -138,6 +143,13 @@ Meeting (视频会议)
     ├── Chapters (章节)
     └── Keywords (推荐关键词)
 ```
+
+> **妙记边界**：`lark_vc_notes` 负责纪要内容、逐字稿和 AI 产物；妙记基础信息请优先看 `lark_get_skill(domain="vc", section="recording")` 与 lark-minutes。
+>
+> **Note 域边界**：`lark_vc_notes` 是从**会议线索**（`meeting_id` / `calendar_event_id` / `minute_token`）定位纪要的入口，返回 `note_id` 和 `note_display_type`。
+> - 已有 `note_id` → lark-note。
+> - 已有 `doc_token` 且目标是读正文 → lark-doc。
+> - 只有自然语言纪要标题 → 文档搜索 / Docx 正文读取；有显式 `vc-node-id` 才进入 lark-note。
 
 ## API Resources
 
@@ -169,5 +181,6 @@ lark_invoke(tool_name="lark_vc_meeting_get", args={
 
 - 查询未来的会议日程 → lark-calendar
 - Agent 真实入会/离会、会中实时事件 → lark-vc-agent
+- 只有纪要文档标题的逐字稿查询 → 文档搜索 / Docx 正文读取；有显式 `vc-node-id` 才进入 lark-note
 - 本地音视频文件转纪要/逐字稿 → lark-minutes（上传后回 `lark_vc_notes`）
 - 妙记搜索/下载/上传/重命名/替换说话人 → lark-minutes

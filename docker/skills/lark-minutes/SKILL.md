@@ -1,6 +1,6 @@
 ---
 name: lark-minutes
-description: "飞书妙记：搜索妙记列表、查看妙记基础信息、下载妙记音视频文件、上传音视频生成妙记、更新妙记标题、替换说话人。当需要获取、操作或者生成妙记时使用。也支持将本地音视频文件转成纪要和逐字稿（优先使用本 skill，不要用 ffmpeg/whisper 本地转写）。不负责：获取会议关联妙记、纪要/逐字稿内容获取走 lark-vc"
+description: "飞书妙记：搜索妙记列表、查看妙记基础信息、下载妙记音视频文件、上传音视频生成妙记、更新妙记标题、替换说话人。当需要获取、操作或者生成妙记时使用。也支持将本地音视频文件转成纪要和逐字稿（优先使用本 skill，不要用 ffmpeg/whisper 本地转写）。不负责：获取会议关联妙记，或仅按自然语言标题定位纪要"
 ---
 
 # minutes (v1)
@@ -20,8 +20,13 @@ description: "飞书妙记：搜索妙记列表、查看妙记基础信息、下
 | `lark_minutes_upload` | 上传 file_token 生成妙记 |
 | `lark_minutes_update` | 更新妙记标题 |
 | `lark_minutes_speaker_replace` | 替换妙记逐字稿中的说话人（仅支持用户 ID，不支持姓名） |
+| `lark_minutes_summary` | 替换妙记的 AI 总结全文 |
+| `lark_minutes_todo` | 新增 / 更新 / 删除**妙记内的 AI 待办**（单条或 `todos` 批量；不是飞书任务 Task） |
+| `lark_minutes_word_replace` | 批量替换逐字稿中的关键词 |
 
 - 使用任何 Shortcut 前，必须先调用对应的 `lark_get_skill(domain="minutes", section="...")` 了解参数和返回值结构。
+- 使用 `lark_minutes_summary` 前，必须先调用 `lark_get_skill(domain="minutes", section="summary")` 了解全文替换参数。
+- 使用 `lark_minutes_todo` 前，必须先调用 `lark_get_skill(domain="minutes", section="todo")` 了解单条与 `todos` 批量模式；**不要**用 lark-task。
 
 ## 意图路由
 
@@ -33,7 +38,8 @@ description: "飞书妙记：搜索妙记列表、查看妙记基础信息、下
 | "把音视频转妙记/上传文件生成妙记" | 本 skill（`lark_minutes_upload`） |
 | "重命名妙记/改妙记标题" | 本 skill（`lark_minutes_update`） |
 | "替换说话人/把 A 的发言改成 B" | 本 skill（`lark_minutes_speaker_replace`） |
-| "这个妙记的逐字稿/总结/待办/章节" | lark-vc（`lark_vc_notes(minute_tokens="...")`） |
+| "这个妙记的逐字稿/总结/待办/章节"（只读） | lark-vc（`lark_vc_notes(minute_tokens="...")`） |
+| "xx 纪要的逐字稿/原始记录/谁说了什么" 且没有 `minute_token` / 妙记 URL / 本地音视频文件 | 不走本 skill；路由到 `lark_get_skill(domain="drive")` / `lark_get_skill(domain="doc")` 定位 |
 | "把音视频文件转成纪要/逐字稿/文字稿" | 先本 skill（`lark_minutes_upload`），再 lark-vc（`lark_vc_notes(minute_tokens="...")`） |
 | 用户同时提到"会议/开会"和"妙记" | 先 lark-vc（`lark_vc_search` → `lark_vc_recording`），再本 skill |
 
@@ -71,13 +77,12 @@ description: "飞书妙记：搜索妙记列表、查看妙记基础信息、下
 
 > **注意**：`lark_minutes_download` 只负责音视频媒体文件。如果用户需要的是逐字稿、总结、待办、章节等纪要内容，请使用 `lark_vc_notes(minute_tokens="<minute_token>")`。
 
-### 4. 获取妙记的逐字稿、总结、待办、章节
+### 4. 读取妙记的逐字稿、总结、待办、章节（只读）
 
-1. 当用户说"这个妙记的逐字稿""总结""待办""章节"时，**不属于本 skill**。
-2. 应使用 `lark_vc_notes(minute_tokens="<minute_token>")` 获取对应的纪要产物。
-3. 如果当前上下文中已有 `minute_token`，可直接传给 `lark_vc_notes`；如果只有妙记 URL，先提取 `minute_token`。
-4. 如果用户给的是**本地音视频文件**，但目标是"转成纪要""转成逐字稿""转成文字稿""转成撰写文字"，也支持；此时应先按下文第 5 节上传文件生成妙记，再把返回的 `minute_url` 提取成 `minute_token`，继续调用 `lark_vc_notes(minute_tokens="<minute_token>")`。
-5. 用户如果直接给出本地文件名或路径，并要求"转逐字稿""转文字稿""整理成撰写文字"，这也是本 skill 的明确触发信号。
+1. 当用户要**查看 / 读取**"这个妙记的逐字稿""总结""待办""章节"时，使用 `lark_vc_notes(minute_tokens="<minute_token>")`。
+2. 如果当前上下文中已有 `minute_token`，可直接传给 `lark_vc_notes`；如果只有妙记 URL，先提取 `minute_token`。
+3. 如果用户给的是**本地音视频文件**，但目标是"转成纪要""转成逐字稿""转成文字稿""转成撰写文字"，应先按下文第 5 节上传文件生成妙记，再把返回的 `minute_url` 提取成 `minute_token`，继续调用 `lark_vc_notes(minute_tokens="<minute_token>")`。
+4. 用户如果直接给出本地文件名或路径，并要求"转逐字稿""转文字稿""整理成撰写文字"，这也是本 skill 的明确触发信号。
 
 ```
 # 通过 minute_token 获取纪要产物（逐字稿、总结、待办、章节）
@@ -85,6 +90,7 @@ lark_vc_notes(minute_tokens="<minute_token>")
 ```
 
 > **跨 skill 路由**：逐字稿、AI 总结、待办、章节等纪要内容由 lark-vc 的 `lark_vc_notes` 提供
+> **读 vs 写**：`lark_vc_notes` 只负责**读取** AI 产物。用户要**新建 / 修改 / 删除**妙记内的 AI 待办或替换 AI 总结，见下文第 6 节，**不要**走 lark-task。
 
 ### 5. 上传音视频文件生成妙记（并可继续获取纪要 / 逐字稿）
 
@@ -99,6 +105,46 @@ lark_vc_notes(minute_tokens="<minute_token>")
 >
 > **不要误走本地转写工具**：当用户目标是把本地音视频文件转成纪要、逐字稿、文字稿、撰写文字时，不要改用 `ffmpeg`、`whisper` 或其他本地 ASR/转码命令；标准路径就是 `lark_drive_upload -> lark_minutes_upload -> lark_vc_notes`。
 
+### 6. 编辑妙记的 AI 待办与 AI 总结（写入）
+
+当用户要在**某条妙记内**操作 AI 待办或 AI 总结时使用本节。**不是**飞书任务（Task）清单里的待办。
+
+**触发信号（任一命中即走本 skill，禁止走 lark-task）**：
+
+- "在（某条）妙记里新建 / 添加 / 修改 / 删除待办"
+- "把妙记 A 的待办改成已完成 / 未完成"
+- "妙记里的任务1 / 任务2"（上下文已明确是妙记）
+- 已给出 `minute_token` 或妙记 URL，且要改待办 / 总结
+
+**妙记 AI 待办 vs 飞书任务 Task**：
+
+| 用户意图 | 正确工具 | 错误工具 |
+|---------|---------|---------|
+| 妙记里加待办 | `lark_minutes_todo(operation="add")` 或 `todos="[...]"` | `lark_task_create` / `lark_invoke(tool_name="lark_task_tasklists_list")` |
+| 妙记里改待办 | `lark_minutes_todo(operation="update", todo_id="...")` | `lark_task_update` |
+| 妙记里删待办 | `lark_minutes_todo(operation="delete", todo_id="...")` | `lark_invoke(tool_name="lark_task_tasks_delete")` |
+| 我的任务清单 | — | 走 lark-task |
+
+**新建多条待办**：优先用 `todos` 一次提交；单条则用多次 `operation="add"`：
+
+```
+# 批量：任务1 已完成 + 任务2 未完成
+lark_minutes_todo(minute_token="<token>", todos=[
+  {"operation":"add","content":"晚上好1","is_done":true},
+  {"operation":"add","content":"晚上好2","is_done":false}
+])
+```
+
+**更新 / 删除前**：先用 `lark_vc_notes(minute_tokens="<token>")` 读取 `todos[].todo_id`（按 `content` 匹配目标条目；列表顺序不保证稳定，**不要**用"第 2 条"代替 `todo_id`）。
+
+**无编辑权限**：若工具返回 `error.type=no_edit_permission`，表示对**这条妙记**没有编辑权，应请所有者授权。
+
+**逐字稿关键词替换无命中**：`lark_minutes_word_replace` 时，若工具返回 `error.type=words_not_found`，表示传入的 `source_word` 在该妙记逐字稿中**一个都没匹配到**，未做任何替换。这是**参数问题不是权限问题**：先用 `lark_vc_notes(minute_tokens="<token>")` 读取当前逐字稿，核对 `source_word` 的精确写法与大小写后重试。
+
+**替换 AI 总结全文**：见 `lark_get_skill(domain="minutes", section="summary")`。
+
+> 使用 `lark_minutes_todo` 前必须先调用 `lark_get_skill(domain="minutes", section="todo")`；使用 `lark_minutes_summary` 前必须先调用 `lark_get_skill(domain="minutes", section="summary")`。
+
 ## 资源关系
 
 ```text
@@ -107,24 +153,30 @@ Minutes (妙记) ← minute_token 标识
 └── MediaFile (音频/视频文件) → lark_minutes_download
 ```
 
-> **能力边界**：`minutes` 负责 **搜索妙记、查看基础元信息、下载音视频文件、上传音视频生成妙记**。
+> **能力边界**：`minutes` 负责 **搜索妙记、查看基础元信息、下载/上传音视频、编辑妙记 AI 待办与 AI 总结、重命名、逐字稿说话人/关键词替换**。
 >
 > **路由规则**：
 >
 > - 用户说"妙记列表 / 搜索妙记 / 某个关键词的妙记" → `lark_minutes_search`
 > - 用户只是想看"我的妙记 / 某段时间内的妙记 / 妙记列表"，不要先走 lark-vc，而应直接使用本 skill
 > - 用户如果同时提到"会议 / 会 / 开会 / 某场会"，即使也提到了"妙记"，也应优先走 lark-vc 先定位会议，再通过 `lark_vc_recording` 获取 `minute_token`
-> - 用户如果要的是妙记基础信息，拿到 `minute_token` 后用 `lark_invoke(tool_name="lark_minutes_minutes_get", args={params: {"minute_token":"..."}})` ；用户如果要的是逐字稿、文字稿、撰写文字、总结、待办、章节，再走 `lark_vc_notes(minute_tokens="...")`
+> - 用户如果要的是妙记基础信息，拿到 `minute_token` 后用 `lark_invoke(tool_name="lark_minutes_minutes_get", args={params: {"minute_token":"..."}})` ；用户如果要**读取**逐字稿、文字稿、撰写文字、总结、待办、章节，再走 `lark_vc_notes(minute_tokens="...")`
 > - "我的妙记""参与的妙记"等自然语言映射细则，以 `lark_get_skill(domain="minutes", section="search")` 为准
 > - 结果有多页时，使用 `page_token` 持续翻页，直到确认没有更多结果
 > - `lark_minutes_search` 单次最多返回 `200` 条；结果总数没有固定上限
 > - 用户说"这个妙记的标题 / 时长 / 封面 / 链接" → `lark_invoke(tool_name="lark_minutes_minutes_get", ...)`
 > - 用户说"下载这个妙记的视频 / 音频 / 媒体文件" → `lark_minutes_download`
-> - 用户说"这个妙记的逐字稿 / 文字稿 / 撰写文字 / 总结 / 待办 / 章节" → 使用 `lark_vc_notes(minute_tokens="...")`
+> - 用户要**读取**"这个妙记的逐字稿 / 文字稿 / 撰写文字 / 总结 / 待办 / 章节" → `lark_vc_notes(minute_tokens="...")`
+> - 用户要在**妙记内新建 / 修改 / 删除 AI 待办**（含「妙记里加待办」「任务1 已完成」等）→ `lark_minutes_todo`（详见 `lark_get_skill(domain="minutes", section="todo")`），**禁止**走 lark-task
+> - 用户要**替换妙记 AI 总结全文** → `lark_minutes_summary`（详见 `lark_get_skill(domain="minutes", section="summary")`）
 > - 用户说"通过文件生成妙记 / 把音视频转妙记" → 先上传获取 `file_token`，然后使用 `lark_minutes_upload`
 > - 用户说"把音视频文件转成纪要 / 逐字稿 / 文字稿 / 撰写文字 / 总结 / 待办 / 章节" → 先上传获取 `file_token`，调用 `lark_minutes_upload` 生成 `minute_url`，再提取 `minute_token` 走 `lark_vc_notes(minute_tokens="...")`
 > - 用户说"重命名妙记 / 改妙记标题 / 修改妙记名字" → `lark_minutes_update`
 > - 用户说"替换说话人 / 把 A 的发言改成 B / 重新归属发言人" → `lark_minutes_speaker_replace`
+> - 用户说"批量替换逐字稿关键词" → `lark_minutes_word_replace`
+>
+> **Note 域边界（禁止规则）**：`minute_token` 是妙记文件标识，**不是** `note_id`。
+> - 已有 `minute_token` 且要读取纪要产物时，先走 lark-vc；只有自然语言纪要标题时不要从 Minutes 反查。
 
 ## API Resources
 
@@ -140,6 +192,7 @@ lark_invoke(tool_name="lark_minutes_<resource>_<method>", args={...})  # 调用 
 
 ## 不在本 skill 范围
 
-- 纪要/逐字稿/总结/待办/章节内容获取 → lark-vc（`lark_vc_notes(minute_tokens="...")`）
+- 已有 `minute_token` 的纪要/逐字稿/总结/待办/章节内容获取 → lark-vc（`lark_vc_notes(minute_tokens="...")`）
+- 只有自然语言纪要标题的逐字稿查询 → 文档搜索 / Docx 正文读取（`lark_get_skill(domain="drive")` / `lark_get_skill(domain="doc")`）
 - 搜索历史会议记录 → lark-vc
 - 查询未来的会议日程 → lark-calendar

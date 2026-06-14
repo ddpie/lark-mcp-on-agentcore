@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.50",
-    "extracted_at": "2026-06-10",
+    "lark_cli_version": "1.0.53",
+    "extracted_at": "2026-06-14",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -21,10 +21,69 @@
     },
     {
       "service": "apps",
+      "command": "+chat",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
       "command": "+create",
       "scopes": [
         "spark:app:write"
       ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-env-create",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-execute",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-table-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-table-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+env-pull",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+git-credential-init",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+git-credential-list",
+      "scopes": []
+    },
+    {
+      "service": "apps",
+      "command": "+git-credential-remove",
+      "scopes": []
     },
     {
       "service": "apps",
@@ -35,9 +94,63 @@
     },
     {
       "service": "apps",
+      "command": "+init",
+      "scopes": []
+    },
+    {
+      "service": "apps",
       "command": "+list",
       "scopes": [
         "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+release-create",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+release-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+release-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+session-create",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+session-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+session-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+session-stop",
+      "scopes": [
+        "spark:app:write"
       ]
     },
     {
@@ -107,7 +220,11 @@
       "service": "base",
       "command": "+base-create",
       "scopes": [
-        "base:app:create"
+        "base:app:create",
+        "base:table:read",
+        "base:table:create",
+        "base:table:update",
+        "base:table:delete"
       ]
     },
     {
@@ -1391,6 +1508,20 @@
     },
     {
       "service": "minutes",
+      "command": "+summary",
+      "scopes": [
+        "minutes:minutes:update"
+      ]
+    },
+    {
+      "service": "minutes",
+      "command": "+todo",
+      "scopes": [
+        "minutes:minutes:update"
+      ]
+    },
+    {
+      "service": "minutes",
       "command": "+update",
       "scopes": [
         "minutes:minutes:update"
@@ -1401,6 +1532,27 @@
       "command": "+upload",
       "scopes": [
         "minutes:minutes.upload:write"
+      ]
+    },
+    {
+      "service": "minutes",
+      "command": "+word-replace",
+      "scopes": [
+        "minutes:minutes:update"
+      ]
+    },
+    {
+      "service": "note",
+      "command": "+detail",
+      "scopes": [
+        "vc:note:read"
+      ]
+    },
+    {
+      "service": "note",
+      "command": "+transcript",
+      "scopes": [
+        "vc:note:read"
       ]
     },
     {

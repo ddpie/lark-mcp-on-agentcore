@@ -9,11 +9,11 @@ This tool maps to: `lark_im_chat_list` (internally calls `GET /open-apis/im/v1/c
 ## Commands
 
 ```
-# List the user's chats (default sort: ByCreateTimeAsc)
+# List the user's chats (default sort: create_time, ascending)
 lark_im_chat_list()
 
 # Sort by recent activity (most recently active first)
-lark_im_chat_list(sort_type="ByActiveTimeDesc")
+lark_im_chat_list(sort="active_time")
 
 # Limit page size
 lark_im_chat_list(page_size="50")
@@ -40,7 +40,7 @@ lark_im_chat_list(types="p2p")
 |------|------|------|------|
 | `user_id_type` | No | `open_id` (default), `union_id`, `user_id` | ID type used for `owner_id` in the response |
 | `types` | No | `group`, `p2p` (comma-separated) | Chat types to include. Omitted = groups only (backward compatible). `p2p` requires user identity; under bot identity, `types="p2p"` alone is rejected and `types="p2p,group"` is silently downgraded to `group` |
-| `sort_type` | No | `ByCreateTimeAsc` (default), `ByActiveTimeDesc` | Result ordering |
+| `sort` | No | `create_time` (default, ascending), `active_time` (descending) | Result ordering |
 | `page_size` | No | 1-100, default 20 | Number of results per page |
 | `page_token` | No | - | Pagination token from the previous response |
 | `exclude_muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under bot identity, the flag is silently inactive; see "Filtering muted chats" below |
@@ -119,13 +119,13 @@ When the flag is set, the JSON envelope gains a `filter` sub-object (absent othe
 ### Scenario 1: List my recent chats
 
 ```
-lark_im_chat_list(sort_type="ByActiveTimeDesc", page_size="10")
+lark_im_chat_list(sort="active_time", page_size="10")
 ```
 
 ### Scenario 2: List my non-muted chats sorted by activity
 
 ```
-lark_im_chat_list(sort_type="ByActiveTimeDesc", exclude_muted=true)
+lark_im_chat_list(sort="active_time", exclude_muted=true)
 ```
 
 ### Scenario 3: Iterate all my chats programmatically

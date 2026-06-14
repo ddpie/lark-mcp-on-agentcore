@@ -2,9 +2,11 @@
 
 通过传入逗号分隔的 `message_id` 列表，一次性读取多封邮件的完整内容。
 
+超过 20 个 ID 可以直接传入；服务端会按 20 个 ID 自动拆批并合并输出，不需要手动拆批，也不要逐封循环调用 `lark_mail_message`。
+
 本工具是 `lark_mail_message` 的批量版本。每个返回的 `messages[]` 项使用与 `lark_mail_message` 相同的归一化结构。
 
-优先使用本工具而非原生 `mail user_mailbox.messages batch_get` API，因为：
+优先使用本工具，因为：
 - 正文字段已 base64url 解码
 - 每条邮件的输出结构已归一化
 - 不可用的 message ID 会被显式列出
@@ -31,7 +33,7 @@ lark_mail_messages(message_ids="<id1>,<id2>", format="json")
 
 | 参数 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `message_ids` | 是 | — | 逗号分隔的邮件 ID 列表 |
+| `message_ids` | 是 | — | 逗号分隔的邮件 ID 列表；超过 20 个 ID 时服务端自动按 20 拆批并合并输出 |
 | `mailbox` | 否 | 当前用户 | 邮箱地址（`user_mailbox_id`） |
 | `html` | 否 | true | 是否返回 HTML 正文（`false` 仅返回纯文本，减少带宽） |
 | `format` | 否 | json | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
@@ -64,7 +66,7 @@ lark_mail_messages(message_ids="<id1>,<id2>", format="json")
 
 - **JSON 输出可直接使用**，可直接读取，无需额外编码转换。
 - 只需读取一封邮件时请使用 `lark_mail_message`。
-- `message_ids` 无硬性上限；工具内部会自动将大列表拆分为多次批量 API 调用。
+- 服务端每 20 个 ID 拆成一次调用并合并输出，不需要为大列表手动拆请求。
 - `lark_mail_messages` 仅返回附件元数据。如后续步骤需要下载 URL，请针对特定的 `message_id` 和 `attachment_ids` 调用原生附件 URL API。
 - 与 `lark_mail_message` 一样，普通附件和内嵌图片都出现在 `messages[].attachments[]` 中，使用同一个 `user_mailbox.message.attachments download_url` API。
 
