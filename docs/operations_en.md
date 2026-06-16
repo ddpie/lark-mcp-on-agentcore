@@ -155,6 +155,27 @@ fields @timestamp, event
 
 ## Troubleshooting
 
+### `ops.sh status` shows "Authorized users: 0" (or teardown finds nothing) despite a live deployment
+
+**Cause:** the shell's `AWS_REGION` points at a different region than the one the app was
+deployed to. `ops.sh` / `teardown.sh` / `upgrade.sh` resolve their region via `resolve_region`
+(`scripts/lib/slug.sh`) with precedence **per-app `deploy-config` REGION > `AWS_REGION` env >
+`aws configure` > us-west-2** — so a correct `deploy-config` normally wins. This symptom means
+either the deploy-config REGION is missing/wrong, or you're running against a tree with no
+saved config.
+
+**Diagnose:**
+```bash
+# What region does the saved config say? (per-app: .local/apps/<slug>/deploy-config)
+grep '^REGION=' .local/deploy-config
+# What region is the shell defaulting to?
+echo "${AWS_REGION:-$(aws configure get region)}"
+```
+
+**Fix:** ensure the app's `deploy-config` has the correct `REGION=` line (re-running
+`./scripts/deploy.sh` rewrites it). Do NOT rely on exporting `AWS_REGION` to steer ops — the
+saved deploy-config is authoritative by design.
+
 ### OAuth authorization succeeds but Quick Desktop shows "invalid_client"
 
 **Cause:** Client Secret in the Quick Desktop connector does not match the one generated during deploy.

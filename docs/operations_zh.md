@@ -155,6 +155,25 @@ fields @timestamp, event
 
 ## 常见问题排查
 
+### `ops.sh status` 显示 "Authorized users: 0"（或 teardown 找不到资源），但线上确实有部署
+
+**原因：** shell 的 `AWS_REGION` 指向了与部署区域不同的区域。`ops.sh` / `teardown.sh` /
+`upgrade.sh` 通过 `resolve_region`（`scripts/lib/slug.sh`）确定区域，优先级为
+**单 app 的 `deploy-config` REGION > `AWS_REGION` 环境变量 > `aws configure` > us-west-2**——
+正常情况下正确的 deploy-config 会胜出。出现此症状说明 deploy-config 的 REGION 缺失/错误，
+或当前代码树没有保存的配置。
+
+**诊断：**
+```bash
+# 保存的配置写的是哪个区域？（多 app 在 .local/apps/<slug>/deploy-config）
+grep '^REGION=' .local/deploy-config
+# shell 默认到哪个区域？
+echo "${AWS_REGION:-$(aws configure get region)}"
+```
+
+**修复：** 确保该 app 的 `deploy-config` 有正确的 `REGION=` 行（重跑 `./scripts/deploy.sh`
+会重写它）。不要靠 export `AWS_REGION` 来指挥运维脚本——按设计，保存的 deploy-config 才是权威来源。
+
 ### OAuth 授权后 Quick Desktop 报错 "invalid_client"
 
 **原因：** Quick Desktop connector 中填写的 Client Secret 与部署时生成的不一致。

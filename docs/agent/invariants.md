@@ -113,6 +113,14 @@ load-bearing — a "simplification" that drops one silently re-opens a cross-app
   `UserSecretKmsKeyArn` output, and the `CmkStragglers` filter/alarm — which is added to
   EVERY app including default). Check: `infra/test/slug-names.test.ts` + `slug-synth.test.ts`
   + `cmk-synth.test.ts` + the snapshot test.
+- **Region is resolved from deploy-config, not a stray `AWS_REGION`.** `ops.sh` /
+  `teardown.sh` / `upgrade.sh` MUST determine their region via the shared `resolve_region`
+  (`slug.sh`), precedence: per-app `deploy-config` REGION > `AWS_REGION` env > `aws configure`
+  > `us-west-2`. The per-app deploy-config (the value `deploy.sh` actually shipped with) is
+  authoritative — a shell defaulting `AWS_REGION` elsewhere must NOT silently redirect a
+  query to the wrong region (else `ops.sh status` under-counts users to 0, and worse,
+  `teardown.sh` can miss live resources). The one hardcoded `us-east-1` in `teardown.sh` is
+  the CloudFront/WAF requirement and is correct. Check: `slug.test.sh` (`resolve_region` cases).
 - **Default sentinel is the EMPTY string, never the literal `default`** — a `default`
   suffix would rename the RETAIN `openid-map` table (CFN replace ⇒ orphan + re-auth).
 - **Killer Fix #1 (cross-app credential read):** the per-slug app secret uses a SLASH
