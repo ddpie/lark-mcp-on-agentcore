@@ -46,12 +46,14 @@ scripts/
   audit-tools.sh      工具目录结构性自检 (15 项断言, 含 catalog snapshot)
   audit-deps.sh       多目录 npm audit
   check-lark-cli-version.sh  Dockerfile / scope-map 版本一致性检查
+  check-lark-cli-upstream.sh  检测上游 lark-cli 是否有更新版本 (cron 触发)
   check-docs-agent.sh   LLM 文档一致性检查 (pre-push, 仅告警, 工具无关)
   build-scope-allowlist.sh   重新生成 OAuth scope allowlist
 ```
 
 docs/skills/  （AI 辅助维护的 runbook）
   bump-lark-cli.md       lark-cli 版本升级 runbook (提取策略 + 步骤)
+  bump-lark-cli-to-pr.md  无人值守 检测→重生成→评审→起草PR 编排 (停在 PR)
   adapt-skill-for-mcp.md  把 lark-cli skill 转换为 MCP 形态的规则
 
 .local/ （已 gitignore，存储每次部署的本地状态）
