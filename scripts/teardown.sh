@@ -7,6 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck disable=SC2034  # consumed by resolve_region in the sourced lib/slug.sh
 LOCAL_DIR="${PROJECT_DIR}/.local"
 # REGION is resolved AFTER resolve_slug via resolve_region (lib/slug.sh): the
 # per-app deploy-config is authoritative. Critical for teardown — a stray
