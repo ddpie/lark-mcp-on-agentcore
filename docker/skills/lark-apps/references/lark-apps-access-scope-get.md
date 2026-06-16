@@ -1,61 +1,28 @@
-# apps +access-scope-get
+# apps access-scope-get
 
-获取应用当前的可用范围配置。
+查看妙搭应用运行时可见范围。
 
-## 用法
+## 何时用
+
+用于确认应用运行时对谁可见。它不表示谁能开发或管理应用；协作者、仓库权限不从这里判断。
+
+## 命令骨架
+
+- 必填：`app_id`。
+- 服务端返回枚举是 `All` / `Tenant` / `Range`。
+- `Range` 下用户、部门、群分别在 `users` / `departments` / `chats` 数组中；不合并回 `targets`。
+
+## 示例
 
 ```
 lark_apps_access_scope_get(app_id="app_xxx")
 ```
 
-## 参数
+## 输出契约
 
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `app_id` | 是 | 应用 ID |
+- 成功读取 `data.scope`：`All`、`Tenant`、`Range`。
+- `scope=All` 时关注 `data.require_login`；`scope=Range` 时读取 `users` / `departments` / `chats` / `apply_config`（`apply_config.approvers` 仅含一个 user open_id）。
 
-## 返回值
+## Agent 规则
 
-**成功（specific，三种 target 类型混合）：**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "scope": "Range",
-    "users": ["ou_xxx", "ou_yyy"],
-    "departments": ["od_xxx"],
-    "chats": ["oc_xxx"],
-    "apply_config": {
-      "enabled": true,
-      "approvers": ["ou_approver"]
-    }
-  }
-}
-```
-
-**成功（public + 免登）：**
-
-```json
-{ "ok": true, "data": { "scope": "All", "require_login": false } }
-```
-
-**成功（tenant）：**
-
-```json
-{ "ok": true, "data": { "scope": "Tenant" } }
-```
-
-## 字段语义
-
-- `scope` 是**字符串枚举**：
-  - `"All"` = 互联网公开 — 对应 `lark_apps_access_scope_set(scope="public")`
-  - `"Tenant"` = 组织内 — 对应 `scope="tenant"`
-  - `"Range"` = 部分人员 — 对应 `scope="specific"`
-- `users` / `departments` / `chats` 三个数组（仅 `scope="Range"` 时）
-- `apply_config`（可选，仅 `scope="Range"` 且申请开启时）：含 `enabled` 和 `approvers`（只允许一个 user open_id）
-- `require_login`（仅 `scope="All"` 时）：bool
-
-## 参考
-
-- `lark_get_skill(domain="apps")` — 妙搭应用全部命令
+向用户解释时映射为：`All` = public，`Tenant` = tenant，`Range` = specific；`Range` 按用户、部门、群分组摘要后再呈现。用户要修改时转到 `lark_get_skill(domain="apps", section="access-scope-set")`。

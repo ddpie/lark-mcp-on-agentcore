@@ -4,7 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 LOCAL_DIR="${PROJECT_DIR}/.local"
-REGION="${AWS_REGION:-us-west-2}"
+# REGION is resolved AFTER resolve_slug (see resolve_region in lib/slug.sh): the
+# per-app deploy-config is authoritative, so ops never drifts from where deploy
+# actually shipped. A stray AWS_REGION in the shell must not silently redirect
+# queries to the wrong region.
 
 # --app <slug>: operate on a specific app (empty = default app, byte-identical
 # names). Parse it out of the args before the subcommand so `ops.sh list-users
@@ -23,6 +26,7 @@ set -- "${ARGS[@]}"
 # shellcheck source=lib/slug.sh
 source "${SCRIPT_DIR}/lib/slug.sh"
 resolve_slug "$APP_SLUG" || exit 1
+resolve_region
 APPS_REGISTRY="${LOCAL_DIR}/apps.json"
 export APPS_REGISTRY
 # shellcheck source=lib/registry.sh

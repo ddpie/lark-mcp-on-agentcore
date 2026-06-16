@@ -111,6 +111,29 @@ assert_rejects "reserved waf"       "waf"
 assert_rejects "dot"                "team.a"
 assert_rejects "space"              "team a"
 
+echo "── resolve_region: deploy-config is authoritative over a stray AWS_REGION ──"
+# Isolated LOCAL_DIR so we never touch the real .local; resolve_region reads
+# <LOCAL_DIR>/deploy-config (default app) or <LOCAL_DIR>/apps/<slug>/deploy-config.
+region_val() {
+  # region_val <slug> <saved-region-or-empty> <aws_region-env> -> printed REGION
+  local slug="$1" saved="$2" envreg="$3"
+  local tmp; tmp="$(mktemp -d)"
+  if [ -n "$saved" ]; then
+    if [ -n "$slug" ]; then mkdir -p "$tmp/apps/$slug"; printf 'REGION=%s\n' "$saved" > "$tmp/apps/$slug/deploy-config";
+    else printf 'REGION=%s\n' "$saved" > "$tmp/deploy-config"; fi
+  fi
+  ( source "$LIB"; LOCAL_DIR="$tmp"; resolve_slug "$slug" >/dev/null 2>&1
+    if [ -n "$envreg" ]; then export AWS_REGION="$envreg"; else unset AWS_REGION; fi
+    resolve_region; printf '%s' "$REGION" )
+  rm -rf "$tmp"
+}
+# Saved region wins even when AWS_REGION points elsewhere (the actual bug).
+assert_eq "default: saved beats env"   "us-west-2"  "$(region_val '' 'us-west-2' 'us-east-1')"
+assert_eq "slug: saved beats env"      "ap-northeast-1" "$(region_val 'team-a' 'ap-northeast-1' 'us-east-1')"
+# No saved config -> fall back to AWS_REGION env.
+assert_eq "default: env fallback"      "eu-west-1"   "$(region_val '' '' 'eu-west-1')"
+assert_eq "slug: env fallback"         "eu-west-1"   "$(region_val 'team-a' '' 'eu-west-1')"
+
 echo ""
 echo "── slug.sh: $PASS passed, $FAIL failed ──"
 if [ "$FAIL" -gt 0 ]; then red "SLUG TESTS FAILED"; exit 1; else grn "ALL SLUG TESTS PASSED"; exit 0; fi

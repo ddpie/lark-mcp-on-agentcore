@@ -21,6 +21,6 @@ Step 3: 渲染验证 & 写入画板 & 交付
   5. 写入画板：用 whiteboard-cli 将 diagram.mmd 转换为 OpenAPI 格式并 pipe 给 lark_whiteboard_update：
        npx -y @larksuite/whiteboard-cli@^0.2.11 -i diagram.mmd --to openapi --format json \
          | lark_whiteboard_update(whiteboard_token="<board_token>", source="-", input_format="raw", idempotent_token="<时间戳+标识>")
-       → 完整 dry-run / 确认流程见 SKILL.md [§ 写入画板](../SKILL.md#写入画板)
+       → 完整 dry-run / 确认流程见 `lark_get_skill(domain="whiteboard", section="workflow")` 的「写入画板」章节
   6. 交付：向用户报告 board_token 写入成功
 ```

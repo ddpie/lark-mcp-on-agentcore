@@ -2,6 +2,8 @@
 
 读取指定邮件的完整内容，包括邮件头、正文（纯文本 + 可选 HTML）以及统一的 `attachments` 列表（涵盖普通附件和内嵌图片）。
 
+`lark_mail_message` 只适合读取一封邮件、一个 `message_id`。如果手上已有多个 `message_id`，请使用 `lark_mail_messages(message_ids="<id1>,<id2>,<id3>")`；不要循环调用 `lark_mail_message`。
+
 本工具对应 MCP tool：`lark_mail_message`。
 
 ## 调用
@@ -24,7 +26,7 @@ lark_mail_message(message_id="<message-id>", format="json")
 
 | 参数 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `message_id` | 是 | — | 邮件 ID |
+| `message_id` | 是 | — | 单个邮件 ID；多个 ID 使用 `lark_mail_messages(message_ids=...)` |
 | `mailbox` | 否 | 当前用户 | 邮箱地址（`user_mailbox_id`） |
 | `html` | 否 | true | 是否返回 HTML 正文（`false` 仅返回纯文本，减少带宽） |
 | `format` | 否 | json | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
@@ -142,6 +144,7 @@ lark_mail_message(message_id="<message-id>", format="json")
 ## 注意事项
 
 - **JSON 输出可直接使用** — 默认输出合法 UTF-8 JSON，可直接读取，无需额外编码转换。
+- **单封读取专用** — `lark_mail_message` 只接收一个 `message_id`。多个 ID 使用 `lark_mail_messages(message_ids="<id1>,<id2>,<id3>")`，避免逐封循环调用。
 - `lark_mail_message` 默认不再获取附件/图片下载 URL。这样可以保持邮件详情读取更轻量，调用方可按需单独请求 URL。
 
 ## 典型场景

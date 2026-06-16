@@ -221,8 +221,34 @@ git diff --no-index /tmp/lark-cli-$OLD_VER/skills/lark-<domain> /tmp/lark-cli-$N
 so it catches semantic changes (new `+shortcuts`, changed workflows, new/renamed reference
 files), not just mechanical CLI→MCP rewrites. **ADDED domains have no OLD dir** — the command
 above errors out and yields nothing, so adapt those FRESH by reading the entire NEW tree
-(`/tmp/lark-cli-$NEW_VER/skills/lark-<domain>`) directly. After re-adapting, review the diff and
-verify the quality checklist.
+(`/tmp/lark-cli-$NEW_VER/skills/lark-<domain>`) directly.
+
+#### 9a. Multi-perspective parallel review (do NOT review with a single agent)
+
+After re-adapting, **review with a panel of agents, one per perspective — not one generalist
+agent per domain.** A single reviewer running the whole quality checklist reliably tunnel-visions
+on format and misses semantic regressions; splitting the review by *concern* (not just by domain)
+makes each agent adversarially specialized and catches classes of bug the others are blind to.
+This is in addition to `adapt-skill-for-mcp.md`'s Phase 2b (semantic-diff audit) and Phase 3
+(per-domain checklist) — those still run; this panel is the cross-cutting layer over the full
+re-adapted set.
+
+Dispatch these perspectives **in parallel** (each covers ALL domains in `READAPT`, reading the
+adapted output + the per-skill upstream diff). Each returns PASS or a list of `file:line` issues
+with a concrete fix:
+
+| # | Perspective | What this agent hunts for (and ignores everything else) |
+|---|-------------|----------------------------------------------------------|
+| 1 | **Semantic fidelity** | Content silently dropped, meaning changed, or workflows/sections invented vs the NEW upstream source. Every new `+shortcut`/flag/reference-file in the diff is reflected; nothing hallucinated. |
+| 2 | **Tool & parameter correctness** | Every `lark_<svc>_<cmd>(...)` is a real tool in `shortcut-scopes.json` (watch the `docs` vs `doc` plural trap), and every named arg matches that tool's actual snake_case `--flags` — no invented params. |
+| 3 | **Reference & section resolution** | Every `lark_get_skill(domain, section="X")` resolves to a real file under the 3-path rule; no `](references/` filesystem links, no dead `../lark-*` cross-links, no `domain="shared"`. |
+| 4 | **Leak & format compliance** | Zero `lark-cli` / bare `+cmd` / `--kebab` / `--as` / `Read 工具` / `\| jq` in actionable text; description frontmatter is a single quoted YAML line. (Runs the Phase 2 grep gate + `skill-quality` test.) |
+| 5 | **Identity & scope safety** | No bot-only scopes leaked into `shortcut-scopes.json`/`scope-allowlist.ts`; bot-only ops carry the ⚠️ Rule 6b warning rather than being silently presented as user-callable. |
+
+Collect all panel reports; **every perspective must PASS**. Any ⚠️ → fix (re-dispatch the
+transform agent for that domain, or fix inline), then re-run only the affected perspective(s).
+Scale the panel down only when `READAPT` is tiny — but never collapse perspectives 1–4 into one
+agent; that defeats the purpose. Then verify the quality checklist holds across the result.
 
 After re-adapting `.md` files, also copy **scripts and data assets** from the NEW upstream
 clone for each domain in `READAPT` that has them:

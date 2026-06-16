@@ -7,7 +7,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-REGION="${AWS_REGION:-us-west-2}"
+# shellcheck disable=SC2034  # consumed by resolve_region in the sourced lib/slug.sh
+LOCAL_DIR="${PROJECT_DIR}/.local"
+# REGION is resolved AFTER resolve_slug via resolve_region (lib/slug.sh): the
+# per-app deploy-config is authoritative. Critical for teardown — a stray
+# AWS_REGION pointing at the wrong region would make us miss live resources
+# (leaving them billing) or operate in a region with nothing to delete.
 
 # --app <slug>: tear down a specific app (empty = default app).
 APP_SLUG="${APP_SLUG:-}"
@@ -24,6 +29,7 @@ set -- "${ARGS[@]+"${ARGS[@]}"}"
 # shellcheck source=lib/slug.sh
 source "${SCRIPT_DIR}/lib/slug.sh"
 resolve_slug "$APP_SLUG" || exit 1
+resolve_region
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

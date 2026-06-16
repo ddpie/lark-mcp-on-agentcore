@@ -46,10 +46,11 @@ lark_mail_draft_create(to="alice@example.com", subject="简短通知", body="收
 | `mailbox` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `from`，再回退到 `me`）。当发件人（`from`）与邮箱不同时使用，如通过别名或 send_as 地址发信。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `cc` | 否 | 完整抄送列表，多个用逗号分隔 |
 | `bcc` | 否 | 完整密送列表，多个用逗号分隔。与 `event_*` 不兼容（见 `lark_mail_send` 日程邀请约束） |
-| `plain_text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `inline` 同时使用 |
+| `plain_text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `inline` 同时使用。纯文本模式下也会自动追加纯文本签名（HTML 签名经 `PlainTextFromHTML` 转换，内联图片丢弃） |
 | `attach` | 否 | 附件文件路径，多个用逗号分隔。相对路径。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
 | `inline` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `plain_text` 同时使用 |
-| `signature_id` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `lark_mail_signature` 查看可用签名。不可与 `plain_text` 同时使用 |
+| `signature_id` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `lark_mail_signature` 查看可用签名。与 `no_signature` 互斥 |
+| `no_signature` | 否 | 跳过默认签名自动追加。与 `signature_id` 互斥，同时使用时返回参数校验错误（退出码 2） |
 | `priority` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
 | `request_receipt` | 否 | 请求已读回执（RFC 3798 Message Disposition Notification）。在草稿 EML 里写 `Disposition-Notification-To: <sender>` 头，发送时生效。收件人的邮件客户端可能弹出提示、自动发送或忽略——送达不保证 |
 | `event_summary` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请。需同时设置 `event_start` 和 `event_end` |

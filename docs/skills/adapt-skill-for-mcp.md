@@ -465,18 +465,33 @@ Dispatch one audit agent per domain (parallel). Each agent:
 **Acceptance criteria:** All domains must report PASS. Issues found → fix (re-dispatch a
 transform agent or fix inline), then re-audit only the affected domain.
 
-### Phase 3: Review
+### Phase 3: Review (multi-perspective panel)
 
-Dispatch review agents to cover **all** adapted skills (not just spot-check). Group similarly
-to Phase 1 for maximum parallelism (~14 agents). Each review agent:
+Review with a **panel of agents split by concern**, dispatched in parallel — not one generalist
+agent that runs the whole checklist per domain. A single reviewer tunnel-visions on format and
+misses semantic regressions; specializing each agent to one perspective makes it adversarial and
+catches bug classes a generalist is blind to. Each perspective covers **all** adapted skills (not
+just a spot-check), reading every `.md` under the assigned `docker/skills/lark-<domain>/` dirs plus
+the per-skill upstream diff.
 
-1. Read every `.md` file in its assigned `docker/skills/lark-<domain>/` directories
-2. Check against the Quality checklist below — report issues with file path and line number
-3. Explicitly list all files reviewed and mark each as PASS or ISSUE
+| # | Perspective | What this agent hunts for (and ignores everything else) |
+|---|-------------|----------------------------------------------------------|
+| 1 | **Semantic fidelity** | Content silently dropped, meaning changed, or workflows/sections invented vs the NEW upstream source. Every new `+shortcut`/flag/reference-file is reflected; nothing hallucinated. |
+| 2 | **Tool & parameter correctness** | Every `lark_<svc>_<cmd>(...)` is a real tool in `shortcut-scopes.json` (watch the `docs` vs `doc` plural trap); every named arg matches that tool's actual snake_case `--flags` — no invented params. |
+| 3 | **Reference & section resolution** | Every `lark_get_skill(domain, section="X")` resolves under the 3-path rule; no `](references/` links, no dead `../lark-*` cross-links, no `domain="shared"`. |
+| 4 | **Leak & format compliance** | Zero `lark-cli` / bare `+cmd` / `--kebab` / `--as` / `Read 工具` / `\| jq` in actionable text; description frontmatter is a single quoted YAML line. (Runs the Phase 2 grep gate + `skill-quality` test.) |
+| 5 | **Identity & scope safety** | Bot-only ops carry the ⚠️ Rule 6b warning rather than being silently presented as user-callable; no bot-only scopes implied. |
 
-**Acceptance criteria**: All skills must PASS all checklist items. If issues are found,
-fix them (either re-dispatch a transform agent for that skill, or fix inline), then
-re-review the affected files only.
+Each agent:
+
+1. Reads every `.md` file in its scope (all `docker/skills/lark-<domain>/` dirs being reviewed)
+2. Reports only its perspective's issues, with file path + line number and a concrete fix
+3. Explicitly lists what it checked and returns **PASS** or a list of **ISSUE**s
+
+**Acceptance criteria**: **every perspective must PASS**. Any issue → fix (re-dispatch a transform
+agent for that domain, or fix inline), then re-run only the affected perspective(s). When the
+re-adapted set is tiny you may run fewer agents, but never collapse perspectives 1–4 into a single
+generalist — that defeats the purpose.
 
 ## Quality checklist (per skill)
 

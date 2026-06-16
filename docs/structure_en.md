@@ -46,12 +46,14 @@ scripts/
   audit-tools.sh      Tool catalog structural audit (15 assertions, with snapshot)
   audit-deps.sh       Multi-dir npm audit
   check-lark-cli-version.sh  Dockerfile / scope-map version drift check
+  check-lark-cli-upstream.sh  Detect a newer upstream lark-cli release (cron trigger)
   check-docs-agent.sh   LLM doc-consistency check (pre-push, warn-only, agent-agnostic)
   build-scope-allowlist.sh   Regenerate OAuth scope allowlist
 ```
 
 docs/skills/  (runbooks for AI-assisted maintenance)
   bump-lark-cli.md       lark-cli version upgrade runbook (extraction strategy + steps)
+  bump-lark-cli-to-pr.md  unattended detect→regen→review→draft-PR orchestration (stops at PR)
   adapt-skill-for-mcp.md  rules for transforming lark-cli skills into MCP form
 
 .local/ (gitignored, per-deployment state)

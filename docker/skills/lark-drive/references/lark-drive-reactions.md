@@ -1,6 +1,6 @@
 # drive reactions
 
-> **前置条件：** 先调用 `lark_get_skill(domain="drive")` 了解 Drive 评论卡片模型、评论数/回复数统计口径、`file_token` / `file_type` 规则。
+> **前置条件：** 先调用 `lark_get_skill(domain="drive")` 了解 Drive 评论入口，再调用 `lark_get_skill(domain="drive", section="comments-guide")` 了解评论卡片模型、评论数/回复数统计口径、`file_token` / `file_type` 规则。
 
 处理文档评论 / 回复上的 reaction（点赞、表情、各表情数量、谁点了什么、添加/删除表情）。这个场景不常见，但规则比较集中：查询时只有在用户明确需要 reaction 信息时才带 `need_reaction=true`；写入时统一使用 `lark_invoke(tool_name="lark_drive_file_comment_reply_reactions_update_reaction", ...)`，操作对象始终是 `reply_id`。
 

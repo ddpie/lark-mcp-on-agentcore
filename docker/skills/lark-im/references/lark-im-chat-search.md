@@ -13,6 +13,9 @@ lark_im_chat_search(query="project")
 # Restrict by search types
 lark_im_chat_search(query="project", search_types="private,public_joined")
 
+# Filter by chat mode (group = regular group, topic = topic/thread group)
+lark_im_chat_search(query="project", chat_modes="topic")
+
 # Filter by member open_ids (with keyword)
 lark_im_chat_search(query="project", member_ids="ou_xxx,ou_yyy")
 
@@ -38,16 +41,19 @@ lark_im_chat_search(query="project", format="json")
 |------|------|------|------|
 | `query` | No (at least one of `query` / `member_ids` required) | Max 64 characters | Search keyword. Supports matching localized chat names, member names, multilingual search, pinyin, and prefix fuzzy search. If the query contains `-`, it is automatically wrapped in quotes |
 | `search_types` | No | Comma-separated: `private`, `external`, `public_joined`, `public_not_joined` | Restrict the visible chat types returned by search |
+| `chat_modes` | No | Comma-separated: `group`, `topic` | Filter by chat mode (server-side): `group` = regular group, `topic` = topic/thread group |
 | `member_ids` | No (at least one of `query` / `member_ids` required) | Up to 50, format `ou_xxx` | Filter by member open_ids; can be used alone or combined with `query` |
 | `is_manager` | No | - | Only show chats you created or manage |
 | `disable_search_by_user` | No | - | Disable member-name-based matching and search by group name only |
-| `sort_by` | No | `create_time_desc`, `update_time_desc`, `member_count_desc` | Sort field in descending order |
+| `sort` | No | `create_time`, `update_time`, `member_count` | Sort field (always descending) |
 | `page_size` | No | 1-100, default 20 | Number of results per page |
 | `page_token` | No | - | Pagination token from the previous response |
 | `exclude_muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under bot identity, the flag is silently inactive (mute is a per-user setting); see "Filtering muted chats" below |
 | `format` | No | - | Output as JSON |
 
 > **Note:** Supports both user identity (default) and bot identity. When using bot identity, the app must have bot capability enabled.
+
+> **CAUTION:** `sort` is **always descending** — the search API only ranks the chosen field high-to-low (e.g. `member_count` = most members first). There is no ascending option. If the user asks for "fewest first / ascending / 从少到多", tell them the search API does not support ascending order; any low-to-high view requires re-sorting the fetched page client-side and is not an upstream sort. Do **not** invent values like `member_count_asc` or pass `asc` (they are rejected).
 
 ## Output Fields
 

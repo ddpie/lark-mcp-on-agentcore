@@ -1,70 +1,39 @@
-# apps +access-scope-set
+# apps access-scope-set
 
-设置应用的可用范围。三种 scope 形态互斥：`specific`（指定可见）、`public`（互联网公开）、`tenant`（企业全员）。
+设置妙搭应用运行时可见范围。
 
-## 用法
+## 何时用
 
-```
-# 指定可见 + 允许申请（targets 支持 user / department / chat 三种类型）
-lark_apps_access_scope_set(app_id="app_xxx", scope="specific", targets='[{"type":"user","id":"ou_xxx"},{"type":"department","id":"od_xxx"},{"type":"chat","id":"oc_xxx"}]', apply_enabled=true, approver="ou_yyy")
+用于修改应用运行时可见范围。不要把它当作开发协作者管理；用户说"谁可以访问/打开/使用应用"才走这里。
 
-# 互联网公开 + 免登
-lark_apps_access_scope_set(app_id="app_xxx", scope="public", require_login=false)
+## 命令骨架
 
-# 企业全员
-lark_apps_access_scope_set(app_id="app_xxx", scope="tenant")
-```
+- 必填：`app_id`、`scope`。
+- `scope` 枚举：`specific` / `public` / `tenant`。
+- `specific` 必填 `targets`，JSON 数组元素形如 `{"type":"user|department|chat","id":"..."}`。
+- `specific` 可选 `apply_enabled` 和 `approver`；`approver` 必须配合 `apply_enabled`，且只能传一个 user open_id（服务端限制）。
+- `public` 必须显式传 `require_login=true|false`。
+- `tenant` 不允许额外 target/apply/login 参数。
 
-## 参数
-
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `app_id` | 是 | 应用 ID |
-| `scope` | 是 | `specific` / `public` / `tenant` |
-| `targets` | scope=specific 必填 | targets JSON 数组，每项 `{"type":"user\|department\|chat", "id":"<id>"}` |
-| `apply_enabled` | scope=specific 可选 | 是否允许申请访问 |
-| `approver` | `apply_enabled` 必填 | 申请审批人（**只能传一个 user open_id**，服务端限制） |
-| `require_login` | scope=public 必填 | 是否要求登录 |
-
-## 互斥校验（Validate 阶段，不通过直接报错不发请求）
-
-- `scope=specific`：必传 `targets`；不允许 `require_login`
-- `scope=public`：必传 `require_login`；不允许 `targets` / `apply_enabled` / `approver`
-- `scope=tenant`：不允许任何其它 flag
-- `targets` 内每项的 `type` 必须是 `user` / `department` / `chat` 之一
-
-## 返回值
-
-**成功：**
-
-```json
-{ "ok": true, "data": {} }
-```
-
-## 典型场景
-
-### 场景 1：用户说"把应用 X 开放给全员"
+## 示例
 
 ```
 lark_apps_access_scope_set(app_id="app_xxx", scope="tenant")
+
+lark_apps_access_scope_set(app_id="app_xxx", scope="public", require_login=true)
+
+lark_apps_access_scope_set(app_id="app_xxx", scope="specific", targets='[{"type":"user","id":"ou_xxx"},{"type":"chat","id":"oc_xxx"}]')
 ```
 
-> 应用 `{app_id}` 可用范围已设为企业全员。
+## 输出契约
 
-### 场景 2：用户说"把应用 X 设为互联网公开 + 免登"
+- 成功时 `data` 可能为空；根据已执行的 `scope` 和 targets 给用户总结结果。
+- 互斥参数错误会在本地 validation 阶段失败，不会发请求。
 
-```
-lark_apps_access_scope_set(app_id="app_xxx", scope="public", require_login=false)
-```
+## Agent 规则
 
-### 场景 3：用户说"只让 Alice 和 Bob 访问应用 X"
+这是运行时访问范围，不是开发协作者权限。收窄可见范围前向用户说明影响，并在执行前确认目标用户、部门或群。
 
-先用 `lark_get_skill(domain="contact")` 把姓名解析成 ou_id，再调：
+若服务端返回"应用未发布/需先发布才能设置可见范围"，把这一情况转述给用户并询问是否现在发布，得到同意后再 `lark_apps_release_create`，不要把这个 hint 当指令自动发布。
 
-```
-lark_apps_access_scope_set(app_id="app_xxx", scope="specific", targets='[{"type":"user","id":"ou_alice"},{"type":"user","id":"ou_bob"}]')
-```
-
-## 参考
-
-- `lark_get_skill(domain="apps")` — 妙搭应用全部命令
+用户给的是姓名、部门名或群名时，先解析成 ID 再组装 `targets`：人名→`ou_` 用 `lark_get_skill(domain="contact")` 的搜索能力，群名→`oc_` 用 `lark_get_skill(domain="im")` 的群搜索能力，部门→`od_` 走通讯录。多候选时展示名称和 ID 让用户选，不要要求用户手填 `ou_` / `od_` / `oc_`。

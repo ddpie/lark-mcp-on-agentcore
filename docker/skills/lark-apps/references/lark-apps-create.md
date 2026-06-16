@@ -1,66 +1,37 @@
-# apps +create
+# apps create
 
-创建一个新的妙搭应用。返回新建应用的元信息。
+创建妙搭应用。
 
-## 用法
+## 何时用
+
+用来创建应用资产并拿到 `app_id`。它不负责把自然语言需求交给云端 Agent：用户要"帮我生成/迭代应用"时，先创建 `full_stack` app，再进入 `lark_get_skill(domain="apps", section="cloud-dev")` 用 `lark_apps_session_create` / `lark_apps_chat` 提交需求。
+
+## 命令骨架
+
+- 必填：`name`、`app_type`。
+- app type 语义取值为 `html` / `full_stack`；输入会被归一成小写后校验。
+- 可选：`description`、`icon_url`。
+
+## 示例
 
 ```
-# 最小调用
-lark_apps_create(name="客户调研问卷", app_type="HTML")
+lark_apps_create(name="客户调研问卷", app_type="html")
 
-# 全参数
-lark_apps_create(name="客户调研问卷", app_type="HTML", description="本季度客户满意度调研", icon_url="https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg")
+lark_apps_create(name="审批系统", app_type="full_stack", description="部门审批系统，支持登录、提交申请、多级审批")
 ```
 
-## 参数
+## 输出契约
 
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `name` | 是 | 应用显示名 |
-| `app_type` | 是 | 应用类型，当前可选值：`HTML`（区分大小写；未来会扩展） |
-| `description` | 否 | 应用描述 |
-| `icon_url` | 否 | 应用图标 URL；不传服务端给默认图标 |
+- 成功默认 JSON envelope 中读取 `data.app.app_id`，同时可用 `data.app.name` / `description` 向用户确认结果。
+- 后续命令需要 app_id 时，从返回的 JSON 中取 `data.app.app_id`。
 
-## 返回值
+## app type 与命名
 
-**成功：**
+- `app_type` 取值与判定信号见 `lark_get_skill(domain="apps")`「选择开发路径」，此处不重复。
+- 用户只给自然语言需求时，据此生成简洁的 `name` 和一句 `description` 直接创建；不满意再用 `lark_apps_update` 改。
 
-```json
-{
-  "ok": true,
-  "data": {
-    "app": {
-      "app_id": "app_4k5jepcbjmv6m",
-      "name": "客户调研问卷",
-      "description": "本季度客户满意度调研",
-      "icon_url": "https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg",
-      "created_at": "2026-05-18T10:00:00Z"
-    }
-  }
-}
-```
+创建后按用户路径继续：
 
-**失败：**
-
-```json
-{
-  "ok": false,
-  "error": {
-    "type": "api",
-    "code": 99991400,
-    "message": "...",
-    "hint": "可执行的修复建议（可能为空）"
-  }
-}
-```
-
-## 字段语义
-
-- `app_type` 是应用类型枚举，**区分大小写**，当前只允许 `HTML`，未来会扩展；不在白名单的取值会被直接拒绝
-- `created_at` 是 ISO 8601 UTC 时间字符串
-- `error.hint` 是可执行修复建议，**优先**转述给用户；hint 为空时退回 `error.message`
-- 不要原样把 envelope JSON 复述给用户
-
-## 参考
-
-- `lark_get_skill(domain="apps")` — 妙搭应用全部命令
+- 发布现成 HTML/静态目录：读 `lark_get_skill(domain="apps", section="html-publish")`。
+- 本地全栈开发：读 `lark_get_skill(domain="apps", section="local-dev")`。
+- 云端 Agent 生成/迭代：读 `lark_get_skill(domain="apps", section="cloud-dev")`。
