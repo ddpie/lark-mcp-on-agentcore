@@ -110,3 +110,34 @@ list_user_secret_names() {
     | tr '\t' '\n' \
     | grep -E "^${SECRET_USERS_PREFIX}/[^/]+$" || true
 }
+
+# resolve_region: the SINGLE source of truth for which region an app lives in,
+# shared by ops.sh / teardown.sh / upgrade.sh so they never drift from where
+# deploy.sh actually deployed. Precedence (highest first):
+#   1. the REGION saved in this app's deploy-config (the authoritative value
+#      deploy.sh wrote at deploy time — per-app for a slug, root for default)
+#   2. AWS_REGION env (explicit operator override)
+#   3. `aws configure get region`
+#   4. us-west-2 fallback
+# Why deploy-config beats the env: an unrelated AWS_REGION in the shell (e.g. an
+# EC2 box defaulting to us-east-1) otherwise makes ops/teardown query the WRONG
+# region — status under-counts users, and teardown can miss resources entirely.
+# Requires LOCAL_DIR and SLUG to be set (i.e. call AFTER resolve_slug).
+resolve_region() {
+  local cfg
+  if [ -n "${SLUG:-}" ]; then
+    cfg="${LOCAL_DIR}/apps/${SLUG}/deploy-config"
+  else
+    cfg="${LOCAL_DIR}/deploy-config"
+  fi
+  local saved=""
+  if [ -f "$cfg" ]; then
+    saved=$(grep '^REGION=' "$cfg" 2>/dev/null | cut -d= -f2- || echo "")
+  fi
+  if [ -n "$saved" ]; then
+    REGION="$saved"
+  else
+    REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null || echo us-west-2)}"
+  fi
+  export REGION
+}
