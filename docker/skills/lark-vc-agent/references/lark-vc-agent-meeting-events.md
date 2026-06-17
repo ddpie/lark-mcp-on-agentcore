@@ -3,9 +3,17 @@
 
 (authentication is handled automatically by the MCP server)
 
-查询当前 bot 在一场正在进行的视频会议中收到的会中事件列表。该工具是**读操作**。对进行中会议，要求 bot 当前仍在会中；对已结束会议，存在一个**结束后 5 分钟内的宽限窗口**，只要 bot 曾经在这场会里出现过，仍可继续拉取事件。
+查询一场正在进行的视频会议中的会中事件列表。该工具是**读操作**，必须沿用 `meeting_id` 的来源身份：用户身份发现的会议继续用用户身份读。对已结束会议，存在一个**结束后 5 分钟内的宽限窗口**。
+
+> ⚠️ 还存在一条**应用身份**读取路径（应用机器人入会或应用身份发现的会议继续用应用身份读），但应用身份依赖 MCP server 不支持的 bot 身份，**在 MCP server 上不可用**。通过 MCP server 时身份始终是用户身份，因此应使用用户身份发现的 `meeting_id`。
 
 本工具对应 shortcut：`lark_vc_meeting_events`（调用 `GET /open-apis/vc/v1/bots/events`）。
+
+可见性边界：
+
+- `meeting_id` 来自用户身份的 `lark_vc_meeting_list_active`：后续读取事件继续用用户身份。这是 MCP server 上可用的路径。
+- ⚠️ `meeting_id` 来自应用身份 `lark_vc_meeting_list_active`（带 `user_id`）或应用机器人入会：后续读取事件需用应用身份，**MCP server 上不可用**。
+- 用户身份 active meeting 返回的是当前登录用户正在参加的会议，不表示可以读取任意 `meeting_id`。
 
 ## 调用方式
 
@@ -40,38 +48,44 @@ lark_vc_meeting_events(meeting_id="69xxxxxxxxxxxxx28", page_size="20", format="j
 ### 1. 输入必须是 meeting_id，不是 9 位会议号
 
 `meeting_id` 必须是会议的长数字 ID。它通常来自：
-- `lark_vc_meeting_join` 返回体中的 `meeting.id`
+- `lark_vc_meeting_list_active` 返回体中的 `meeting_id`
 - `lark_vc_search` 结果中的 `id`
+- ⚠️ 应用机器人入会返回体中的 `meeting.id`（应用身份路径，MCP server 不可用）
 
 **不要**把 9 位会议号（`meeting_number`）传给这个工具。
+如果 `meeting_id` 来自 `lark_vc_meeting_list_active`，后续 `lark_vc_meeting_events` 必须沿用同一身份；如果返回多个会议，先让用户选择具体 `meeting_id`。
 
-### 2. 仅支持 user 身份
+如果用户提供的是 9 位会议号，先用用户身份查 active meetings 并按 `meeting_no` 匹配。匹配到唯一项后，取该项的长数字 `meeting_id`，再用用户身份调用本工具；匹配失败时不要尝试入会（入会是应用身份写操作，MCP 不可用）。
 
-该工具仅支持 `user` 身份。
+### 2. 身份来源是读取事件的权限锚点
 
-### 3. bot 必须在会中，或在会议结束后的 5 分钟宽限窗口内曾经在会中
+- 用户身份路径（MCP server 可用）：先用 `lark_vc_meeting_list_active` 发现当前登录用户的会议，再用 `lark_vc_meeting_events` 读取该 `meeting_id`，全程用户身份。
+- ⚠️ 应用身份路径：应用机器人必须在会中或参会过，需用应用身份读取——该路径在 MCP server 上不可用。
+- 不要混用身份。身份不一致时，常见结果是空列表、`no permission` 或 `bot is not in meeting`。
 
-这是查询"bot 在会中观察到的事件"的接口。若 bot 已离会、未入会、或会议已经无法再判断 bot 身份，后端通常会报：
+### 3. 读取事件前必须先拿到可见的 meeting_id
+
+最稳妥的调用顺序（用户身份，MCP server 可用）：
+
+```
+# 先发现当前登录用户所在会议
+lark_vc_meeting_list_active(format="json")
+
+# 再用同一身份读取该会议事件
+lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="pretty")
+```
+
+> ⚠️ 另有一条应用身份路径：让应用机器人先入会，或用应用身份发现 active meeting，再用应用身份读事件。该路径依赖 bot 身份，**MCP server 上不可用**。
+
+若读取主体已离会、未入会、或会议已经无法再判断身份，后端通常会报：
 - `bot is not in meeting, no permission`
-
-因此，最稳妥的调用顺序通常是：
-
-```
-# 先入会
-lark_vc_meeting_join(meeting_number="123456789")
-
-# 记录返回的 meeting.id
-
-# 再查询事件
-lark_vc_meeting_events(meeting_id="<meeting.id>")
-```
 
 更精确地说，后端当前的判断规则是：
 
-- **会议进行中**：要求 bot **当前仍在会中**
-- **会议已结束后的 5 分钟内**：只要 bot **曾经在这场会中出现过**，仍可拉取事件
+- **会议进行中**：要求读取主体**当前仍在会中**
+- **会议已结束后的 5 分钟内**：只要读取主体**曾经在这场会中出现过**，仍可拉取事件
 - **会议结束超过 5 分钟**：按会议结束处理，通常不再返回事件流
-- **bot 从未真实入会过**：即使会议仍在进行或刚结束，也会返回 `10005 bot is not in meeting`
+- **从未真实入会过**：即使会议仍在进行或刚结束，也会返回 `10005 bot is not in meeting`
 
 ### 4. 自动分页规则
 
@@ -83,9 +97,9 @@ lark_vc_meeting_events(meeting_id="<meeting.id>")
 
 执行准则：
 
-- **默认调用模板**：`lark_vc_meeting_events(meeting_id="<meeting.id>", page_all=true, format="pretty")`
+- **默认调用模板**：`lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="pretty")`
 - 如果你发现自己执行成了不带 `page_all` 的单页查询，而响应里又出现 `has_more=true` / `more available` / 非空 `page_token`，应立刻意识到这只是部分结果。
-- 遇到上述情况，默认补救方式是继续使用返回的 `page_token` 续拉，例如：`lark_vc_meeting_events(meeting_id="<meeting.id>", page_token="<returned_page_token>", page_all=true, format="pretty")`
+- 遇到上述情况，默认补救方式是继续使用返回的 `page_token` 续拉，例如：`lark_vc_meeting_events(meeting_id="<meeting_id>", page_token="<returned_page_token>", page_all=true, format="pretty")`
 - 只有在用户明确要求"就看第一页""先不要翻页"时，才不要默认带 `page_all=true`
 - 只要你是基于 `lark_vc_meeting_events` 来回答一场**正在进行中的会议内容**，就不能直接复用上一次查询结果。无论用户是在问"现在是谁在说话""刚刚发生了什么""最新事件有哪些"，还是让你"总结一下这个会议讲什么"，都必须先重新执行一次 `lark_vc_meeting_events`，确认拿到的是最新事件流，再回答用户。只有在用户明确要求基于某次历史快照继续分析时，才可以复用旧结果。
 
@@ -111,7 +125,10 @@ lark_vc_meeting_events(meeting_id="<meeting.id>")
 
 执行准则：
 
-- 这类问题默认先用 `lark_vc_meeting_events(meeting_id="<meeting.id>", page_all=true, format="json")` 拉取最新事件流。
+- 如果上下文已有明确 `meeting_id`，直接用同一身份执行 `lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="json")`。
+- 如果上下文没有明确 `meeting_id`，先用用户身份发现当前用户所在会议：`lark_vc_meeting_list_active(format="pretty")`。返回多个会议时先让用户选择。
+- 如果上下文只有 9 位会议号，先用用户身份执行 `lark_vc_meeting_list_active` 并按 `meeting_no` 匹配；匹配到唯一会议后再查事件。不要为了总结会议而尝试入会（应用身份写操作，MCP 不可用）。
+- 这类问题拿到 `meeting_id` 后，用 `lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="json")` 拉取最新事件流。
 - 如果事件中出现共享文档线索，例如：
   - `magic_share_started`
   - `share_doc.title`
@@ -167,26 +184,23 @@ lark_vc_meeting_events(meeting_id="<meeting.id>")
 
 | 输入参数 | 获取方式 |
 |---------|---------|
-| `meeting_id` | `lark_vc_meeting_join` 返回的 `meeting.id`；或 `lark_vc_search` 结果中的 `id` |
+| `meeting_id` | `lark_vc_meeting_list_active` 返回的 `meeting_id`；或 `lark_vc_search` 结果中的 `id`；⚠️ 或应用机器人入会返回的 `meeting.id`（应用身份，MCP 不可用）。必须同时记录来源身份 |
 | `start` / `end` | 用户给出的时间范围；如未给出则默认取全量可见事件 |
 | `page_token` | 上一页或上一次查询结果中保存的 `page_token`；建议持久化保存，便于下次继续拉取新增事件 |
 
 ## Agent 组合场景
 
-### 场景 1：入会后查看会中发生了什么
+### 场景 1：发现当前用户所在会议 → 读事件（用户身份，MCP server 可用）
 
 ```
-# 第 1 步：加入会议，记录返回的 meeting.id
-lark_vc_meeting_join(meeting_number="123456789")
-
-# 第 2 步：查询事件流
-lark_vc_meeting_events(meeting_id="<meeting.id>", page_all=true, format="pretty")
+lark_vc_meeting_list_active(format="json")
+lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="pretty")
 ```
 
 ### 场景 2：过滤某段时间内的事件
 
 ```
-lark_vc_meeting_events(meeting_id="<meeting.id>", start="2026-04-17T15:00:00+08:00", end="2026-04-17T16:00:00+08:00", page_all=true, format="pretty")
+lark_vc_meeting_events(meeting_id="<meeting_id>", start="2026-04-17T15:00:00+08:00", end="2026-04-17T16:00:00+08:00", page_all=true, format="pretty")
 ```
 
 ### 场景 3：基于上一次的 `page_token` 继续查新增事件
@@ -194,7 +208,7 @@ lark_vc_meeting_events(meeting_id="<meeting.id>", start="2026-04-17T15:00:00+08:
 ```
 # 上一次查询结束后，保留最后返回的 page_token
 # 这次直接从该游标继续拉新增事件
-lark_vc_meeting_events(meeting_id="<meeting.id>", page_token="<last_page_token>", page_all=true, format="pretty")
+lark_vc_meeting_events(meeting_id="<meeting_id>", page_token="<last_page_token>", page_all=true, format="pretty")
 ```
 
 适用规则：
@@ -207,27 +221,31 @@ lark_vc_meeting_events(meeting_id="<meeting.id>", page_token="<last_page_token>"
 
 | 错误现象 | 根本原因 | 解决方案 |
 |---------|---------|---------|
-| `meeting_id is required` | 未传入 `meeting_id` | 传入长数字 `meeting.id` |
-| `10005 bot is not in meeting` | bot 从未真实入会该会议；或会议已结束但 bot 从未在会中出现过 | 先 `lark_vc_meeting_join(meeting_number="<9位号>")` 真实入会再查；如果会议已经结束且当时 bot 没进过会，本接口也拉不到数据。**如果只是想看参会人快照，改用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<meeting.id>"}, with_participants: true})`**（不依赖 bot 身份参会） |
-| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。若要拿纪要文档或逐字稿 token，用 `lark_vc_notes(meeting_ids="<meeting.id>")`；若要拿 AI 产物（summary / todos / chapters）或导出逐字稿文件，先用 `lark_vc_recording(meeting_ids="<meeting.id>")` 拿 `minute_token`，再用 `lark_vc_notes(minute_tokens="<minute_token>")`；参会人请用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<meeting.id>"}, with_participants: true})` |
+| `meeting_id is required` | 未传入 `meeting_id` | 传入长数字 `meeting_id` |
+| `not a 9-digit meeting number` | 把 9 位会议号误传给 `meeting_id` | 如果只是查询会中内容，先用 `lark_vc_meeting_list_active` 按 `meeting_no` 匹配拿长数字 `meeting_id`；不要尝试入会（应用身份写操作，MCP 不可用） |
+| `10005 bot is not in meeting` | 用应用身份读取但应用机器人从未真实入会；或会议已结束但从未在会中出现过 | 如果本来是用户身份发现的 `meeting_id`，确认全程用用户身份读取。⚠️ 应用身份入会读取在 MCP server 上不可用。**如果只是想看参会人快照，改用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<meeting.id>"}, with_participants: true})`** |
+| 用户身份不支持 | 当前事件读取接口不支持用用户身份访问 | ⚠️ 该链路需应用身份，而应用身份在 MCP server 上不可用——向用户说明该能力当前不可用，不要反复重试 |
+| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。先用 `lark_vc_notes(meeting_ids="<meeting.id>")` 获取会议产物信息，再根据 `note_display_type` / `note_id` / `minute_token` 和用户意图选择纪要正文、逐字稿或妙记；参会人请用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<meeting.id>"}, with_participants: true})` |
 | `20002 meeting not exist` | `meeting_id` 错误，或会议实例当前已不可获取（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
-| `HTTP 404` / `HTTP 500` | 服务端当前无法找到或处理该会议实例 | 换一个正在进行且 bot 可见的 meeting_id，或排查后端问题 |
+| 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | ⚠️ 应用身份操作在 MCP server 上不可用；权限配置仅供排查参考，以工具返回的 metadata / error envelope 为准确认缺失权限；检查应用发布/安装，以及开放平台"权限可访问的数据范围"：选择"按条件筛选"，条件为"会议的归属者 包含 与应用的可用范围一致"；仍失败再排查内测 privilege / 灰度 |
+| `HTTP 404` / `HTTP 500` | 服务端当前无法找到或处理该会议实例 | 换一个正在进行且可见的 meeting_id，或排查后端问题 |
 
 ## 提示
 
 - 这是**会中事件流**查询，不适合拿来搜历史会议记录；搜历史会议请用 `lark_vc_search`。
-- 如果会议已经结束，不要卡在 `lark_vc_meeting_events`：  
-  - 想拿纪要文档或逐字稿 token：用 `lark_vc_notes(meeting_ids="<meeting.id>")`
-  - 想拿 AI 产物（summary / todos / chapters）或导出逐字稿文件：先用 `lark_vc_recording(meeting_ids="<meeting.id>")` 拿 `minute_token`，再用 `lark_vc_notes(minute_tokens="<minute_token>")`
-- 事件列表是否完整，取决于 bot 何时入会、何时离会，以及后端当前可见的会中事件范围。对于已结束会议，通常只在**结束后 5 分钟内**、且 bot **曾经在会中**时还能继续拉到事件。
+- 如果会议已经结束，不要卡在 `lark_vc_meeting_events`：
+  - 先用 `lark_vc_notes(meeting_ids="<meeting.id>")` 获取会议产物信息。
+  - 再根据 `note_display_type`、`note_id`、`minute_token` 和用户意图，按 `lark_get_skill(domain="vc")` 的产物决策读取纪要正文、逐字稿或妙记。
+- 事件列表是否完整，取决于读取主体何时入会、何时离会，以及后端当前可见的会中事件范围。对于已结束会议，通常只在**结束后 5 分钟内**、且**曾经在会中**时还能继续拉到事件。
 - 查询"谁参加过某会议"请用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<id>"}, with_participants: true})`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要** 用 `lark_vc_meeting_events` 做参会人查询。
 
 ## 参考
 
-- `lark_get_skill(domain="vc-agent", section="meeting-join")` — 先真实入会
-- `lark_get_skill(domain="vc-agent", section="meeting-leave")` — 用户明确要求时离会
+- `lark_get_skill(domain="vc-agent", section="meeting-list-active")` — 发现当前可读事件的进行中会议 ID
+- `lark_get_skill(domain="vc-agent", section="meeting-join")` — ⚠️ 应用身份入会（MCP server 不可用）
+- `lark_get_skill(domain="vc-agent", section="meeting-leave")` — ⚠️ 应用身份离会（MCP server 不可用）
 - `lark_get_skill(domain="vc", section="search")` — 搜索历史会议（获取 meeting_id）
 - `lark_get_skill(domain="vc", section="recording")` — 查询 minute_token
 - `lark_get_skill(domain="vc", section="notes")` — 获取会议纪要
-- `lark_get_skill(domain="vc-agent")` — Agent 参会能力（本 skill）
+- `lark_get_skill(domain="vc-agent")` — Agent 会中能力（本 skill）
 - `lark_get_skill(domain="vc")` — 视频会议原子域（Meeting / Note 等核心概念）
