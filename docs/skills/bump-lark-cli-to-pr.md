@@ -92,9 +92,84 @@ after manual approval.
    by missing scopes is EXPECTED (see the scope guardrail) — it does not count as
    a repair and is not fixed here.
 7. **Draft PR** — commit the runbook's file set, push, `gh pr create --draft`
-   with a body in the established style: 中文为主，按主题分块，含「上游变更亮点」
-   (link the release tag) + 「变更清单」+ any ⚠️ scope/identity notes. Model the
-   structure on the merged bump PRs (#88/#87). Then STOP and report the PR URL.
+   with a body that follows the **PR body format** below (this is a hard
+   convention the maintainer has enforced across every merged bump PR — match it
+   exactly, don't improvise). Then STOP and report the PR URL.
+
+## PR body format (enforced convention)
+
+The maintainer (ddpie) writes every merged PR in this exact shape and has
+**rejected / sent back** bodies that deviate — a flat numbered "## Commits" list,
+or sentence-by-sentence zh/en interleaving. Follow this template for the draft.
+
+**Structure — two whole mirrored blocks, 中文 first:**
+
+```
+## 中文
+
+<one-line summary: what was bumped + why, per docs/skills/bump-lark-cli.md>
+
+### 上游变更亮点（[v<NEW>](https://github.com/larksuite/cli/releases/tag/v<NEW>)）
+
+- **<skill-domain>** — <semantic change, grouped by domain/theme — NOT one bullet per commit>
+- ...
+- scope 无新增 / 无 bot-only scope；rawapi-scopes.json 与 scope-allowlist.ts 重建后白名单<不变|变化>
+
+### 修复 / Fix  和/或  ### 新功能 / New        (only if this bump carries them)
+
+<grouped by theme; security design as its own bullet block when relevant>
+
+### 身份安全 / Identity safety               (only when the bump touches identity)
+
+<user-only boundary notes; bot-only ops flagged ⚠️ "MCP server 不可用">
+
+### 变更清单
+
+- `docker/Dockerfile` — 版本 pin <OLD> → <NEW>
+- `docker/shortcut-scopes.json` — 重新提取（<N> shortcuts，<what changed>）
+- `docker/rawapi-scopes.json`、`lambda/token-refresh-shim/scope-allowlist.ts` — 重新生成
+- `docker/skills/` — <N> 域增量 re-adapt（<list>）；**新增** <new files bolded>
+- `infra/test/__snapshots__/` — CDK snapshot <更新|不变>
+
+### 升级
+
+\`\`\`bash
+git pull && ./scripts/deploy.sh
+\`\`\`
+
+<whether end users must act>
+
+---
+
+## English
+
+<the same sections, mirrored — Summary / Upstream highlights / Fix|New /
+ Identity safety / Changes / Upgrading>
+```
+
+**Hard rules:**
+
+- **Two blocks, not interleaved.** A complete `## 中文` block, then a `---`
+  separator, then a complete `## English` block. Do NOT alternate zh/en
+  paragraph-by-paragraph under shared headings — that shape gets sent back.
+- **中文 comes first.**
+- **Group by theme, never by commit.** No `## Commits\n1. … 2. …` changelog.
+- **`### 上游变更亮点` always links the release tag(s)**
+  `https://github.com/larksuite/cli/releases/tag/v<NEW>` (one link per version
+  when the PR spans several bumps).
+- **变更清单 is file-by-file**, with **新增/new** files **bolded**.
+- Keep the safe-prefix banner ("到 draft PR 即停；不部署 / 不灰度 / 不合并") and,
+  when the Step 6b gap-check found missing scopes, a prominent **⚠️ 需人工确认**
+  scope section (per the scope guardrail).
+
+**Tooling gotcha — never `gh pr edit --body*`.** It fails in this repo with a
+GraphQL "Projects (classic) is being deprecated" error and aborts. `gh pr create
+--body-file <f>` works for the initial draft; to **edit** an existing PR body use
+the REST API:
+
+```bash
+gh api repos/ddpie/lark-mcp-on-agentcore/pulls/<N> -X PATCH -F body=@<file>
+```
 
 ## What it explicitly leaves to the human
 
