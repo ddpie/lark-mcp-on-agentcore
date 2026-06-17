@@ -4,7 +4,7 @@
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
-const { parseFlags, detectRisk } = require('./generate-tools-lib');
+const { parseFlags, detectRisk, parseShortcuts } = require('./generate-tools-lib');
 
 const OUTPUT = '/app/generated-tools.json';
 const SCOPES_FILE = '/app/shortcut-scopes.json';
@@ -41,19 +41,21 @@ function discoverServices() {
   return services;
 }
 
-function discoverShortcuts(service) {
+function discoverShortcuts(service, knownNoPlus) {
   const help = run('lark-cli', service, '--help');
-  const shortcuts = [];
-  for (const line of help.split('\n')) {
-    const m = line.match(/^\s{2,4}(\+\S+)\s+(.+)/);
-    if (m) shortcuts.push({ command: m[1], description: m[2].trim() });
-  }
-  return { shortcuts, help };
+  // parseShortcuts captures +cmd shortcuts plus the no-plus shortcuts listed in
+  // knownNoPlus (e.g. docs resource-* added in lark-cli 1.0.55). Raw-API resource
+  // groups (also no-plus) are excluded. See generate-tools-lib.js.
+  return { shortcuts: parseShortcuts(help, knownNoPlus), help };
 }
 
 // Load scope mapping from source-extracted data
 let scopeMap = {};
 let scopeMapVersion = 'unknown';
+// Per-service sets of no-plus shortcut commands (e.g. docs resource-*), taken from
+// shortcut-scopes.json — the authoritative upstream-extracted shortcut list. Used
+// to admit no-plus shortcuts while excluding no-plus raw-API resource groups.
+const noPlusShortcuts = {};
 if (fs.existsSync(SCOPES_FILE)) {
   const raw = JSON.parse(fs.readFileSync(SCOPES_FILE, 'utf8'));
   const scopeData = raw.shortcuts || raw;
@@ -61,6 +63,9 @@ if (fs.existsSync(SCOPES_FILE)) {
   for (const entry of scopeData) {
     const key = `${entry.service}:${entry.command}`;
     scopeMap[key] = entry.scopes || [];
+    if (!entry.command.startsWith('+')) {
+      (noPlusShortcuts[entry.service] ||= new Set()).add(entry.command);
+    }
   }
   console.log(`Scope map loaded: ${Object.keys(scopeMap).length} entries (lark-cli ${scopeMapVersion})`);
 }
@@ -75,7 +80,7 @@ console.log(`Found ${services.length} services`);
 const tools = [];
 let scopeMapped = 0;
 for (const service of services) {
-  const { shortcuts } = discoverShortcuts(service);
+  const { shortcuts } = discoverShortcuts(service, noPlusShortcuts[service] || new Set());
   for (const { command, description } of shortcuts) {
     const cmdHelp = run('lark-cli', service, command, '--help');
     const { flags, supportsYes } = parseFlags(cmdHelp);

@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.54",
-    "extracted_at": "2026-06-16",
+    "lark_cli_version": "1.0.55",
+    "extracted_at": "2026-06-17",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -902,6 +902,31 @@
       ]
     },
     {
+      "service": "docs",
+      "command": "resource-delete",
+      "scopes": [
+        "docx:document:readonly",
+        "docx:document:write_only"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "resource-download",
+      "scopes": [
+        "docx:document:readonly",
+        "docs:document.media:download"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "resource-update",
+      "scopes": [
+        "docx:document:readonly",
+        "docx:document:write_only",
+        "docs:document.media:upload"
+      ]
+    },
+    {
       "service": "drive",
       "command": "+add-comment",
       "scopes": [
@@ -975,7 +1000,8 @@
       "command": "+import",
       "scopes": [
         "docs:document.media:upload",
-        "docs:document:import"
+        "docs:document:import",
+        "wiki:node:retrieve"
       ]
     },
     {
@@ -2616,6 +2642,13 @@
       "command": "+meeting-leave",
       "scopes": [
         "vc:meeting.bot.join:write"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+meeting-list-active",
+      "scopes": [
+        "vc:meeting.meetingevent:read"
       ]
     },
     {

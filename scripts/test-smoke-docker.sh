@@ -45,6 +45,32 @@ else
   exit 1
 fi
 
+# Step 1b: Verify no-plus shortcut consistency (shortcut-scopes ↔ generated-tools)
+# Catches the 1.0.55-era bug where no-plus shortcuts are extracted into scopes but
+# the tool generator skips them — leaving tools that skills reference unroutable.
+NOPLUS_MISS=$(docker run --rm --entrypoint sh "$IMAGE" -c '
+  python3 -c "
+import json,sys
+sc=json.load(open(\"/app/shortcut-scopes.json\"))[\"shortcuts\"]
+noplus=set()
+for s in sc:
+    cmd=s[\"command\"]
+    if not cmd.startswith(\"+\"):
+        noplus.add(s[\"service\"]+\":\"+cmd)
+if not noplus: sys.exit(0)
+gt=json.load(open(\"/app/generated-tools.json\"))[\"tools\"]
+have=set()
+for t in gt:
+    have.add(t[\"service\"]+\":\"+t[\"command\"])
+miss=sorted(noplus - have)
+if miss: print(\" \".join(miss)); sys.exit(1)
+" 2>&1')
+if [ $? -eq 0 ]; then
+  pass "No-plus shortcuts consistent (scopes ⊆ generated-tools)"
+else
+  fail "No-plus shortcuts in scopes but missing from generated-tools: ${NOPLUS_MISS}"
+fi
+
 # Step 2: Start container with mock secret (SM will fail, but we test health check 503 behavior)
 echo ""
 echo "── Start ──"

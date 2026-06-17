@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 // Import the REAL helpers (generate-tools.js itself runs top-level code on
 // require — spawns lark-cli, writes files — so the pure functions live in
 // generate-tools-lib.js and the generator requires them. Single source of truth.)
-import { detectRisk, parseFlags } from '../generate-tools-lib.js';
+import { detectRisk, parseFlags, parseShortcuts } from '../generate-tools-lib.js';
 
 describe('detectRisk', () => {
   it('detects "Risk: write" from help text', () => {
@@ -146,5 +146,73 @@ describe('parseFlags', () => {
     // Usage lines / prose mentioning --foo without the leading-whitespace + "-- " shape
     const { flags } = parseFlags('Usage:\n  lark-cli im +send --chat-id <id>\n\nSend a message');
     expect(flags).toEqual([]);
+  });
+});
+
+describe('parseShortcuts', () => {
+  // lark-cli renders each service's "Available Commands:" with a MIX of:
+  //   `+cmd`              — classic shortcuts (always real tools)
+  //   `resource-x`        — no-plus shortcuts (lark-cli 1.0.55 docs resource-*)
+  //   `user_mailbox.msgs` — no-plus RAW-API resource groups (NOT shortcuts; the
+  //                         raw-API loop descends into these for lark_invoke)
+  // The ONLY no-plus commands that are real shortcuts are the ones extracted from
+  // upstream source into shortcut-scopes.json. So parseShortcuts takes that set of
+  // known no-plus shortcut commands and admits a no-plus line ONLY if it's listed —
+  // otherwise raw-API resource groups would be mis-registered as broken shortcuts.
+  const DOCS_HELP = [
+    'Manage Lark documents',
+    '',
+    'Available Commands:',
+    '  +create            Create a Lark document',
+    '  +media-download    Download document media',
+    '  resource-delete    Delete a document resource (type=cover is idempotent when empty)',
+    '  resource-download  Download a document resource',
+    '  resource-update    Upload and update a document resource (type=cover)',
+    '',
+    'Flags:',
+    '  -h, --help   help',
+  ].join('\n');
+
+  const DOCS_NOPLUS = new Set(['resource-delete', 'resource-download', 'resource-update']);
+
+  it('captures +plus shortcuts (no allowlist needed for them)', () => {
+    const got = parseShortcuts(DOCS_HELP, new Set());
+    expect(got.find(s => s.command === '+create')).toMatchObject({ command: '+create', description: 'Create a Lark document' });
+    expect(got.find(s => s.command === '+media-download')).toBeDefined();
+  });
+
+  it('captures no-plus shortcuts listed in the known set (docs resource-*)', () => {
+    const names = parseShortcuts(DOCS_HELP, DOCS_NOPLUS).map(s => s.command);
+    expect(names).toContain('resource-download');
+    expect(names).toContain('resource-update');
+    expect(names).toContain('resource-delete');
+  });
+
+  it('preserves the description for a no-plus shortcut', () => {
+    const got = parseShortcuts(DOCS_HELP, DOCS_NOPLUS);
+    expect(got.find(s => s.command === 'resource-update'))
+      .toMatchObject({ command: 'resource-update', description: 'Upload and update a document resource (type=cover)' });
+  });
+
+  it('does NOT admit no-plus commands absent from the known set (raw-API resource groups)', () => {
+    const MAIL_HELP = [
+      'Available Commands:',
+      '  +draft               Create a draft',
+      '  user_mailbox.messages   manage messages',
+      '  user_mailboxes          manage mailboxes',
+    ].join('\n');
+    const names = parseShortcuts(MAIL_HELP, new Set()).map(s => s.command);
+    expect(names).toEqual(['+draft']); // the two no-plus resource groups are excluded
+  });
+
+  it('only reads inside the Available Commands section (ignores prose and flags)', () => {
+    const got = parseShortcuts(DOCS_HELP, DOCS_NOPLUS);
+    expect(got.find(s => s.command.includes('help'))).toBeUndefined();
+    expect(got).toHaveLength(5); // 2 plus + 3 known no-plus
+  });
+
+  it('defaults the known set to empty (only +cmd) when omitted', () => {
+    const names = parseShortcuts(DOCS_HELP).map(s => s.command);
+    expect(names).toEqual(['+create', '+media-download']);
   });
 });

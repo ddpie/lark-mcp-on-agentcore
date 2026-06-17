@@ -58,6 +58,42 @@ function parseFlags(helpText) {
   return { flags, supportsYes };
 }
 
+// Parse a service's `lark-cli <service> --help` output for its shortcut commands.
+// "Available Commands:" mixes three line shapes:
+//   `+cmd`              — classic shortcuts (always real tools)
+//   `resource-x`        — no-plus shortcuts (lark-cli 1.0.55 docs resource-*)
+//   `user_mailbox.msgs` — no-plus RAW-API resource groups; NOT shortcuts (the
+//                         raw-API loop descends into these for lark_invoke)
+// `+cmd` lines are always shortcuts. A no-plus line is a shortcut ONLY when it is
+// in `knownNoPlus` — the set of no-plus shortcut commands for this service taken
+// from shortcut-scopes.json (extracted from upstream source, the authoritative
+// list). Without that gate, raw-API resource groups would be mis-registered as
+// broken leaf shortcuts. Both real forms are routable: server.js passes
+// def.command verbatim and toToolName strips an optional leading '+'.
+// Only lines inside the section count: cobra wraps service help with 2-space-
+// indented prose ("Start here ...") that would otherwise be misparsed, and the
+// Flags: block (`-h, --help`) must be skipped. A blank line ends the section.
+function parseShortcuts(helpText, knownNoPlus = new Set()) {
+  const shortcuts = [];
+  let inSection = false;
+  for (const line of helpText.split('\n')) {
+    if (/^[A-Za-z].*:\s*$/.test(line)) { // section header like "Available Commands:"
+      inSection = /^Available Commands:/.test(line);
+      continue;
+    }
+    if (!inSection) continue;
+    if (/^\s*$/.test(line)) { inSection = false; continue; } // blank line ends section
+    // command token: a +shortcut, or a lowercase no-plus command (letters, digits,
+    // hyphens, dots). Excludes flag lines like `-h, --help` (start with '-').
+    const m = line.match(/^\s{2,4}(\+[a-z][a-z0-9_.-]*|[a-z][a-z0-9_.-]*)\s+(.+)/);
+    if (!m) continue;
+    const command = m[1];
+    if (!command.startsWith('+') && !knownNoPlus.has(command)) continue;
+    shortcuts.push({ command, description: m[2].trim() });
+  }
+  return shortcuts;
+}
+
 function detectRisk(helpText, commandName) {
   const lower = helpText.toLowerCase();
   // Prefer explicit "Risk:" line from lark-cli help output
@@ -70,4 +106,4 @@ function detectRisk(helpText, commandName) {
   return 'read';
 }
 
-module.exports = { parseFlags, detectRisk };
+module.exports = { parseFlags, detectRisk, parseShortcuts };
