@@ -51,7 +51,7 @@ lark_im_chat_messages_list(chat_id="oc_xxx", format="json")
 
 ## Resource Rendering
 
-Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `[Image: img_xxx]`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
+Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `![Image](img_xxx)`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
 
 Two ways to get the binaries:
 - **In one pass:** add `download_resources=true` to this tool — every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) is downloaded into `./lark-im-resources/` and a `resources` block (`{message_id, key, type, local_path, size_bytes}`) is attached to each message. See `lark_get_skill(domain="im", section="message-enrichment")`.
@@ -59,7 +59,7 @@ Two ways to get the binaries:
 
 | Resource Type | Marker in Content | Behavior |
 |---------|-------------|------|
-| Image | `[Image: img_xxx]` | `download_resources=true`, or manually `lark_im_messages_resources_download(type="image")` |
+| Image | `![Image](img_xxx)` | `download_resources=true`, or manually `lark_im_messages_resources_download(type="image")` |
 | File | `<file key="file_xxx" .../>` | `download_resources=true`, or manually `lark_im_messages_resources_download(type="file")` |
 | Audio | `<audio key="file_xxx" duration="Xs"/>` | `download_resources=true`, or manually `lark_im_messages_resources_download(type="file")` |
 | Video | `<video key="file_xxx" .../>` | `download_resources=true`, or manually `lark_im_messages_resources_download(type="file")` |
