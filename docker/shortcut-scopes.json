@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.55",
-    "extracted_at": "2026-06-17",
+    "lark_cli_version": "1.0.56",
+    "extracted_at": "2026-06-18",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -142,6 +142,13 @@
     {
       "service": "apps",
       "command": "+session-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+session-messages-list",
       "scopes": [
         "spark:app:read"
       ]
@@ -1583,6 +1590,13 @@
     },
     {
       "service": "okr",
+      "command": "+batch-create",
+      "scopes": [
+        "okr:okr.content:writeonly"
+      ]
+    },
+    {
+      "service": "okr",
       "command": "+cycle-detail",
       "scopes": [
         "okr:okr.content:readonly"
@@ -1593,6 +1607,13 @@
       "command": "+cycle-list",
       "scopes": [
         "okr:okr.period:readonly"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+indicator-update",
+      "scopes": [
+        "okr:okr.content:writeonly"
       ]
     },
     {
@@ -1632,9 +1653,23 @@
     },
     {
       "service": "okr",
+      "command": "+reorder",
+      "scopes": [
+        "okr:okr.content:writeonly"
+      ]
+    },
+    {
+      "service": "okr",
       "command": "+upload-image",
       "scopes": [
         "okr:okr.progress.file:upload"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+weight",
+      "scopes": [
+        "okr:okr.content:writeonly"
       ]
     },
     {

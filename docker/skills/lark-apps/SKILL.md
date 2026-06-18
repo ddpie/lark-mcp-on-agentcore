@@ -23,6 +23,7 @@ description: "妙搭（Spark/Miaoda）应用开发与托管：应用创建、HTM
 | **部署/上线全栈应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | `lark_apps_release_create`（部署上线动作）、`lark_apps_release_get`（轮询发布结果，finished 给 online_url / failed 给 error_logs）、`lark_apps_release_list` | `lark_get_skill(domain="apps", section="release-create")`、`lark_get_skill(domain="apps", section="release-get")`、`lark_get_skill(domain="apps", section="release-list")` |
 | 设置或查看运行时可见范围 | `lark_apps_access_scope_set`、`lark_apps_access_scope_get` | `lark_get_skill(domain="apps", section="access-scope-set")`、`lark_get_skill(domain="apps", section="access-scope-get")` |
 | 云端 Agent 生成/迭代应用（开发方式已定为云端后） | `lark_apps_session_create` -> `lark_apps_chat` -> `lark_apps_session_get` | `lark_get_skill(domain="apps", section="cloud-dev")` |
+| 查看某次会话某一轮（turn）的回复消息（含仍在生成中的本轮）/ 导出上一轮模型回复（"这一轮回复了什么""上一轮的回复""导出某轮消息"） | 先 `lark_apps_session_get`（取 `latest_turn.turn_id`）-> `lark_apps_session_messages_list(turn_id="<id>")`（仅 user 身份；分页用 `page_token`） | `lark_get_skill(domain="apps", section="session-messages-list")` |
 
 ## 选择开发路径（进意图路由前先判这步）
 

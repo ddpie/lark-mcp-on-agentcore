@@ -145,7 +145,7 @@ lark_im_threads_messages_list(thread="<thread_id>")
 
 ## Resource Rendering
 
-Search results reuse the same content formatter as other read commands. Image messages are rendered as placeholders such as `[Image: img_xxx]`; resource binaries are **not** downloaded automatically.
+Search results reuse the same content formatter as other read commands. Image messages are rendered as placeholders such as `![Image](img_xxx)`; resource binaries are **not** downloaded automatically.
 
 Use `lark_im_messages_resources_download` if you need to fetch the underlying image or file bytes from a specific message.
 

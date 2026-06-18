@@ -21,8 +21,9 @@ lark_docs_update(api_version="v2", doc="文档URL或token", command="append", co
 **CRITICAL — 执行对应操作前，MUST 先调用以下技能参考，缺一不可：**
 1. **读取文档（`lark_docs_fetch`）** → 必读 `lark_get_skill(domain="doc", section="fetch")`（`scope` / `detail` 选择、局部读取策略、`<fragment>` / `<excerpt>` 输出结构）
 2. **创建或编辑文档内容** → 必读 `lark_get_skill(domain="doc", section="xml")`（XML 语法规则，仅当用户明确要求 Markdown 时改读 `lark_get_skill(domain="doc", section="md")`）；从零创建时加读 `lark_get_skill(domain="doc", section="style/lark-doc-create-workflow")`；编辑已有文档时加读 `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")`
+3. **需要使用 callout、grid、table、whiteboard 等富 block 时** → 参考 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的元素能力说明。该文件不是固定模板或强制排版规范；除非用户明确要求美化、重排版或特定风格，不要为了"达标"主动套用固定结构。
 
-**未读完以上参考就执行相应操作会导致参数选择错误、格式错误或样式不达标。**
+**未读完以上参考就执行相应操作会导致参数选择错误或格式错误。**
 
 > **格式选择规则（全局）：**
 > - **创建 / 导入场景**（`lark_docs_create`，或 `lark_docs_update` 的 `command="append"/"overwrite"` 整段写入）：XML 和 Markdown 都可以。用户提供 `.md` 本地文件、或明确说"导入 Markdown"时，直接用 Markdown；否则默认 XML（可用 callout、grid、checkbox 等富 block）。
@@ -35,7 +36,7 @@ lark_docs_update(api_version="v2", doc="文档URL或token", command="append", co
   - 已知 block_id = `blkcn456`
   - 应返回 `https://xxx.feishu.cn/docx/doxcn123#blkcn456`
 - 用户需要在文档内**创建、复制或移动**资源块（画板、电子表格、多维表格等）时，必须先读取 `lark_get_skill(domain="doc", section="xml")` 的「三、资源块」章节
-- 写文档时，重要信息（核心流程、架构、对比、风险、路线图、关键指标、因果关系）优先规划为画板，不要只用文字或表格承载
+- 写文档时，由内容和用户意图决定表达形式；流程、架构、路线图、关键指标等信息可以使用画板，但不要默认把重要信息都画板化
 - 新增画板必须隔离到 SubAgent：简单图由 SubAgent 直接插入 `<whiteboard type="svg">完整 SVG</whiteboard>`，不读 `lark-whiteboard`；复杂图才由主 Agent 先建 `<whiteboard type="blank"></whiteboard>`，再启动 SubAgent 读取 `lark_get_skill(domain="whiteboard")` 写入
 - 用户说"看一下文档里的图片/附件/素材""预览素材" → 用 `lark_docs_media_preview`
 - 用户明确说"下载素材" → 用 `lark_docs_media_download`
