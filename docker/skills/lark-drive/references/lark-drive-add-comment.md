@@ -1,7 +1,7 @@
 
 # drive +add-comment
 
-给文档、受支持的 Drive 普通文件、电子表格或飞书幻灯片添加评论。底层统一走 `/open-apis/drive/v1/files/:file_token/new_comments`（`create_v2`）接口；未指定位置时省略 `anchor` 创建全文评论，指定 `block_id` 时传入 `anchor.block_id` 创建局部评论。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、Drive file URL/token（**仅支持白名单扩展名，且只支持全文评论**）、sheet URL、slides URL，也支持传最终可解析为 doc/docx/file/sheet/slides 的 wiki URL。
+给文档、受支持的 Drive 普通文件、电子表格、飞书幻灯片或 Base 添加评论。未指定位置时创建全文评论，但仅适用于 doc/docx、白名单 Drive file，以及解析为这些类型的 wiki；sheet、slides、Base(bitable) 必须指定 `block_id`。不同类型的 `block_id` 格式见下文。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、Drive file URL/token（**仅支持白名单扩展名，且只支持全文评论**）、sheet URL、slides URL、base/bitable URL，也支持传最终可解析为 doc/docx/file/sheet/slides/base(bitable) 的 wiki URL。
 
 ## 命令
 
@@ -66,6 +66,12 @@ lark_drive_add_comment(doc="<PRESENTATION_ID>", type="slides", block_id="<SLIDE_
 # 裸 token + 已知 block_id 的局部评论
 lark_drive_add_comment(doc="<DOCX_TOKEN>", type="docx", block_id="<BLOCK_ID>", content='[{"type":"text","text":"请 "},{"type":"mention_user","text":"ou_xxx"},{"type":"text","text":" 处理，参考 "},{"type":"link","text":"https://example.com"}]')
 
+# Base 记录局部评论；原生 file_type 传 bitable。
+lark_drive_add_comment(doc="<BASE_TOKEN>", type="bitable", block_id="<TABLE_ID>!<RECORD_ID>!<VIEW_ID>", content='[{"type":"text","text":"Base record-local comment"}]')
+
+# `base` 也可作为裸 token 类型别名；/base/ 与 /bitable/ URL 都会自动识别为 Base。
+lark_drive_add_comment(doc="<BASE_TOKEN>", type="base", block_id="<TABLE_ID>!<RECORD_ID>!<VIEW_ID>", content='[{"type":"text","text":"Base alias comment"}]')
+
 # 如果需要更底层的原生 API，也可以直接调用 V2 协议
 lark_discover(query="drive.file.comments.create_v2")
 
@@ -76,11 +82,11 @@ lark_invoke(tool_name="lark_drive_file_comments_create_v2", args={params: {"file
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `doc` | 是 | 文档 URL / token、file / sheet / slides URL，或可解析到 `doc`/`docx`/`file`/`sheet`/`slides` 的 wiki URL |
-| `type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`file`、`sheet`、`slides`。URL 输入时自动识别，无需传 |
+| `doc` | 是 | 文档 URL / token、file / sheet / slides / base / bitable URL，或可解析到 `doc`/`docx`/`file`/`sheet`/`slides`/`base(bitable)` 的 wiki URL |
+| `type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`file`、`sheet`、`slides`、`bitable`、`base`；评论 Base 文档推荐传 `bitable`，`base` 仅作为兼容别名兜底。URL 输入时自动识别，无需传 |
 | `content` | 是 | `reply_elements` JSON 数组字符串。示例：`'[{"type":"text","text":"文本"},{"type":"mention_user","text":"ou_xxx"},{"type":"link","text":"https://example.com"}]'` |
-| `full_comment` | 否 | 显式指定创建全文评论；未传 `block_id` 时也会默认走全文评论（不适用于 sheet） |
-| `block_id` | 局部评论时必填 | 目标块 ID，可通过 `lark_docs_fetch` 获取。**Sheet 评论**：格式为 `<sheetId>!<cell>`（如 `a281f9!D6`） |
+| `full_comment` | 否 | 显式指定创建全文评论；未传 `block_id` 时也会默认走全文评论（仅适用于 doc/docx、白名单 Drive file，以及解析为这些类型的 wiki；不适用于 sheet、slides、Base / bitable） |
+| `block_id` | 局部评论时必填 | 目标块 ID，可通过 `lark_docs_fetch` 获取；sheet 用 `<sheetId>!<cell>`，slides 用 `<slide-block-type>!<xml-id>`，Base 用 `<table-id>!<record-id>!<view-id>` |
 
 ## 行为说明
 
@@ -89,10 +95,11 @@ lark_invoke(tool_name="lark_drive_file_comments_create_v2", args={params: {"file
 - 未传 `block_id` 时，shortcut 默认创建**全文评论**；也可以显式传 `full_comment=true`。全文评论支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终可解析为 `doc`/`docx`/`file` 的 wiki URL。
 - **Drive file 评论**：仅支持白名单扩展名的普通文件。当前支持：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。
 - **Drive file 暂不支持**：`.pdf`、`.docx`、`.xlsx` 等未在白名单内的普通文件会被工具拒绝，并提示"当前还不支持这种类型的评论"。这些类型虽然可能接受 OpenAPI 请求，但在页面评论展示上存在问题。
-- **Drive file 只支持全文评论**：file 目标不支持局部评论，不允许传 `block_id` 或 `selection_with_ellipsis`。由于当前 OpenAPI 要求 file 评论传入非空 `anchor.block_id`，工具会固定传占位值 `test`，UI 上仍表现为文件全文评论。
-- 传 `block_id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`，以及最终可解析为这些类型的 wiki URL。
+- **Drive file 只支持全文评论**：file 目标不支持局部评论，不允许传 `block_id` 或 `selection_with_ellipsis`。
+- 传 `block_id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`、Base / bitable，以及最终可解析为这些类型的 wiki URL。
 - **Sheet 评论**：当 `doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `block_id="<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`full_comment` 不可用。
-- **Slide 评论**：当 `doc` 为 slides URL、`type="slides"`，或 wiki 解析为 slides 时，必须传 `block_id="<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。工具会将其拆分映射到 `anchor.block_id` / `anchor.slide_block_type`。此时 `full_comment` 和 `selection_with_ellipsis` 不可用。
+- **Slide 评论**：当 `doc` 为 slides URL、`type="slides"`，或 wiki 解析为 slides 时，必须传 `block_id="<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。此时 `full_comment` 和 `selection_with_ellipsis` 不可用。
+- **Base 记录局部评论**：Base 不支持全局评论，所有评论都挂在记录上；裸 token 可传 `type="bitable"` 或 `type="base"`，推荐 `bitable`。定位信息必须是 file token（base token）+ `block_id="<table-id>!<record-id>!<view-id>"`，其中 table/record/view ID 通常分别以 `tbl`/`rec`/`vew` 开头；view_id 只决定被提及时点击通知打开哪个视图，不影响评论挂载点，但必须传。ID 获取参考 `lark_get_skill(domain="base")`。
 - **Slide 参数映射示例**：`block_id` 由 PPT XML 元素类型和元素 `id` 组成。例如：
     - `<slide id="pkk">` 对应 `block_id="slide!pkk"`，表示给整页评论。
     - `<img id="bPk" ... />` 对应 `block_id="img!bPk"`，表示给图片元素评论。
@@ -102,12 +109,10 @@ lark_invoke(tool_name="lark_drive_file_comments_create_v2", args={params: {"file
 - `type=text` 的评论文本不能直接包含 `<`、`>`；应优先传 `&lt;`、`&gt;`。shortcut 在发送前也会自动将 `<`、`>` 转义为 `&lt;`、`&gt;` 作为兜底。
 - **所有 `type=text` 元素的字符总和 ≤ 10000**（按字符算，中英文 / 符号一视同仁）。超过会被 shortcut 在发送前拒绝，并指出累计超长的元素。**拆成多个 text element 不能绕过这个上限**——上限是总额，不是每元素。需要更长内容就缩短或拆成多条评论。
 - 长度限制只对 `type=text` 生效，`mention_user` / `link` 不计入。
-- 写入评论前会自动生成符合 OpenAPI 定义的请求体：
-  - 统一接口：`POST /new_comments`
-  - 统一字段：`file_type` + `reply_elements`
-  - 全文评论：省略 `anchor`
-  - 局部评论：传入 `anchor.block_id`
+- 写入评论前会自动生成符合 OpenAPI 定义的请求体；shortcut 用户只需要传 `doc`、`content`，局部评论再传对应格式的 `block_id`。
 - 如果需要更底层的控制，仍可改用 `lark_discover(query="drive.file.comments.create_v2")` + `lark_invoke(tool_name="lark_drive_file_comments_create_v2", ...)`。
+- 直接调用原生 `drive.file.comments.create_v2` 时，全文评论省略 `anchor`；docx/sheet/slides 局部评论传 `anchor.block_id`，Base 记录局部评论传 `anchor.block_id`（table_id）、`anchor.base_record_id`、`anchor.base_view_id`。
+- 直接调用原生 `drive.file.comments.*` / `drive.file.comment.replys.*` 评论 Base 文档时，`file_type` 填 `bitable`，不要填 `base`。
 
 > [!CAUTION]
 > 这是**写入操作** —— 执行前必须确认用户意图。

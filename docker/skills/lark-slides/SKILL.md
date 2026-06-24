@@ -13,6 +13,7 @@ description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、
 | 大幅改写页面 | 先回读现有 XML，写入新 plan，再替换或重建相关页面 | `lark_invoke(tool_name="lark_slides_xml_presentations_get")`、`lark_slides_replace_slide`、`lark-slides-edit-workflows.md` |
 | 编辑单个标题、文本块、图片或局部元素 | 优先块级替换/插入，不改页序 | `lark_slides_replace_slide` |
 | 读取或分析已有 PPT | 解析 slides/wiki token，回读全文或单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `lark_invoke(tool_name="lark_slides_xml_presentations_get")`、`lark_invoke(tool_name="lark_slides_xml_presentation_slide_get")` |
+| 获取幻灯片页面截图 | 用 `slide_id` 或页号指定页面 | `lark_slides_screenshot`、`lark_get_skill(domain="slides", section="screenshot")` |
 | 上传或使用图片 | 先上传为 `file_token`，禁止直接写 http(s) 外链 | `lark_slides_media_upload`，或 `lark_slides_create` 的 `@./path` 占位符 |
 | 在 slide 中绘制柱/条/折线/面积/雷达/饼等有数据序列的图表 | 使用原生 `<chart>` 元素 | `xml-schema-quick-ref.md` |
 | 在 slide 中绘制流程图、时序图、架构图、散点图、漏斗图或装饰图案 | 必须先调用 `lark_get_skill(domain="slides", section="whiteboard")` 获取参考文档，再生成 `<whiteboard>` 元素 | `lark_get_skill(domain="slides", section="whiteboard")` |
@@ -53,6 +54,7 @@ description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、
 
 - 创建：`lark_get_skill(domain="slides", section="create")`
 - 编辑：`lark_get_skill(domain="slides", section="edit-workflows")`、`lark_get_skill(domain="slides", section="replace-slide")`
+- 截图：`lark_get_skill(domain="slides", section="screenshot")`
 - 图片：`lark_get_skill(domain="slides", section="media-upload")`
 - 流程图 / 时序图 / 架构图 / 装饰图案：`lark_get_skill(domain="slides", section="whiteboard")`
 - 图标：`lark_get_skill(domain="slides", section="iconpark")`、`lark_exec_script(script="lark-slides/scripts/iconpark_tool.py", ...)`
