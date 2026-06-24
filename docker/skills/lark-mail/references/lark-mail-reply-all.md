@@ -109,10 +109,12 @@ lark_mail_reply_all(message_id="<邮件ID>", body="<p>收到，已处理。</p>"
 
 - `automation_send_disable_reason`：发送被邮箱自动化设置拦截时返回的原因
 - `automation_send_disable_reference`：发送被拦截时的草稿打开链接
+- `recall_available` / `recall_tip`：发送成功后若返回可撤回提示，按需参考 `lark_get_skill(domain="mail", section="recall")`
 
 字段语义：
 
 - 若返回中包含 `automation_send_disable_reason` / `automation_send_disable_reference`，说明回复全部未真正发出，而是被邮箱设置拦截。此时应直接向用户展示原因和草稿打开链接，不要继续假设已经发送成功
+- 若返回中包含 `recall_available: true`，说明该邮件支持撤回；仅当用户明确要求撤回时，读取 `lark_get_skill(domain="mail", section="recall")` 并执行撤回流程
 
 ## 典型场景
 
@@ -149,6 +151,7 @@ lark_mail_reply_all(message_id="<邮件ID>", body="<p>已确认。</p>", confirm
 回复发送后，分两种情况处理：
 
 - 若返回中有 `automation_send_disable_reason` / `automation_send_disable_reference`：说明发送被邮箱设置拦截，应直接告诉用户原因并提供草稿打开链接，**不要**调用 `send_status`
+- 若用户基于发送结果要求撤回，先读取 `lark_get_skill(domain="mail", section="recall")`，再执行撤回流程
 
 **1. 确认投递状态**（仅立即发送且返回非空 `message_id` 时必须）
 

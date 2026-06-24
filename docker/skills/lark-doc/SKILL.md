@@ -30,11 +30,9 @@ lark_docs_update(api_version="v2", doc="文档URL或token", command="append", co
 > - **精准编辑场景**（`lark_docs_update` 的 `str_replace` / `block_insert_after` / `block_replace` / `block_delete` / `block_move_after` 等局部精修指令）：优先使用 XML（`doc_format="xml"`，即默认值）。XML 能稳定表达 block 结构和样式，局部精修更可控；不要因为 Markdown 更简单就自行切换。
 
 ## 快速决策
-- 用户需要"某个 block 的直达链接 / 锚点链接"时：返回 `文档基础 URL#block_id`。如果当前只有文档 URL 没有 block_id，先用 `lark_docs_fetch(detail="with-ids")` 拿到目标 block 的 id
-- 例：
-  - 已知文档 URL = `https://xxx.feishu.cn/docx/doxcn123`
-  - 已知 block_id = `blkcn456`
-  - 应返回 `https://xxx.feishu.cn/docx/doxcn123#blkcn456`
+- 先判定任务路径：找文档 / 导入导出走 `lark_get_skill(domain="drive")`；只读 / 摘要用 `lark_docs_fetch` 默认 `simple`；明确旧文本 → 新文本直接 `str_replace`；只有 block 链接、评论锚点、插入 / 替换 / 删除 / 移动才局部 fetch `with-ids`；保真改写已有内容才读 `full`
+- block 直达链接格式：`文档基础 URL#block_id`；没有 block_id 时局部 fetch `with-ids`
+- 连续执行多个文档写操作时，必须按 `lark_get_skill(domain="doc", section="update")` 的「Block ID 生命周期」判断旧 block ID 是否还能复用；`overwrite` / `block_replace` / `block_delete` 后不要复用受影响的旧 ID，插入 / 复制后要重新 fetch 才能拿到新 block ID
 - 用户需要在文档内**创建、复制或移动**资源块（画板、电子表格、多维表格等）时，必须先读取 `lark_get_skill(domain="doc", section="xml")` 的「三、资源块」章节
 - 写文档时，由内容和用户意图决定表达形式；流程、架构、路线图、关键指标等信息可以使用画板，但不要默认把重要信息都画板化
 - 新增画板必须隔离到 SubAgent：简单图由 SubAgent 直接插入 `<whiteboard type="svg">完整 SVG</whiteboard>`，不读 `lark-whiteboard`；复杂图才由主 Agent 先建 `<whiteboard type="blank"></whiteboard>`，再启动 SubAgent 读取 `lark_get_skill(domain="whiteboard")` 写入
