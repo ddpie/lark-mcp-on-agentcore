@@ -3,9 +3,8 @@
 
 > **前置条件（MUST READ）：** 生成文档内容前，必须先调用以下技能参考，缺一不可：
 > 1. `lark_get_skill(domain="doc", section="xml")` — XML 语法规则（使用 Markdown 格式时改读 `lark_get_skill(domain="doc", section="md")`）
-> 2. `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
->
-> **需要富 block 或用户明确要求美化/重排版时，再参考 `lark_get_skill(domain="doc", section="style/lark-doc-style")`。**
+> 2. `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 排版指南（元素选择、丰富度规则、颜色语义）
+> 3. `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
 >
 > **未读完以上参考就生成内容会导致格式错误。**
 

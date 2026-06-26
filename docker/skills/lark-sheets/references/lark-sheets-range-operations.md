@@ -2,7 +2,7 @@
 
 ## 结构性操作影响面预检（清除 / 合并 / 排序 / 移动前必做）
 
-`lark_sheets_cells_clear`、`lark_sheets_cells_{merge|unmerge}`、`lark_sheets_range_{move|copy|fill|sort}`（移动 / 复制 / 排序 / 自动填充）都会让既有引用关系发生偏移或失效。**操作前必须**先确认以下两点；否则禁止执行：
+`lark_sheets_cells_clear`、`lark_sheets_cells_merge` / `lark_sheets_cells_unmerge`、`lark_sheets_range_move` / `lark_sheets_range_copy` / `lark_sheets_range_fill` / `lark_sheets_range_sort`（移动 / 复制 / 排序 / 自动填充）都会让既有引用关系发生偏移或失效。**操作前必须**先确认以下两点；否则禁止执行：
 
 1. **打印当前合并单元格 + 公式引用 + 数据验证范围**：用 `lark_sheets_sheet_info(include="merges")` + `lark_sheets_cells_get` 抽样目标区域和它周边的公式 / 透视表 / 图表 / 条件格式 / 筛选器的数据源；评估操作后这些引用是否仍指向正确数据。
 2. **`lark_sheets_cells_clear` 不得侵入用户授权范围之外**：清除范围只能是用户明示要清的区域；不要顺手清除"看起来没用"的相邻单元格。
@@ -11,14 +11,14 @@
 
 ## 使用场景
 
-写入。对指定区域执行结构性操作。本 reference 覆盖 9 个 shortcut，按 4 类用途组织：
+写入。对指定区域执行结构性操作。本 reference 覆盖 9 个工具，按 4 类用途组织：
 
 | 操作需求 | 使用工具 | 说明 |
 |---------|---------|------|
 | 清除内容/格式 | `lark_sheets_cells_clear` | "清空"、"删除内容"、"去掉格式" |
-| 合并/取消合并单元格 | `lark_sheets_cells_{merge|unmerge}` | "合并单元格"、"取消合并" |
+| 合并/取消合并单元格 | `lark_sheets_cells_merge` / `lark_sheets_cells_unmerge` | "合并单元格"、"取消合并" |
 | 调整行高/列宽 | `lark_sheets_rows_resize` / `lark_sheets_cols_resize` | "加宽列"、"调整行高"、"自适应列宽" |
-| 移动/复制/填充/排序 | `lark_sheets_range_{move|copy|fill|sort}` | "移动数据"、"复制到"、"自动填充"、"按某列排序" |
+| 移动/复制/填充/排序 | `lark_sheets_range_move` / `lark_sheets_range_copy` / `lark_sheets_range_fill` / `lark_sheets_range_sort` | "移动数据"、"复制到"、"自动填充"、"按某列排序" |
 
 注意：
 
@@ -40,7 +40,11 @@
 
 **典型反例**：默认列宽 11 但内容含 12+ 字符的中文 / 含单位的数值（如 `109.10μmol/L`）/ 长数字未设 `number_format` 显示为科学计数法 —— 用户在结果表里看不到完整原值。
 
-**⚠️ 合并单元格安全操作规则**（`lark_sheets_cells_{merge|unmerge}` 必读）：
+**打印场景控制总宽（用户说"适合打印 / A4 / 打印范围"时必做）**：扩单列宽防截断的同时，**所有列宽之和要落在纸张可打印宽度内**——A4 横向约 ≤ 102 个半角字符（约 1000px），纵向约 ≤ 70 个字符。超宽时不要无限加宽，改用 `cell_styles.word_wrap="auto-wrap"` + 调高行高，或缩窄非关键列，让整表在一页内（反例：总列宽远超 A4 可打印宽度，且长文本行高不够被截断）。
+
+**只加宽承载新内容的列，不改动原有列的列宽**：列宽自适应**只针对新增 / 真正放不下新内容的列**；原表已有列的列宽**禁止重新计算、禁止缩小**——即便你估算的"理想宽度"与原值不同，只要原内容没被截断就不要动它。无差别地把所有列重设一遍宽度（哪怕只 ±1）都属于破坏原文件视觉格式（反例：填完数据后顺手把原有列的列宽从 16 改成 17，与原附件不一致，破坏了原视觉格式）。
+
+**⚠️ 合并单元格安全操作规则**（`lark_sheets_cells_merge` / `lark_sheets_cells_unmerge` 必读）：
 
 1. **先读后写**：操作前必须用 `lark_sheets_sheet_info(include="merges")` 或 `lark_sheets_cells_get` 识别已有合并区域（特征：多个连续单元格中只有左上角有值，其余为空）。
 2. **不要对已合并区域重复 merge**：对已合并的区域再次调用 merge 会报错或产生不可预期结果。
@@ -77,7 +81,7 @@
 
 ## Shortcuts
 
-| Shortcut | Risk | 分组 |
+| 工具 | Risk | 分组 |
 | --- | --- | --- |
 | `lark_sheets_cells_clear` | high-risk-write | 单元格 |
 | `lark_sheets_cells_merge` | write | 单元格 |
@@ -93,35 +97,29 @@
 
 ### `lark_sheets_cells_clear`
 
-_公共四件套 · high-risk-write（需 _confirm=true）_
+_high-risk-write（首次调用会被服务端拒绝并给出确认提示，确认后带 `_confirm=true` 再次调用）_
 
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `range` | string | required | 清除范围（A1 格式） |
 | `scope` | string | optional | 清除范围 enum：`content`（默认，仅清内容）/ `formats`（仅清格式）/ `all`（清内容 + 格式）（可选值：`content` / `formats` / `all`） |
 
 ### `lark_sheets_cells_merge`
 
-_公共四件套_
-
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `range` | string | required | 待合并 / 取消合并的范围（A1 格式） |
 | `merge_type` | string | optional | 合并方向（仅 `lark_sheets_cells_merge`）（可选值：`all` / `rows` / `columns`）（默认 `all`） |
 
 ### `lark_sheets_cells_unmerge`
 
-_公共四件套_
-
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `range` | string | required | 待合并 / 取消合并的范围（A1 格式） |
 
 ### `lark_sheets_rows_resize`
 
-_公共四件套_
-
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `type` | string | required | 尺寸方式 enum：`pixel`（指定 px 像素值，需配 `size`）/ `standard`（重置为默认标准行高）/ `auto`（自动适应内容）（可选值：`pixel` / `standard` / `auto`） |
 | `size` | int | optional | 行高（像素，例：30 / 40 / 60）；`type="pixel"` 时必填，其它 type 忽略 |
@@ -129,9 +127,7 @@ _公共四件套_
 
 ### `lark_sheets_cols_resize`
 
-_公共四件套_
-
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `type` | string | required | 尺寸方式 enum：`pixel`（指定 px 像素值，需配 `size`）/ `standard`（重置为默认标准列宽）（可选值：`pixel` / `standard`） |
 | `size` | int | optional | 列宽（像素，例：80 / 120 / 200）；`type="pixel"` 时必填，其它 type 忽略 |
@@ -139,9 +135,7 @@ _公共四件套_
 
 ### `lark_sheets_range_move`
 
-_公共四件套_
-
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `source_range` | string | required | 源 A1 范围 |
 | `target_sheet_id` | string | optional | 目标子表 id；省略时同源 sheet |
@@ -149,9 +143,7 @@ _公共四件套_
 
 ### `lark_sheets_range_copy`
 
-_公共四件套_
-
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `source_range` | string | required | 源 A1 范围 |
 | `target_sheet_id` | string | optional | 目标子表 id；省略时同源 sheet |
@@ -160,9 +152,7 @@ _公共四件套_
 
 ### `lark_sheets_range_fill`
 
-_公共四件套_
-
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `source_range` | string | required | 填充模板范围（系列起始 cells） |
 | `target_range` | string | required | 目标填充范围（A1 格式） |
@@ -170,17 +160,15 @@ _公共四件套_
 
 ### `lark_sheets_range_sort`
 
-_公共四件套_
-
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `range` | string | required | 排序范围（A1 格式；含或不含表头由 `has_header` 决定） |
-| `sort_keys` | string + File + Stdin（复合 JSON） | required | JSON 数组：`[{"column":"<列字母>","ascending":<bool>}, ...]` |
+| `sort_keys` | 复合 JSON | required | JSON 数组：`[{"column":"<列字母>","ascending":<bool>}, ...]` |
 | `has_header` | bool | optional | 第一行是表头不参与排序，默认 false |
 
 ## Schemas
 
-> 复合 JSON flag 字段速查（只列顶层 + 一层嵌套）。深层结构看下方 `## Examples`，或用 `print_schema` 读完整 JSON Schema（用法见 SKILL.md「公共 flag 速查」与「Agent 使用提示」）。
+> 复合 JSON flag 字段速查（只列顶层 + 一层嵌套）。深层结构看下方 `## Examples`，或用 `lark_discover(query="sheets.range_sort")` 读完整 JSON Schema。
 
 ### `lark_sheets_range_sort` `sort_keys`
 
@@ -192,51 +180,49 @@ _排序条件列表（仅 sort 操作）_
 
 ## Examples
 
-> ⚠️ 本 skill 派生的 shortcut 跨 3 个分组：`lark_sheets_rows_resize` / `lark_sheets_cols_resize` → 工作表，`lark_sheets_cells_*` → 单元格，`lark_sheets_range_*` → 区域。skill 视角统一在这里讲解。
+> ⚠️ 本 reference 派生的工具跨 3 个分组：`lark_sheets_rows_resize` / `lark_sheets_cols_resize` → 工作表，`lark_sheets_cells_*` → 单元格，`lark_sheets_range_*` → 区域。这里统一从区域操作视角讲解。
 
-公共四件套：所有 shortcut 顶部排列 `url` / `spreadsheet_token` / `sheet_id` / `sheet_name`（XOR）。
+公共四件套：所有工具顶部接受 `url` / `spreadsheet_token` / `sheet_id` / `sheet_name`（XOR）。range / source_range / target_range 等都是普通字符串参数，直接传 A1 字符串（如 `"A2:Z1000"`、`"1:1"`），无需任何 shell 转义或对 `'`、`!` 等字符做特殊处理。
 
 ### `lark_sheets_cells_clear`
 
 > **删不掉嵌入对象**：`lark_sheets_cells_clear`（任何 `scope`，含 `all`）只清单元格的值 / 格式，**删不掉**压在范围内的透视表 / 图表等嵌入对象——后端会报 `can not find embedded block`。删透视表用 `lark_sheets_pivot_delete`、删图表用 `lark_sheets_chart_delete`（先用 `lark_sheets_pivot_list` / `lark_sheets_chart_list` 拿对象 id）。
 
-> 需要一次清除**多个不连续 range**（如把内容搬走后批量去掉散落各处的边框/底色）时，改用 `lark_get_skill(domain="sheets", section="batch-update")` 的 `lark_sheets_cells_batch_clear`，避免对 `lark_sheets_cells_clear` 逐个 range 调用。
+> 需要一次清除**多个不连续 range**（如把内容搬走后批量去掉散落各处的边框/底色）时，改用 `lark_sheets_cells_batch_clear`（语义见 `lark_get_skill(domain="sheets", section="batch-update")`），避免对 `lark_sheets_cells_clear` 逐个 range 调用。
 
 ```
-# dry-run 先看
-lark_sheets_cells_clear(url="...", sheet_id="$SID", range="A2:Z1000", scope="all")
-# 执行
-lark_sheets_cells_clear(url="...", sheet_id="$SID", range="A2:Z1000", scope="all")
+# high-risk-write：首次调用会被拒绝并返回确认提示，确认后带 _confirm=true 再次调用
+lark_sheets_cells_clear(url="...", sheet_id="<SID>", range="A2:Z1000", scope="all", _confirm=true)
 ```
 
 ### `lark_sheets_cells_merge` / `lark_sheets_cells_unmerge`
 
 ```
 # 合并 A1:C1（可选 merge_type="all"/"rows"/"columns"）
-lark_sheets_cells_merge(url="...", sheet_id="$SID", range="A1:C1")
+lark_sheets_cells_merge(url="...", sheet_id="<SID>", range="A1:C1")
 # 取消合并：传大 range 一次性取消其中所有合并区域
-lark_sheets_cells_unmerge(url="...", sheet_id="$SID", range="A1:C100")
+lark_sheets_cells_unmerge(url="...", sheet_id="<SID>", range="A1:C100")
 ```
 
 ### `lark_sheets_rows_resize` / `lark_sheets_cols_resize`
 
-行高列宽分两条 shortcut，避免行 / 列在底层 schema 的差异（行支持 `auto`，列不支持）混在一起。每条 `type` 必填：
+行高列宽分两条工具，避免行 / 列在底层 schema 的差异（行支持 `auto`，列不支持）混在一起。每条 `type` 必填：
 
 ```
 # 把第 2-10 行设为固定 30 px
-lark_sheets_rows_resize(url="...", sheet_id="$SID", range="2:10", type="pixel", size="30")
+lark_sheets_rows_resize(url="...", sheet_id="<SID>", range="2:10", type="pixel", size=30)
 
 # 把 A-C 列设为固定 120 px
-lark_sheets_cols_resize(url="...", sheet_id="$SID", range="A:C", type="pixel", size="120")
+lark_sheets_cols_resize(url="...", sheet_id="<SID>", range="A:C", type="pixel", size=120)
 
 # 第 1 行行高自动适应内容（列宽不支持 auto）
-lark_sheets_rows_resize(url="...", sheet_id="$SID", range="1", type="auto")
+lark_sheets_rows_resize(url="...", sheet_id="<SID>", range="1", type="auto")
 
 # 重置 A-E 列为默认列宽
-lark_sheets_cols_resize(url="...", sheet_id="$SID", range="A:E", type="standard")
+lark_sheets_cols_resize(url="...", sheet_id="<SID>", range="A:E", type="standard")
 ```
 
-> 同时出现在 `lark-sheets-sheet-structure.md` —— 行高 / 列宽调整也算行列结构层动作。
+> 同时出现在 `lark_get_skill(domain="sheets", section="sheet-structure")` —— 行高 / 列宽调整也算行列结构层动作。
 
 ### `lark_sheets_range_move` / `lark_sheets_range_copy`
 
@@ -246,18 +232,17 @@ lark_sheets_cols_resize(url="...", sheet_id="$SID", range="A:E", type="standard"
 
 ```
 # 用 A1:A2 的序列规律向下填充到 A3:A100（target 区域不能与 source 重叠，否则后端报 source overlaps destination）
-lark_sheets_range_fill(url="...", sheet_id="$SID", source_range="A1:A2", target_range="A3:A100", series_type="auto")
+lark_sheets_range_fill(url="...", sheet_id="<SID>", source_range="A1:A2", target_range="A3:A100", series_type="auto")
 ```
 
 ### `lark_sheets_range_sort`
 
 ```
 # 按 C 列降序排 A1:E100（首行为表头不参与）
-lark_sheets_range_sort(url="...", sheet_id="$SID", range="A1:E100", has_header=true, sort_keys=[{"column":"C","ascending":false}])
+lark_sheets_range_sort(url="...", sheet_id="<SID>", range="A1:E100", has_header=true, sort_keys=[{"column":"C","ascending":false}])
 ```
 
-### Validate / DryRun / Execute 约束
+### Validate / Execute 约束
 
-- `Validate`：XOR 公共四件套；`lark_sheets_cells_clear` 强制 `yes` 或 `dry_run`；`lark_sheets_range_*` 校验源 / 目标 range 在同一 spreadsheet；`lark_sheets_range_sort` 的 `sort_keys` 必须合法 JSON 数组且 col 都在 `range` 内；`lark_sheets_rows_resize` / `lark_sheets_cols_resize` 的 `type` 必填，`type="pixel"` 时 `size` 必填、其它 type 时 `size` 会被忽略（传了无害）；`lark_sheets_cols_resize` 的 `type` 不接受 `auto`（只行高支持自适应）。
-- `DryRun`：所有写操作输出"将要 PATCH 的 range + 受影响 cell 数估算"。
+- `Validate`：XOR 公共四件套；`lark_sheets_cells_clear` 为 high-risk-write，需 `_confirm=true` 确认；`lark_sheets_range_move` / `lark_sheets_range_copy` / `lark_sheets_range_fill` / `lark_sheets_range_sort` 校验源 / 目标 range 在同一 spreadsheet；`lark_sheets_range_sort` 的 `sort_keys` 必须合法 JSON 数组且 col 都在 `range` 内；`lark_sheets_rows_resize` / `lark_sheets_cols_resize` 的 `type` 必填，`type="pixel"` 时 `size` 必填、其它 type 时 `size` 会被忽略（传了无害）；`lark_sheets_cols_resize` 的 `type` 不接受 `auto`（只行高支持自适应）。
 - `Execute`：写后不自动回读；如需确认，自行调用 `lark_sheets_cells_get(range="<影响范围>")` 抽样比对。

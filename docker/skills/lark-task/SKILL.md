@@ -46,7 +46,6 @@ description: "飞书任务：管理任务、清单和任务智能体。创建待
 | `lark_get_skill(domain="task", section="get-my-tasks")` | List tasks assigned to me |
 | `lark_get_skill(domain="task", section="get-related-tasks")` | list tasks related to me |
 | `lark_get_skill(domain="task", section="search")` | search tasks |
-| `lark_get_skill(domain="task", section="subscribe-event")` | subscribe to task events |
 | `lark_get_skill(domain="task", section="upload-attachment")` | upload a local file as an attachment to a task |
 | `lark_get_skill(domain="task", section="tasklist-create")` | create a tasklist and optionally add tasks |
 | `lark_get_skill(domain="task", section="tasklist-search")` | search tasklists |

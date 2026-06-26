@@ -29,9 +29,11 @@
 lark_whiteboard_query(output_as="code")
   ├─ 返回 Mermaid/PlantUML 代码
   │   → 在原代码上修改 → lark_whiteboard_update(input_format="mermaid") 或 plantuml
-  ├─ 无代码（DSL 或其他方式绘制的画板）
-  │   ├─ 只改文字/颜色 → lark_whiteboard_query(output_as="raw") → 手动改 JSON → lark_whiteboard_update(input_format="raw")
-  │   └─ 重绘/结构调整 → lark_whiteboard_query(output_as="image") → 看图后进入 [§ 渲染 & 写入画板]
+  ├─ 无代码（SVG/DSL 或其他方式绘制的画板）
+  │   ├─ 需纯新增（思维导图、流程图、时序图、类图、饼图、甘特图）图表节点
+  │   │    → lark_whiteboard_query(output_as="image") → 看图 → lark_whiteboard_query(output_as="raw") → 确定新节点坐标和层级 → [§ 渲染 & 写入画板]
+  │   └─ 其他改动（几何变动/增删元素/结构调整/混合编辑等）
+  │       → `lark_get_skill(domain="whiteboard", section="routes/svg-edit")`（视觉高保真还原，大部分场景适用）
   └─ 用户有明确要求 → 以用户要求优先
 ```
 
@@ -79,7 +81,7 @@ diagram.png           ← 渲染结果
 > 因此，若需要整体更新画板内容，需携带 `overwrite=true` 覆盖式更新。
 
 ```bash
-npx -y @larksuite/whiteboard-cli@^0.2.11 -i <产物文件> --to openapi --format json \
+npx -y @larksuite/whiteboard-cli@^0.2.12 -i <产物文件> --to openapi --format json \
   | lark_whiteboard_update(whiteboard_token="<Token>", source="-", input_format="raw", idempotent_token="<10+字符唯一串>", overwrite=true, _confirm=true)
 ```
 
