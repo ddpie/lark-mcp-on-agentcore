@@ -146,7 +146,7 @@ lark_im_messages_send(chat_id="oc_xxx", file="./report.pdf")
 lark_im_messages_send(chat_id="oc_xxx", video="./demo.mp4", video_cover="./cover.png")
 lark_im_messages_send(chat_id="oc_xxx", video="./demo.mp4", video_cover="img_xxx")
 
-# Send audio
+# Send a voice message
 lark_im_messages_send(chat_id="oc_xxx", audio="./voice.opus")
 
 # Use an idempotency key (same key sends only once within 1 hour)
@@ -158,6 +158,7 @@ lark_im_messages_send(chat_id="oc_xxx", text="Hello", idempotency_key="my-unique
 - Media parameters accept an existing key (`img_xxx` / `file_xxx`), an `http://` or `https://` URL, or a local file path.
 - Local paths must be relative to the current working directory and stay within it after resolving `..` and symlinks.
 - Absolute paths such as `/tmp/photo.png` are rejected. Run the command from the file's directory and pass `./photo.png`, or copy the file into the current directory first.
+- `audio` sends a voice message and accepts only Opus audio (`.opus` or Ogg Opus `.ogg`) for local paths and URLs. For `mp3`, `wav`, or other non-Opus audio, convert to `.opus` before using `audio`, or use `file` to send the original audio as an attachment.
 
 ## Parameters
 
@@ -172,7 +173,7 @@ lark_im_messages_send(chat_id="oc_xxx", text="Hello", idempotency_key="my-unique
 | `file` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically |
 | `video` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically. **Must be paired with `video_cover`** |
 | `video_cover` | **Required with `video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically |
-| `audio` | One content option | Cwd-relative local audio path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically |
+| `audio` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
 | `msg_type` | No | Message type (default `text`). If you use `text` / `markdown` / media parameters, the effective type is inferred automatically. Explicitly setting a conflicting `msg_type` fails validation |
 | `idempotency_key` | No | Idempotency key; the same key sends only one message within 1 hour |
 
@@ -204,6 +205,8 @@ lark_im_messages_send(chat_id="oc_xxx", text="Hello", idempotency_key="my-unique
 | `share_chat` | `{"chat_id":"oc_xxx"}` |
 | `share_user` | `{"user_id":"ou_xxx"}` |
 | `interactive` | Card JSON (see Feishu interactive card documentation) |
+
+`interactive` cards support callback events (`card.action.trigger`). ⚠️ Card callbacks require bot identity and are not available via the MCP server (user-identity only) — see `lark_get_skill(domain="im", section="card-action-reply")`.
 
 ## Return Value
 

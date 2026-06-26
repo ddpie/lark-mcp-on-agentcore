@@ -2,18 +2,18 @@
 
 ## 真对象硬约束 + 数量校验
 
-1. **真对象**：当用户要求"筛选 / 只看 / 仅保留 X"时，**必须**通过 `lark_sheets_filter_{create|update|delete}` 创建真实的筛选器对象。**禁止**用"删除不符合条件的行" / "新建子表只放符合条件的行" / 用 `lark_sheets_cells_set` 覆盖原表来代替——这些做法会让原数据丢失或不可恢复。
+1. **真对象**：当用户要求"筛选 / 只看 / 仅保留 X"时，**必须**通过 `lark_sheets_filter_create` / `lark_sheets_filter_update` / `lark_sheets_filter_delete` 创建真实的筛选器对象。**禁止**用"删除不符合条件的行" / "新建子表只放符合条件的行" / 用 `lark_sheets_cells_set` 覆盖原表来代替——这些做法会让原数据丢失或不可恢复。
 2. **筛选数量必校**：执行筛选后**必须**回读，断言 `len(visible_rows) == expected_count`。`expected_count` 来自先用本地脚本在源数据上独立复现该筛选条件得到的结果数。两者不一致时禁止交付，需排查筛选条件 / 数据列类型问题。
 3. **混合文本列禁止字面比较**：筛选 key 是公式文本（如 `1000+200=1200`）或带单位的混合文本时，先在辅助列里抽出纯数值再筛选；不能直接用文本比较。
 
 ## 使用场景
 
-读写筛选器对象。本 reference 覆盖 4 个 shortcut：
+读写筛选器对象。本 reference 覆盖 4 个工具：
 
 | 操作需求 | 使用工具 | 说明 |
 |---------|---------|------|
 | 查看已有筛选器 | `lark_sheets_filter_list` | 获取筛选器的范围、规则和条件配置 |
-| 创建/更新/删除筛选器 | `lark_sheets_filter_{create|update|delete}` | 对筛选器执行写入操作 |
+| 创建/更新/删除筛选器 | `lark_sheets_filter_create` / `lark_sheets_filter_update` / `lark_sheets_filter_delete` | 对筛选器执行写入操作 |
 
 典型工作流：先读取现有筛选器了解配置 → 执行创建/更新/删除 → **必须再次读取验证结果**。
 
@@ -27,9 +27,9 @@
 - **创建后必须验证**：调用 `lark_sheets_filter_list` 确认筛选器配置正确且生效
 - **筛选不支持正则表达式**：飞书表格筛选器不支持正则表达式，传入正则会当成普通文本处理。
 
-## Shortcuts
+## 工具
 
-| Shortcut | Risk | 分组 |
+| 工具 | Risk | 分组 |
 | --- | --- | --- |
 | `lark_sheets_filter_list` | read | 对象 |
 | `lark_sheets_filter_create` | write | 对象 |
@@ -42,63 +42,74 @@
 
 _公共四件套_
 
-_仅含公共 / 系统 flag。_
+_仅含公共 flag。_
 
 ### `lark_sheets_filter_create`
 
 _公共四件套_
 
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `range` | string | required | 筛选范围（A1 表示法，含表头行，如 `A1:F1000`）；不要重复写入 `properties` 中的 range 字段 |
-| `properties` | string + File + Stdin（复合 JSON） | optional | 筛选规则 JSON：`rules`（列级筛选规则数组）+ `filtered_columns?`（激活列索引提示）。`properties` 整体可选——传它时 `rules` 不可为空；不传则只在 `range` 上建立空筛选器（无列条件）。`range` 是独立 flag（不要再放此 JSON 里） |
+| `properties` | 复合 JSON | optional | 筛选规则 JSON：`rules`（列级筛选规则数组）+ `filtered_columns?`（激活列索引提示）。`properties` 整体可选——传它时 `rules` 不可为空；不传则只在 `range` 上建立空筛选器（无列条件）。`range` 是独立参数（不要再放此 JSON 里） |
 
 ### `lark_sheets_filter_update`
 
 _公共四件套_
 
-| Flag | Type | 必填 | 说明 |
+| 参数 | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `properties` | string + File + Stdin（复合 JSON） | required | 筛选规则 JSON，含 `rules` 和 `filtered_columns?`；update 是整组覆盖式（传空 `rules: []` 清空）。`range` 已拎为独立 flag |
+| `properties` | 复合 JSON | required | 筛选规则 JSON，含 `rules` 和 `filtered_columns?`；update 是整组覆盖式（传空 `rules: []` 清空）。`range` 已拎为独立参数 |
 | `range` | string | required | 筛选作用的单元格范围（A1 表示法，如 `A1:F1000`）；优先级高于 `properties` 中同名字段 |
 
 ### `lark_sheets_filter_delete`
 
 _公共四件套 · high-risk-write（需 _confirm=true）_
 
-_仅含公共 / 系统 flag。_
+_仅含公共 flag。_
 
 ## Schemas
 
-> 复合 JSON flag 字段速查（只列顶层 + 一层嵌套）。深层结构看下方 `## Examples`，或用 `print_schema` 读完整 JSON Schema（用法见 SKILL.md「公共 flag 速查」与「Agent 使用提示」）。
+> 复合 JSON 参数字段速查（只列顶层 + 一层嵌套）。深层结构看下方 `## Examples`，或用 `lark_discover(query="sheets.filter_create")` 读完整 JSON Schema。
 
 ### `lark_sheets_filter_create` `properties` / `lark_sheets_filter_update` `properties`
 
 _创建/更新的筛选器属性_
 
 **顶层字段**：
-- `range` (string) — 筛选对象作用的单元格范围（A1 表示法） — ⚠️ 已拎为独立 flag `range`，请勿在此 JSON 内重复填写（同名以独立 flag 为准）
+- `range` (string) — 筛选对象作用的单元格范围（A1 表示法） — ⚠️ 已拎为独立参数 `range`，请勿在此 JSON 内重复填写（同名以独立参数为准）
 - `rules` (array<object>) — 列级筛选规则列表，每一项对应一个具体列的筛选条件 each: { column_index: string, conditions: array<oneOf>, filtered_rows?: array<number> }
 - `filtered_columns` (array<string>?) — 可选
 
 ## Examples
 
-公共四件套：所有 shortcut 顶部排列 `url` / `spreadsheet_token` / `sheet_id` / `sheet_name`（XOR）。`filter_id` 等同于 `sheet_id`（每个工作表至多一个筛选器）。
+公共四件套：所有工具顶部排列 `url` / `spreadsheet_token` / `sheet_id` / `sheet_name`（XOR）。`filter_id` 等同于 `sheet_id`（每个工作表至多一个筛选器）。
 
 ### `lark_sheets_filter_list`
 
 ```
 # 查看当前 sheet 的筛选器配置（filter_id 等于 sheet_id）
-lark_sheets_filter_list(url="...", sheet_id="$SID")
+lark_sheets_filter_list(url="...", sheet_id="<SID>")
 ```
 
 ### `lark_sheets_filter_create`
 
-`range` 是独立 flag（含表头行）；`rules` 走 `properties`：
+`range` 是独立参数（含表头行）；`rules` 走 `properties`：
 
 ```
-lark_sheets_filter_create(url="...", sheet_id="$SID", range="A1:F1000", properties={"rules":[{"column_index":"B","conditions":[{"type":"multiValue","compare_type":"equal","values":["北京","上海"]}]}]})
+lark_sheets_filter_create(url="...", sheet_id="<SID>", range="A1:F1000", properties={"rules":[{"column_index":"B","conditions":[{"type":"multiValue","compare_type":"equal","values":["北京","上海"]}]}]})
 ```
+
+**`conditions[].type` × `compare_type` 取值**（`type` 决定可用的 `compare_type`；两者均必填）：
+
+| `type` | 可用 `compare_type` | `values` |
+|---|---|---|
+| `text` | `contains` / `doesNotContain` / `beginsWith` / `doesNotBeginWith` / `endsWith` / `doesNotEndWith` / `equals` / `notEquals` | 字符串数组 |
+| `number` | `equal` / `notEqual` / `greaterThan` / `greaterThanOrEqual` / `lessThan` / `lessThanOrEqual` / `between` / `notBetween` | 数值（或数值字符串）数组；`between` / `notBetween` 传两个边界 |
+| `multiValue` | `equal` / `notEqual` | 字符串数组（精确匹配其中任一值） |
+| `color` | `backgroundColor` / `foregroundColor` | 不传 `values`（按单元格颜色筛选） |
+
+> ⚠️ `text` 用 `equals` / `notEquals`（**带 s**），`number` / `multiValue` 用 `equal` / `notEqual`（**不带 s**）——别混。完整 schema 跑 `lark_discover(query="sheets.filter_create")`。
 
 ### `lark_sheets_filter_update`
 
@@ -107,11 +118,12 @@ lark_sheets_filter_create(url="...", sheet_id="$SID", range="A1:F1000", properti
 ### `lark_sheets_filter_delete`
 
 ```
-lark_sheets_filter_delete(url="...", sheet_id="$SID")
+lark_sheets_filter_delete(url="...", sheet_id="<SID>")
 ```
 
-### Validate / DryRun / Execute 约束
+> ⚠️ high-risk-write：删除筛选器为高风险写操作，首次调用会被拒绝并返回确认指引，确认后带 `_confirm=true` 重新调用。
 
-- `Validate`：XOR 公共四件套；`lark_sheets_filter_create` 校验 `range` 至少 2 行（表头 + 至少 1 行数据）；`lark_sheets_filter_update` 必须先 `lark_sheets_filter_list` 确认目标存在；`lark_sheets_filter_delete` 强制 `yes` 或 `dry_run`。
-- `DryRun`：输出"将要 POST/PATCH/DELETE 的 filter 请求模板"。
+### Validate / Execute 约束
+
+- `Validate`：XOR 公共四件套；`lark_sheets_filter_create` 校验 `range` 至少 2 行（表头 + 至少 1 行数据）；`lark_sheets_filter_update` 必须先 `lark_sheets_filter_list` 确认目标存在；`lark_sheets_filter_delete` 为高风险写操作，需 `_confirm=true` 确认。
 - `Execute`：写后不自动回读；如需确认，自行调用 `lark_sheets_filter_list` 查看当前筛选条件 + 已过滤行数。

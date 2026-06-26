@@ -1,9 +1,25 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.57",
+    "lark_cli_version": "1.0.58",
     "source": "lark-cli schema _meta.scopes"
   },
   "rawApis": [
+    {
+      "service": "approval",
+      "resource": "approvals",
+      "method": "get",
+      "scopes": [
+        "approval:approval:read"
+      ]
+    },
+    {
+      "service": "approval",
+      "resource": "approvals",
+      "method": "search",
+      "scopes": [
+        "approval:approval:read"
+      ]
+    },
     {
       "service": "approval",
       "resource": "instances",
@@ -16,6 +32,14 @@
       "service": "approval",
       "resource": "instances",
       "method": "cc",
+      "scopes": [
+        "approval:instance:write"
+      ]
+    },
+    {
+      "service": "approval",
+      "resource": "instances",
+      "method": "create",
       "scopes": [
         "approval:instance:write"
       ]
@@ -567,6 +591,24 @@
     },
     {
       "service": "im",
+      "resource": "chat.managers",
+      "method": "add_managers",
+      "scopes": [
+        "im:chat",
+        "im:chat.managers:write_only"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "chat.managers",
+      "method": "delete_managers",
+      "scopes": [
+        "im:chat",
+        "im:chat.managers:write_only"
+      ]
+    },
+    {
+      "service": "im",
       "resource": "chat.members",
       "method": "bots",
       "scopes": [
@@ -603,6 +645,74 @@
         "im:chat",
         "im:chat.group_info:readonly",
         "im:chat.members:read"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "chat.moderation",
+      "method": "get",
+      "scopes": [
+        "im:chat:readonly",
+        "im:chat",
+        "im:chat.moderation:read"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "chat.moderation",
+      "method": "update",
+      "scopes": [
+        "im:chat",
+        "im:chat:moderation:write_only"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "chat.nickname",
+      "method": "delete",
+      "scopes": [
+        "im:chat",
+        "im:chat.nickname:write"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "chat.nickname",
+      "method": "get",
+      "scopes": [
+        "im:chat",
+        "im:chat:read",
+        "im:chat:readonly",
+        "im:chat.nickname:read"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "chat.nickname",
+      "method": "update",
+      "scopes": [
+        "im:chat",
+        "im:chat.nickname:write"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "chat.user_setting",
+      "method": "batch_query",
+      "scopes": [
+        "im:chat:read",
+        "im:chat:readonly",
+        "im:chat",
+        "im:chat.user_setting:read"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "chat.user_setting",
+      "method": "batch_update",
+      "scopes": [
+        "im:chat",
+        "im:chat.user_setting:write"
       ]
     },
     {

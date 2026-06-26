@@ -142,6 +142,9 @@ lark_im_messages_reply(message_id="om_xxx", file="./report.pdf")
 # Reply with a local video (video_cover is required as the video cover)
 lark_im_messages_reply(message_id="om_xxx", video="./demo.mp4", video_cover="./cover.png")
 
+# Reply with a voice message
+lark_im_messages_reply(message_id="om_xxx", audio="./voice.opus")
+
 # With an idempotency key
 lark_im_messages_reply(message_id="om_xxx", text="Received", idempotency_key="my-unique-id")
 ```
@@ -151,6 +154,7 @@ lark_im_messages_reply(message_id="om_xxx", text="Received", idempotency_key="my
 - Media parameters accept an existing key (`img_xxx` / `file_xxx`), an `http://` or `https://` URL, or a local file path.
 - Local paths must be relative to the current working directory and stay within it after resolving `..` and symlinks.
 - Absolute paths such as `/tmp/photo.png` are rejected. Run the command from the file's directory and pass `./photo.png`, or copy the file into the current directory first.
+- `audio` sends a voice message and accepts only Opus audio (`.opus` or Ogg Opus `.ogg`) for local paths and URLs. For `mp3`, `wav`, or other non-Opus audio, convert to `.opus` before using `audio`, or use `file` to send the original audio as an attachment.
 
 ## Parameters
 
@@ -165,7 +169,7 @@ lark_im_messages_reply(message_id="om_xxx", text="Received", idempotency_key="my
 | `file` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`) |
 | `video` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`); **must be used together with `video_cover`** |
 | `video_cover` | **Required with `video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`) |
-| `audio` | One content option | Cwd-relative local audio path, URL, or `file_key` (`file_xxx`) |
+| `audio` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
 | `reply_in_thread` | No | Reply inside the thread. The reply appears in the target message's thread instead of the main chat stream |
 | `idempotency_key` | No | Idempotency key; the same key sends only one reply within 1 hour |
 

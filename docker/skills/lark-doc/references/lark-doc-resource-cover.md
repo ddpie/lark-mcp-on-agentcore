@@ -1,5 +1,5 @@
 
-# docs resource-*（Docx 封面图资源）
+# docs +resource-*（Docx 封面图资源）
 
 > **前置条件：** (authentication is handled automatically by the MCP server)
 

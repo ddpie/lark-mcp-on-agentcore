@@ -44,7 +44,7 @@
 
 ## Agent 子任务要求
 
-内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark_get_skill(domain="doc", section="xml")` 的引用、用户目标/风格要求、具体的 `lark_docs_update` command 和 `block_id`。只有在需要使用富 block 或用户要求美化时，才提供 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的引用。
+内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark_get_skill(domain="doc", section="xml")` 和 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的引用、用户目标/风格要求、具体的 `lark_docs_update` command 和 `block_id`。
 
 Mermaid 图由主 Agent 直接插入 `<whiteboard type="mermaid">...</whiteboard>`，无需 SubAgent。
 

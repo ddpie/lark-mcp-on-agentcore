@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.57",
-    "extracted_at": "2026-06-24",
+    "lark_cli_version": "1.0.58",
+    "extracted_at": "2026-06-26",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -619,6 +619,22 @@
     },
     {
       "service": "base",
+      "command": "+title-resolve",
+      "scopes": [
+        "search:docs:read"
+      ]
+    },
+    {
+      "service": "base",
+      "command": "+url-resolve",
+      "scopes": [
+        "base:field:read",
+        "base:record:read",
+        "wiki:node:retrieve"
+      ]
+    },
+    {
+      "service": "base",
       "command": "+view-create",
       "scopes": [
         "base:view:write_only"
@@ -888,6 +904,31 @@
     },
     {
       "service": "docs",
+      "command": "+resource-delete",
+      "scopes": [
+        "docx:document:readonly",
+        "docx:document:write_only"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+resource-download",
+      "scopes": [
+        "docx:document:readonly",
+        "docs:document.media:download"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+resource-update",
+      "scopes": [
+        "docx:document:readonly",
+        "docx:document:write_only",
+        "docs:document.media:upload"
+      ]
+    },
+    {
+      "service": "docs",
       "command": "+search",
       "scopes": [
         "search:docs:read"
@@ -906,31 +947,6 @@
       "command": "+whiteboard-update",
       "scopes": [
         "board:whiteboard:node:create"
-      ]
-    },
-    {
-      "service": "docs",
-      "command": "resource-delete",
-      "scopes": [
-        "docx:document:readonly",
-        "docx:document:write_only"
-      ]
-    },
-    {
-      "service": "docs",
-      "command": "resource-download",
-      "scopes": [
-        "docx:document:readonly",
-        "docs:document.media:download"
-      ]
-    },
-    {
-      "service": "docs",
-      "command": "resource-update",
-      "scopes": [
-        "docx:document:readonly",
-        "docx:document:write_only",
-        "docs:document.media:upload"
       ]
     },
     {
@@ -1017,6 +1033,13 @@
       "scopes": [
         "drive:drive.metadata:readonly",
         "wiki:node:retrieve"
+      ]
+    },
+    {
+      "service": "drive",
+      "command": "+member-add",
+      "scopes": [
+        "docs:permission.member:create"
       ]
     },
     {
@@ -2348,6 +2371,13 @@
     },
     {
       "service": "sheets",
+      "command": "+sheet-hide-gridline",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
       "command": "+sheet-info",
       "scopes": [
         "sheets:spreadsheet:read"
@@ -2371,6 +2401,13 @@
     {
       "service": "sheets",
       "command": "+sheet-set-tab-color",
+      "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+sheet-show-gridline",
       "scopes": [
         "sheets:spreadsheet:write_only"
       ]
@@ -2407,6 +2444,21 @@
       "service": "sheets",
       "command": "+sparkline-update",
       "scopes": [
+        "sheets:spreadsheet:write_only"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+table-get",
+      "scopes": [
+        "sheets:spreadsheet:read"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+table-put",
+      "scopes": [
+        "sheets:spreadsheet:read",
         "sheets:spreadsheet:write_only"
       ]
     },
@@ -2480,6 +2532,14 @@
         "sheets:spreadsheet:read",
         "docs:document:export",
         "drive:drive.metadata:readonly"
+      ]
+    },
+    {
+      "service": "sheets",
+      "command": "+workbook-import",
+      "scopes": [
+        "docs:document.media:upload",
+        "docs:document:import"
       ]
     },
     {
@@ -2614,13 +2674,6 @@
       "command": "+set-ancestor",
       "scopes": [
         "task:task:write"
-      ]
-    },
-    {
-      "service": "task",
-      "command": "+subscribe-event",
-      "scopes": [
-        "task:task:read"
       ]
     },
     {
