@@ -24,7 +24,7 @@ lark_invoke(tool_name="lark_drive_file_comments_batch_query", args={params: {"fi
 同时获取文档内容，并要求返回 block id：
 
 ```
-lark_docs_fetch(api_version="v2", doc="<doc_token_or_url>", detail="with-ids")
+lark_docs_fetch(doc="<doc_token_or_url>", detail="with-ids")
 ```
 
 ## 字段含义
@@ -124,7 +124,7 @@ lark_docs_fetch(api_version="v2", doc="<doc_token_or_url>", detail="with-ids")
 
 1. 确认目标是 `file_type=docx`；只有 docx 文档支持通过 `need_relation` 查询评论位置。
 2. 用 `lark_invoke(tool_name="lark_drive_file_comments_list", ...)` 或 `lark_invoke(tool_name="lark_drive_file_comments_batch_query", ...)` 获取评论，并带 `need_relation=true`。
-3. 用 `lark_docs_fetch(api_version="v2", detail="with-ids")` 获取文档内容。
+3. 用 `lark_docs_fetch(detail="with-ids")` 获取文档内容。
 4. 对每条评论先看 `relation`：
    - 如果存在 `relation.relation`，解析这个 JSON 字符串。
    - 从解析结果里取 `positionInfo.blockID`。

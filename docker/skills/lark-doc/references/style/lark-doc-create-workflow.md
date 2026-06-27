@@ -20,7 +20,7 @@
 
 1. 分析用户需求：受众、目的、范围
 2. 设计大纲：根据任务自然选择结构。可以是短文、纪要、FAQ、方案、报告、清单或其他形式；不要默认套固定章节、固定开头或固定富 block 配比
-3. `lark_docs_create(api_version="v2")` 创建文档。长文档可**只建骨架**：标题 + 各级标题 + 每节一句占位摘要；短文档可以一次写入完整内容
+3. `lark_docs_create` 创建文档。长文档可**只建骨架**：标题 + 各级标题 + 每节一句占位摘要；短文档可以一次写入完整内容
    - ⚠️ 创建较长文档时，**不要**一次性把完整章节内容塞进 `content`。超长 `content` 容易触发字符/参数限制。
    - 完整内容留到步骤二，由各 Agent 用 `lark_docs_update(command="block_insert_after", block_id="<章节标题 block_id>")` 分段写入。
 
@@ -33,7 +33,7 @@
 
 ### 步骤三：整合审查与画板识别（串行）
 
-5. `lark_docs_fetch(api_version="v2", detail="with-ids")` 获取文档，审查整体效果
+5. `lark_docs_fetch(detail="with-ids")` 获取文档，审查整体效果
 6. 评估内容是否满足用户目标：事实是否完整、结构是否清楚、语气是否匹配、是否保留必要素材
 7. **画板意图识别**：逐章节扫描，按 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 「画板意图识别」表判断是否有段落适合用图表达。重要信息优先画板化，记录需要插图的章节、推荐画板类型、mermaid/SVG 路径和用于画图的源内容
 

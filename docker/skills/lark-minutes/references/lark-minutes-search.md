@@ -116,7 +116,7 @@ lark_minutes_search(query="预算复盘", page_size="20", page_token="<PAGE_TOKE
 - 当结果中返回 `has_more=true` 时，说明还有更多页可继续获取。
 - 继续翻页时，使用响应中的 `page_token` 搭配 `page_token` 参数发起下一次查询。
 - 不要假设调大 `page_size` 就能拿全结果；分页遍历时应以 `has_more` 和 `page_token` 为准。
-- `total` 数量小于 50 时，自动分页获取所有结果；`total` 数量大于 50 时，向用户确认是否获取全部结果。
+- 当 `has_more=true` 时，逐页累计已读取的 `items` 数：累计不到 50 条之前可自动继续翻页；超过 50 条后应停下来向用户确认是否获取全部结果。
 
 ## 搜索结果中的下一步
 
@@ -126,8 +126,8 @@ lark_minutes_search(query="预算复盘", page_size="20", page_token="<PAGE_TOKE
 # 首先查询妙记元信息（标题、时长、封面）
 lark_invoke(tool_name="lark_minutes_minutes_get", args={params: {"minute_token": "obcn***************"}})
 
-# 查妙记关联的纪要产物：逐字稿、总结、待办、章节等
-lark_vc_notes(minute_tokens="obcn_EXAMPLE_TOKEN")
+# 查妙记关联的产物（summary / todo / chapter / keyword / transcript 按需返回）
+lark_minutes_detail(minute_tokens="<minute_token>", summary=true)
 ```
 
 ## 常见错误与排查
@@ -151,5 +151,5 @@ lark_vc_notes(minute_tokens="obcn_EXAMPLE_TOKEN")
 ## 参考
 
 - `lark_get_skill(domain="minutes")` -- 妙记相关命令
-- `lark_get_skill(domain="vc", section="notes")` -- 基于 `minute_token` 获取逐字稿、总结、待办、章节等产物
+- `lark_get_skill(domain="minutes", section="detail")` -- 基于 `minute_token` 获取逐字稿、总结、待办、章节等产物
 - `lark_get_skill(domain="vc")` -- 视频会议全部命令

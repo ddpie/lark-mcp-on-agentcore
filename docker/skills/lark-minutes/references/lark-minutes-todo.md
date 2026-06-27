@@ -85,7 +85,7 @@ lark_minutes_todo(minute_token="obcnxxxxxxxxxxxxxxxxxxxx", operation="delete", t
 
 ### 1. 先读后写，待办 id 如何获取
 
-更新 / 删除前先用 `lark_vc_notes(minute_tokens="<token>")` 读取当前待办。返回的每条待办带 `todo_id` 字段。
+更新 / 删除前先用 `lark_minutes_detail(minute_tokens="<token>", todo=true)` 读取当前待办。返回的每条待办带 `todo_id` 字段。
 
 > 待办 id 仅用于程序内部定位，不必展示给用户。
 
@@ -125,4 +125,4 @@ lark_minutes_todo(minute_token="obcnxxxxxxxxxxxxxxxxxxxx", operation="delete", t
 
 - `lark_get_skill(domain="minutes")`
 - `lark_get_skill(domain="minutes", section="summary")`
-- lark-vc 的 `lark_vc_notes`
+- `lark_get_skill(domain="minutes", section="detail")`

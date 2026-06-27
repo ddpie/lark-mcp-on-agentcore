@@ -14,13 +14,12 @@
 > - **局部精修**（`str_replace` / `block_insert_after` / `block_replace` / `block_delete` / `block_move_after`）：优先使用 XML（默认）。XML 能稳定表达 block 结构和样式，精准编辑更可控；不要因为 Markdown 写起来更简单就自行切换。
 > - **整段写入**（`append` / `overwrite`）：XML 和 Markdown 都可以。用户提供 `.md` 本地文件或明确要求 Markdown 时直接用 Markdown；否则默认 XML。
 >
-> **Markdown 局限 & block ID 前提：** Markdown 不携带 block ID，也无样式（颜色、对齐、callout 等）。需要按 block ID 定位（`block_*` 指令的 `block_id`）时，先 `lark_docs_fetch(api_version="v2", detail="with-ids")` **配合 `scope`（`outline` / `range` / `keyword` / `section`）局部获取**目标段落，不要全量 fetch。拿到 block ID 后 `content` 仍可用 Markdown，只是写入内容不带样式。
+> **Markdown 局限 & block ID 前提：** Markdown 不携带 block ID，也无样式（颜色、对齐、callout 等）。需要按 block ID 定位（`block_*` 指令的 `block_id`）时，先 `lark_docs_fetch(detail="with-ids")` **配合 `scope`（`outline` / `range` / `keyword` / `section`）局部获取**目标段落，不要全量 fetch。拿到 block ID 后 `content` 仍可用 Markdown，只是写入内容不带样式。
 
 ## 参数
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `api_version` | 是 | 固定传 `v2` |
 | `doc` | 是 | 文档 URL 或 token |
 | `command` | 是 | 操作指令（见下方指令速查表） |
 | `doc_format` | 否 | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
@@ -64,48 +63,48 @@
 
 ```
 # 简单文本替换
-lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", pattern="张三", content="李四")
+lark_docs_update(doc="<doc_id>", command="str_replace", pattern="张三", content="李四")
 
 # 替换为富文本（加粗 + 链接）
-lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", pattern="旧链接", content='<b>新链接</b> <a href="https://example.com">点击查看</a>')
+lark_docs_update(doc="<doc_id>", command="str_replace", pattern="旧链接", content='<b>新链接</b> <a href="https://example.com">点击查看</a>')
 
 # 仅当用户明确要求时才使用 Markdown
-lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", doc_format="markdown", pattern="旧内容", content="新内容")
+lark_docs_update(doc="<doc_id>", command="str_replace", doc_format="markdown", pattern="旧内容", content="新内容")
 
 # Markdown 模式下支持跨行匹配
-lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", doc_format="markdown", pattern="## 旧标题\n\n第一段原文\n\n第二段原文", content="## 新标题\n\n改写后的第一段\n\n改写后的第二段")
+lark_docs_update(doc="<doc_id>", command="str_replace", doc_format="markdown", pattern="## 旧标题\n\n第一段原文\n\n第二段原文", content="## 新标题\n\n改写后的第一段\n\n改写后的第二段")
 
 # Markdown 模式下使用 `前缀...后缀` 省略号匹配首尾特征明显的大段内容
 # 下例会把「## 旧标题」到「结束语。」之间的所有内容整体替换
-lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", doc_format="markdown", pattern="## 旧标题...结束语。", content="## 新标题\n\n重写后的正文...\n\n新的结束语。")
+lark_docs_update(doc="<doc_id>", command="str_replace", doc_format="markdown", pattern="## 旧标题...结束语。", content="## 新标题\n\n重写后的正文...\n\n新的结束语。")
 
 # 删除文本：content 传空字符串即可
-lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", pattern="废弃的内容", content="")
+lark_docs_update(doc="<doc_id>", command="str_replace", pattern="废弃的内容", content="")
 ```
 
 ### block_insert_after — 在指定 block 之后插入
 
 ```
-lark_docs_update(api_version="v2", doc="<doc_id>", command="block_insert_after", block_id="目标 block_id", content='<h2>新章节</h2><ul><li>要点 1</li><li>要点 2</li></ul>')
+lark_docs_update(doc="<doc_id>", command="block_insert_after", block_id="目标 block_id", content='<h2>新章节</h2><ul><li>要点 1</li><li>要点 2</li></ul>')
 ```
 
 ### block_replace — 替换指定 block
 
 ```
-lark_docs_update(api_version="v2", doc="<doc_id>", command="block_replace", block_id="目标 block_id", content='<p>替换后的段落内容</p>')
+lark_docs_update(doc="<doc_id>", command="block_replace", block_id="目标 block_id", content='<p>替换后的段落内容</p>')
 ```
 
 ### block_delete — 删除指定 block
 
 ```
 # 删除多个块时用逗号 "," 分隔
-lark_docs_update(api_version="v2", doc="<doc_id>", command="block_delete", block_id="block_id_1,block_id_2,block_id_3")
+lark_docs_update(doc="<doc_id>", command="block_delete", block_id="block_id_1,block_id_2,block_id_3")
 ```
 
 ### overwrite — 全文覆盖
 
 ```
-lark_docs_update(api_version="v2", doc="<doc_id>", command="overwrite", content='<title>全新文档</title><h1>概述</h1><p>新的内容</p>')
+lark_docs_update(doc="<doc_id>", command="overwrite", content='<title>全新文档</title><h1>概述</h1><p>新的内容</p>')
 ```
 
 > 会清空文档后重写，可能丢失图片、评论等。仅在需要完全重建文档时使用。
@@ -113,7 +112,7 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="overwrite", content=
 ### append — 在文档末尾追加
 
 ```
-lark_docs_update(api_version="v2", doc="<doc_id>", command="append", content='<h2>新增章节</h2><p>追加的内容</p>')
+lark_docs_update(doc="<doc_id>", command="append", content='<h2>新增章节</h2><p>追加的内容</p>')
 ```
 
 > 等价于 `block_insert_after` with `block_id="-1"`，无需先获取 block ID。
@@ -124,7 +123,7 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="append", content='<h
 
 ```
 # 复制多个块（按顺序插入：anchor → a → b → c）
-lark_docs_update(api_version="v2", doc="<doc_id>", command="block_copy_insert_after", block_id="锚点 block_id", src_block_ids="block_a,block_b,block_c")
+lark_docs_update(doc="<doc_id>", command="block_copy_insert_after", block_id="锚点 block_id", src_block_ids="block_a,block_b,block_c")
 ```
 
 ### block_move_after — 移动已有 block
@@ -133,7 +132,7 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="block_copy_insert_af
 
 ```
 # 移动到页面末尾
-lark_docs_update(api_version="v2", doc="<doc_id>", command="block_move_after", block_id="-1表示末尾，page_id表示开头，blk", src_block_ids="block_a,block_b")
+lark_docs_update(doc="<doc_id>", command="block_move_after", block_id="-1表示末尾，page_id表示开头，blk", src_block_ids="block_a,block_b")
 ```
 
 ## 返回值
@@ -169,7 +168,7 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="block_move_after", b
 
 1. **获取文档内容和 block ID**：
    ```
-   lark_docs_fetch(api_version="v2", doc="<doc_id>", detail="with-ids")
+   lark_docs_fetch(doc="<doc_id>", detail="with-ids")
    ```
 
 2. **定位目标 block**：从返回的 XML 中找到要修改的 block 及其 `id` 属性
@@ -177,10 +176,10 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="block_move_after", b
 3. **执行更新**：
    ```
    # 替换特定 block
-   lark_docs_update(api_version="v2", doc="<doc_id>", command="block_replace", block_id="blkcnXXXX", content="<p>新内容</p>")
+   lark_docs_update(doc="<doc_id>", command="block_replace", block_id="blkcnXXXX", content="<p>新内容</p>")
 
    # 在某 block 后插入
-   lark_docs_update(api_version="v2", doc="<doc_id>", command="block_insert_after", block_id="blkcnXXXX", content="<h2>追加的章节</h2>")
+   lark_docs_update(doc="<doc_id>", command="block_insert_after", block_id="blkcnXXXX", content="<h2>追加的章节</h2>")
    ```
 
 ### 简单文本替换
@@ -188,12 +187,12 @@ lark_docs_update(api_version="v2", doc="<doc_id>", command="block_move_after", b
 不需要 block ID，直接匹配替换：
 
 ```
-lark_docs_update(api_version="v2", doc="<doc_id>", command="str_replace", pattern="v1.0", content="v2.0")
+lark_docs_update(doc="<doc_id>", command="str_replace", pattern="v1.0", content="v2.0")
 ```
 
 ## 画板处理
 
-> **`lark_docs_update` 不能直接编辑已有画板的内容。** 本工具只能**新增**画板块；要修改已有画板，先用 `lark_docs_fetch(api_version="v2")` 取到 `<whiteboard token="...">`，再按 `lark_get_skill(domain="doc", section="whiteboard")` 启动 SubAgent 读取 `lark_get_skill(domain="whiteboard")` 并写入。
+> **`lark_docs_update` 不能直接编辑已有画板的内容。** 本工具只能**新增**画板块；要修改已有画板，先用 `lark_docs_fetch` 取到 `<whiteboard token="...">`，再按 `lark_get_skill(domain="doc", section="whiteboard")` 启动 SubAgent 读取 `lark_get_skill(domain="whiteboard")` 并写入。
 
 画板的语法选型与插入示例见 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的「画板语法与插入」章节。
 

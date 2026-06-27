@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.58",
-    "extracted_at": "2026-06-26",
+    "lark_cli_version": "1.0.59",
+    "extracted_at": "2026-06-27",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -818,6 +818,13 @@
     },
     {
       "service": "calendar",
+      "command": "+meeting",
+      "scopes": [
+        "calendar:calendar.event:read"
+      ]
+    },
+    {
+      "service": "calendar",
       "command": "+room-find",
       "scopes": [
         "calendar:calendar.free_busy:read"
@@ -828,6 +835,13 @@
       "command": "+rsvp",
       "scopes": [
         "calendar:calendar.event:reply"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+search-event",
+      "scopes": [
+        "calendar:calendar.event:read"
       ]
     },
     {
@@ -1543,6 +1557,14 @@
     },
     {
       "service": "minutes",
+      "command": "+detail",
+      "scopes": [
+        "minutes:minutes.basic:read",
+        "minutes:minutes.artifacts:read"
+      ]
+    },
+    {
+      "service": "minutes",
       "command": "+download",
       "scopes": [
         "minutes:minutes.media:export"
@@ -1559,6 +1581,7 @@
       "service": "minutes",
       "command": "+speaker-replace",
       "scopes": [
+        "minutes:minutes:readonly",
         "minutes:minutes:update"
       ]
     },
@@ -2584,6 +2607,15 @@
     },
     {
       "service": "slides",
+      "command": "+replace-pages",
+      "scopes": [
+        "slides:presentation:update",
+        "slides:presentation:write_only",
+        "wiki:node:read"
+      ]
+    },
+    {
+      "service": "slides",
       "command": "+replace-slide",
       "scopes": [
         "slides:presentation:update",
@@ -2595,7 +2627,14 @@
       "service": "slides",
       "command": "+screenshot",
       "scopes": [
-        "slides:presentation:screenshot",
+        "wiki:node:read"
+      ]
+    },
+    {
+      "service": "slides",
+      "command": "+xml-get",
+      "scopes": [
+        "slides:presentation:read",
         "wiki:node:read"
       ]
     },
@@ -2717,6 +2756,14 @@
       "command": "+upload-attachment",
       "scopes": [
         "task:attachment:write"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+detail",
+      "scopes": [
+        "vc:meeting.meetingevent:read",
+        "vc:record:readonly"
       ]
     },
     {

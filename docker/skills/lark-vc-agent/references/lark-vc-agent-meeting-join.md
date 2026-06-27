@@ -98,7 +98,7 @@ lark_vc_meeting_list_active(user_id="<user_open_id>", format="json")
 
 ```
 # 会议结束后，先查询会议产物
-lark_vc_notes(meeting_ids="<meeting.id>")
+lark_vc_detail(meeting_ids="<meeting.id>")
 ```
 
 后续按 `lark_get_skill(domain="vc")` 的产物决策处理：根据 `note_display_type`、`note_id`、`minute_token` 和用户意图选择纪要正文、逐字稿或妙记。
@@ -126,6 +126,6 @@ lark_vc_notes(meeting_ids="<meeting.id>")
 - `lark_get_skill(domain="vc-agent", section="meeting-events")` — 会中事件流
 - `lark_get_skill(domain="vc", section="search")` — 搜索历史会议记录
 - `lark_get_skill(domain="vc", section="recording")` — 查询 minute_token
-- `lark_get_skill(domain="vc", section="notes")` — 获取会议纪要
+- `lark_get_skill(domain="vc", section="detail")` — 获取会议详情
 - `lark_get_skill(domain="vc-agent")` — Agent 会中能力（本 skill）
 - `lark_get_skill(domain="vc")` — 视频会议原子域（Meeting / Note 等核心概念）

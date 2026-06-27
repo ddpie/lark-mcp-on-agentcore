@@ -1,6 +1,6 @@
 # note transcript
 
-只在 `lark_note_detail` 或 `lark_vc_notes` 已确认 `note_display_type=unified` 时使用。普通纪要逐字稿是独立 Docx 文档，应回到 `lark_get_skill(domain="doc")` 读取 `verbatim_doc_token`。
+只在 `lark_note_detail` 已确认 `note_display_type=unified` 时使用。普通纪要逐字稿是独立 Docx 文档，应回到 `lark_get_skill(domain="doc")` 读取 `verbatim_doc_token`。
 
 ```
 lark_note_transcript(note_id="NOTE_ID")
@@ -17,7 +17,7 @@ lark_note_transcript(note_id="NOTE_ID")
 
 | 场景 | 正确路由 |
 |------|---------|
-| 只有纪要文档标题 | 先文档搜索，再 `lark_docs_fetch(api_version="v2")`；有 `vc-node-id` 才回 Note 域 |
-| 只有 Docx URL / `doc_token` | 先 `lark_docs_fetch(api_version="v2")`；不要从 `doc_token` 反推 `note_id` |
-| `note_display_type=normal` | `lark_docs_fetch(api_version="v2", doc="<verbatim_doc_token>")` |
+| 只有纪要文档标题 | 先文档搜索，再 `lark_docs_fetch`；有 `vc-node-id` 才回 Note 域 |
+| 只有 Docx URL / `doc_token` | 先 `lark_docs_fetch`；不要从 `doc_token` 反推 `note_id` |
+| `note_display_type=normal` | `lark_docs_fetch(doc="<verbatim_doc_token>")` |
 | `note_display_type=unknown` 且 `verbatim_doc_token` 非空 | 先按独立逐字稿文档读取 |
