@@ -15,8 +15,8 @@ description: "飞书视频会议：搜索历史会议记录、查询会议纪要
 
 | Shortcut | 说明 |
 |----------|------|
-| `lark_vc_search` | 搜索历史会议记录（需至少一个筛选条件） |
-| `lark_vc_notes` | 查询会议纪要和妙记产物（通过 meeting_ids、minute_tokens 或 calendar_event_ids） |
+| `lark_vc_search` | 搜索历史会议记录（需至关键词、时间范围、组织者、参与者、会议室少一个筛选条件） |
+| `lark_vc_detail` | 通过 meeting_ids 获取会议详情，包括 note_id 和 minute_token |
 | `lark_vc_recording` | 通过 meeting_ids 或 calendar_event_ids 查询 minute_token |
 
 - 使用任何 Shortcut 前，必须先调用对应的 `lark_get_skill(domain="vc", section="...")` 了解参数和返回值结构。
@@ -30,7 +30,8 @@ description: "飞书视频会议：搜索历史会议记录、查询会议纪要
 | 查"今天有哪些会议" | `lark_vc_search`（已结束）+ lark-calendar（未开始），合并展示 |
 | 只按自然语言标题查"xx 纪要的逐字稿 / 原始记录 / 谁说了什么" | 先到 lark-drive / lark-doc；仅在已拿到 `note_id` / `vc-node-id` 后再到 lark-note |
 | Agent 真实入会/离会、会中实时事件 | lark-vc-agent |
-| 本地音视频文件转纪要/逐字稿 | 先走 lark-minutes 上传，再回 `lark_vc_notes(minute_tokens="<minute_token>")` |
+| 妙记信息/时长/封面/链接 | 先走 `lark_vc_detail` 或 `lark_vc_recording` 获取 `minute_token`，再用 lark-minutes 的 `lark_invoke(tool_name="lark_minutes_minutes_get", ...)` |
+| 本地音视频文件转纪要/逐字稿 | 先走 lark-minutes 上传，再用 `lark_minutes_detail(minute_tokens="<minute_token>")` |
 
 ## 核心概念
 
@@ -38,20 +39,20 @@ description: "飞书视频会议：搜索历史会议记录、查询会议纪要
 - **会议纪要（Note）**：视频会议结束后生成的结构化文档，通过 `note_id` 标识，包含纪要文档（总结、待办）和逐字稿文档。`note_display_type` 区分**普通纪要（`normal`）**和 **unified 纪要**；已知 `note_id` 的直查与 unified 原始记录请用 lark-note。
 - **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写，包含总结、待办、章节和文字记录，通过 minute_token 标识。
 - **纪要文档（MainDoc）**：AI 智能纪要的主文档，包含 AI 生成的总结和待办，对应 `note_doc_token`。
-- **用户会议纪要（MeetingNotes）**：用户主动绑定到会议的纪要文档，对应 `meeting_notes`。仅通过 `calendar_event_ids` 路径返回。
+- **用户会议纪要（MeetingNotes）**：用户主动绑定到日程的纪要文档，对应 `meeting_note`。需先通过 lark-calendar 的 `lark_calendar_meeting` 由 `event_id` 获取。
 - **逐字稿（VerbatimDoc）**：会议的逐句文字记录，包含说话人和时间戳。
 
 ## 产物选择决策
 
 | 用户意图 | 必须读取的产物 | 禁止 |
 |---------|-------------|------|
-| 提炼/总结/重新总结/整理会议内容/回顾会议 | 原始对话记录（按下方逐字稿路由取得）或妙记文字记录（Transcript），基于原始对话独立分析 | 禁止直接搬运 AI 纪要（`note_doc_token`）的总结作为最终输出 |
+| 提炼/总结/重新总结/整理会议内容/回顾会议 | 为降低 token 消耗，非必须不得获取 AI 纪要。必须使用原始对话记录（按下方逐字稿路由取得）或妙记文字记录（Transcript），基于原始对话独立分析 | 禁止直接搬运 AI 纪要（`note_doc_token`）的总结作为最终输出 |
 | 查看待办/章节 | AI 纪要（`note_doc_token`）或妙记产物 — AI 待办更友好（含提出人和负责人），章节按话题划分更结构化 | — |
 | 查看纪要链接/文档地址 | 仅返回文档链接，无需读取内容 | — |
 | 直接看 AI 总结结果 | AI 纪要（`note_doc_token`） | — |
 | 谁说了什么/完整发言记录 | 原始对话记录（按下方逐字稿路由取得） | — |
 
-> **逐字稿路由**：先看 `lark_vc_notes` 返回的 `note_display_type`，不要只看 `verbatim_doc_token` 是否为空。具体路由以 `lark_get_skill(domain="vc", section="notes")` 和 lark-note 为准。
+> **逐字稿路由**：先用 `lark_vc_detail` 拿到 `note_id`，再用 lark-note 的 `lark_note_detail` 看 `note_display_type`，**不要只看 `verbatim_doc_token` 是否为空**。具体路由以 lark-note 的 `note_display_type` 规则为准。
 >
 > **为什么"提炼/总结"必须从原始对话记录出发？** AI 纪要是模型对会议的二次压缩，可能遗漏讨论细节、争论过程和隐含决策。用户要求"提炼"或"重新总结"时，期望的是基于原始对话的独立分析，而非对 AI 产物的重新排版。
 
@@ -73,21 +74,21 @@ description: "飞书视频会议：搜索历史会议记录、查询会议纪要
 
 ```
 # 1. 读取纪要内容
-lark_docs_fetch(api_version="v2", doc="<note_doc_token>", doc_format="markdown")
+lark_docs_fetch(doc="<note_doc_token>", doc_format="markdown")
 # 2. 从返回的 markdown 中提取第一个 <whiteboard token="xxx"/> 的 token
 # 3. 下载封面图到聚合目录（和逐字稿、录像同目录，保持产物归拢）
 #    并非所有纪要都有封面画板，没有 <whiteboard> 标签时跳过即可
 lark_docs_media_download(type="whiteboard", token="<whiteboard_token>", output="./minutes/<minute_token>/cover")
 ```
-> **产物目录规范**：同一会议的所有下载产物（录像、逐字稿、封面图等）统一放到 `./minutes/{minute_token}/` 目录下。这与 `lark_minutes_download` 和 `lark_vc_notes(minute_tokens=...)` 的默认落点保持一致，便于 Agent 聚合。显式路径（如封面图）需手动对齐到同一目录。
+> **产物目录规范**：同一会议的所有下载产物（录像、逐字稿、封面图等）统一放到 `./minutes/{minute_token}/` 目录下。这与 `lark_minutes_download` 和 `lark_minutes_detail(minute_tokens=...)` 的默认落点保持一致，便于 Agent 聚合。显式路径（如封面图）需手动对齐到同一目录。
 
 > **纪要相关文档 — 根据用户意图选择：**
-> - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办）
-> - `meeting_notes` → **用户绑定的会议纪要**（用户主动关联到会议的文档，仅 `calendar_event_ids` 路径返回）
-> - 用户说"逐字稿""完整记录""谁说了什么"时 → 按 `note_display_type` 路由，详见 `lark_get_skill(domain="vc", section="notes")`
-> - 用户说"纪要""总结""纪要内容"时，应同时返回 `note_doc_token` 和 `meeting_notes`（如有）
+> - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办），由 `lark_note_detail(note_id="<note_id>")` 返回
+> - `meeting_note` → **用户绑定到日程的会议纪要**，由 lark-calendar 的 `lark_calendar_meeting(event_ids="<event_id>")` 返回
+> - 用户说"逐字稿""完整记录""谁说了什么"时 → 按 `note_display_type` 路由，详见 lark-note
+> - 用户说"纪要""总结""纪要内容"时，应同时返回 `note_doc_token` 和 `meeting_note`（如有）
 > - 用户意图不明确时，应展示所有文档链接让用户选择，而不是替用户决定
-> - 如果用户提供的是**本地音视频文件**并说"转纪要""转逐字稿"，不要直接从 `lark_vc_notes` 开始；应先用 lark-minutes 的上传流程生成 `minute_url`，再提取 `minute_token` 调用 `lark_vc_notes(minute_tokens="<minute_token>")`
+> - 如果用户提供的是**本地音视频文件**并说"转纪要""转逐字稿"，不要直接从 `lark_vc_detail` 开始；应先用 lark-minutes 的上传流程生成 `minute_url`，再提取 `minute_token` 调用 `lark_minutes_detail(minute_tokens="<minute_token>")`
 
 ### 3. 纪要文档与逐字稿链接
 1. 纪要文档、逐字稿文档与关联的共享文档默认使用文档 Token 返回。
@@ -104,7 +105,7 @@ lark_invoke(tool_name="lark_drive_metas_batch_query", args={
 3. 需要获取文档内容时，使用 `lark_docs_fetch`：
 ```
 # 获取文档内容
-lark_docs_fetch(api_version="v2", doc="<doc_token>", doc_format="markdown")
+lark_docs_fetch(doc="<doc_token>", doc_format="markdown")
 ```
 
 ### 4. 查询参会人快照（读操作）
@@ -122,7 +123,7 @@ lark_invoke(tool_name="lark_vc_meeting_get", args={
 | 用户意图 | 推荐工具 | 所在 skill |
 |---------|---------|--------|
 | 参会人快照（谁参加过、何时入/离会，任意时点）| `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id":"...", "with_participants": true}})` | 本 skill |
-| 已结束会议的发言内容 | 先 `lark_vc_notes`，再按 `note_display_type` 路由 | 本 skill / lark-note |
+| 已结束会议的发言内容 | 优先：`lark_vc_detail` 取 `note_id` 再 `lark_note_detail` 取 `verbatim_doc_token` 后 `lark_docs_fetch`；备选：`lark_vc_detail` 取 `minute_token` 再 `lark_minutes_detail(transcript=true)` | lark-note / lark-minutes |
 | **进行中会议**的实时事件流（转写、聊天、共享、会中加入/离开）| `lark_vc_meeting_events` | lark-vc-agent |
 | **Agent 真实入会 / 离会** | `lark_vc_meeting_join` / `lark_vc_meeting_leave` | lark-vc-agent |
 
@@ -136,7 +137,7 @@ Meeting (视频会议)
 │   ├── VerbatimDoc (逐字稿, verbatim_doc_token) ← normal 路径
 │   ├── UnifiedTranscript (unified 原始记录) ← unified 路径，用 lark-note 的纪要逐字稿（按 note_id）
 │   └── SharedDoc (会中共享文档)
-└── Minutes (妙记) ← minute_token 标识，lark_vc_recording 从 meeting_id 获取
+└── Minutes (妙记) ← minute_token 标识，由 `lark_vc_detail` 或 `lark_vc_recording` 桥接获取，产物详情走 lark-minutes
     ├── Transcript (文字记录)
     ├── Summary (总结)
     ├── Todos (待办)
@@ -144,12 +145,16 @@ Meeting (视频会议)
     └── Keywords (推荐关键词)
 ```
 
-> **妙记边界**：`lark_vc_notes` 负责纪要内容、逐字稿和 AI 产物；妙记基础信息请优先看 `lark_get_skill(domain="vc", section="recording")` 与 lark-minutes。
+> **MeetingNotes 边界**：用户绑定到日程的会议纪要文档（`meeting_note`）属于日程域，不在 VC 资源关系内；从 `event_id` 用 lark-calendar 的 `lark_calendar_meeting` 获取。
 >
-> **Note 域边界**：`lark_vc_notes` 是从**会议线索**（`meeting_id` / `calendar_event_id` / `minute_token`）定位纪要的入口，返回 `note_id` 和 `note_display_type`。
-> - 已有 `note_id` → lark-note。
+> **妙记边界**：`lark_vc_recording` 仅负责把 `meeting_id` / `calendar_event_id` 桥接到 `minute_token`；妙记的总结/待办/章节/逐字稿等产物归 lark-minutes（`lark_minutes_detail`）。
+>
+> **Note 域边界**：VC 域只负责把 `meeting_id` 转成 `note_id` / `minute_token`，纪要详情归 lark-note。
+> - 入口选择：从 `meeting_id` 出发用 `lark_vc_detail` 拿 `note_id` 和 `minute_token`；从 `minute_token` 出发用 `lark_minutes_detail`（详见 lark-minutes）也会返回关联的 `note_id`，可继续走 `lark_note_detail` 拿纪要文档 token。
+> - 已有 `note_id` → 直接走 `lark_note_detail` / `lark_note_transcript`（lark-note），不要绕回 VC。
 > - 已有 `doc_token` 且目标是读正文 → lark-doc。
 > - 只有自然语言纪要标题 → 文档搜索 / Docx 正文读取；有显式 `vc-node-id` 才进入 lark-note。
+> - 从日程出发（只有 `event_id`）→ 先走 lark-calendar 的 `lark_calendar_meeting` 拿到 `meeting_id` 或 `meeting_note`，再按上述路径继续。
 
 ## API Resources
 
@@ -175,12 +180,12 @@ lark_invoke(tool_name="lark_vc_meeting_get", args={
 
 ### minutes（跨域，详见 lark-minutes）
 
-  - `get` — 获取妙记基础信息（标题、时长、封面）；查询妙记**内容**请用 `lark_vc_notes(minute_tokens="<minute_token>")`
+  - `get` — 获取妙记基础信息（标题、时长、封面）；查询妙记**内容**（总结/待办/章节/逐字稿）请用 `lark_minutes_detail`（详见 lark-minutes）
 
 ## 不在本 skill 范围
 
 - 查询未来的会议日程 → lark-calendar
 - Agent 真实入会/离会、会中实时事件 → lark-vc-agent
 - 只有纪要文档标题的逐字稿查询 → 文档搜索 / Docx 正文读取；有显式 `vc-node-id` 才进入 lark-note
-- 本地音视频文件转纪要/逐字稿 → lark-minutes（上传后回 `lark_vc_notes`）
-- 妙记搜索/下载/上传/重命名/替换说话人 → lark-minutes
+- 本地音视频文件转纪要/逐字稿、妙记搜索/下载/上传/重命名/替换说话人 → lark-minutes
+- 通过 `note_id` 取纪要文档 Token → lark-note

@@ -62,8 +62,8 @@ description: "飞书视频会议会中能力：发现当前用户正在进行中
 2. 输入是 **`meeting_id`**（长数字 ID），不是 9 位会议号。
 3. 通过 MCP server 时身份始终是用户身份：先用 `lark_vc_meeting_list_active` 发现当前用户所在会议拿到 `meeting_id`，再用 `lark_vc_meeting_events` 读取。具体的状态边界、结束后宽限窗口与错误码（如 `10005 / 20001 / 20002`）请查看 `lark_get_skill(domain="vc-agent", section="meeting-events")`。
 4. **不能做会后复盘**，**不能替代参会人快照查询**。如果会议已结束：
-   - 先用 `lark_vc_notes(meeting_ids="<meeting.id>")` 获取会议产物信息。
-   - 再根据 `note_display_type`、`note_id`、`minute_token` 和用户意图，按 `lark_get_skill(domain="vc")` 的产物决策读取纪要正文、逐字稿或妙记。
+   - 先用 `lark_vc_detail(meeting_ids="<meeting.id>")` 获取会议产物信息。
+   - 再根据 `note_id`、`minute_token` 和用户意图，按 `lark_get_skill(domain="vc")` 的产物决策读取纪要正文、逐字稿或妙记。
    - 想看参会人快照：用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<meeting.id>"}, with_participants: true})`（见 `lark_get_skill(domain="vc")`）
 5. **默认必须使用** `page_all=true`，除非用户明确要求"只查一页"，或确实需要控制返回体大小。
 6. 输出格式默认优先 `format="pretty"`（时间线更易读）；只有在需要完整保留原始消息流与结构化字段时，才使用 `format="json"`。
@@ -85,8 +85,8 @@ lark_vc_meeting_list_active(format="json")
 #    典型间隔 10-30 秒
 lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="pretty")
 
-# 3. 会后可选：进入 lark-vc 获取会议产物信息，再按 note_display_type / minute_token 决策读取
-lark_vc_notes(meeting_ids="<meeting_id>")
+# 3. 会后可选：进入 lark-vc 获取会议产物信息，再按 note_id / minute_token 决策读取
+lark_vc_detail(meeting_ids="<meeting_id>")
 ```
 
 ## 应用身份操作（⚠️ MCP server 不可用）
@@ -137,6 +137,6 @@ Shortcut 是对常用操作的高级封装。
 ## 延伸
 
 - 查已结束会议、参会人快照、搜索历史会议 → `lark_get_skill(domain="vc")`
-- 会议纪要、逐字稿 → `lark_get_skill(domain="vc")` 的 `lark_vc_notes`
+- 会议纪要、逐字稿 → `lark_get_skill(domain="vc")` 的 `lark_vc_detail`
 - 妙记产物（AI 总结 / 转写 / 章节）→ `lark_get_skill(domain="minutes")`
 - 会后把产物发到群 / 私聊 → `lark_get_skill(domain="im")`

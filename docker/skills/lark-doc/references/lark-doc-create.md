@@ -15,10 +15,10 @@
 
 ```
 # 创建 XML 文档（默认格式，推荐）
-lark_docs_create(api_version="v2", content='<title>项目计划</title><h1>目标</h1><p>记录本周重点。</p>')
+lark_docs_create(content='<title>项目计划</title><h1>目标</h1><p>记录本周重点。</p>')
 
 # 仅当用户明确要求导入 Markdown 时才使用；文档标题用 title，正文标题按内容自然组织
-lark_docs_create(api_version="v2", doc_format="markdown", title="项目计划", content='## 目标\n\n- 明确重点\n- 记录待办')
+lark_docs_create(doc_format="markdown", title="项目计划", content='## 目标\n\n- 明确重点\n- 记录待办')
 ```
 
 ## 返回值
@@ -60,7 +60,6 @@ lark_docs_create(api_version="v2", doc_format="markdown", title="项目计划", 
 
 | 参数                  | 必填 | 说明                                          |
 | ------------------- | -- |---------------------------------------------|
-| `api_version`     | 是  | 固定传 `v2`                                    |
 | `title`           | 否  | 文档标题，Markdown 导入时使用；XML 创建推荐在 `content` 开头写 `<title>...</title>`；多个标题仅保留第一个并在 `warnings` / `degrade_details` 提示 |
 | `content`         | 视情况 | 文档内容（XML 或 Markdown 格式）；不传 `content` 时必须传 `title` |
 | `doc_format`      | 否  | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |

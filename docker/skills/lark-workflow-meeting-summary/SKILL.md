@@ -30,7 +30,10 @@ description: "会议纪要整理工作流：汇总指定时间范围内的会议
 {时间范围} ─► lark_vc_search ──► 会议列表 (meeting_ids)
                    │
                    ▼
-               lark_vc_notes ──► 纪要文档 tokens
+               lark_vc_detail ──► 获取 note_id
+                   │
+                   ▼
+               lark_note_detail ──► 纪要文档 tokens
                    │
                    ▼
                lark_invoke(tool_name="lark_drive_metas_batch_query") 纪要元数据
@@ -61,12 +64,16 @@ lark_vc_search(start="<YYYY-MM-DD>", end="<YYYY-MM-DD>", format="json", page_siz
 
 1. 查询会议关联的纪要信息
 ```
-lark_vc_notes(meeting_ids="id1,id2,...,idN")
+# 首先获取 note_id 和 minute_token
+lark_vc_detail(meeting_ids="id1,id2,...,idN")
+
+# 然后用 note_id 获取文档 tokens（如有多个需分别获取）
+lark_note_detail(note_id="note_id")
 ```
-- 根据上一步搜集到的 `meeting-id` 查询会议纪要。
-- 单次最多查询 50 个纪要信息，超过 50 个需分批调用。
-- 部分会议返回 `no notes available`，在最终输出中标注"无纪要"
-- 记录每个会议的 `note_id`（纪要 ID）、`note_display_type`（展示类型：`unknown` / `normal` / `unified`）、`note_doc_token`（纪要文档 Token）和 `verbatim_doc_token`（逐字稿文档 Token）
+- 根据上一步搜集到的 `meeting-id` 查询。
+- 单次最多查询 50 个，超过 50 个需分批调用。
+- 部分会议没有 `note_id` 或报错 `no notes available`，在最终输出中标注"无纪要"。
+- 记录每个纪要的 `note_id`（纪要 ID）、`note_display_type`（展示类型：`unknown` / `normal` / `unified`）、`note_doc_token`（纪要文档 Token）和 `verbatim_doc_token`（逐字稿文档 Token）。
 
 > **逐字稿路由按 `note_display_type` 决定**（详见 `lark_get_skill(domain="vc", section="vc-domain-boundaries")` 的 Note 域）：
 > - `normal`：逐字稿是独立文档，链接/正文走 `verbatim_doc_token`。
@@ -96,14 +103,14 @@ lark_invoke(tool_name="lark_drive_metas_batch_query", args={
 调用 `lark_get_skill(domain="doc")` 学习云文档技能。
 
 ```
-lark_docs_create(api_version="v2", doc_format="markdown", content="<title>会议纪要汇总 (<start> - <end>)</title>\n<内容>")
+lark_docs_create(doc_format="markdown", content="<title>会议纪要汇总 (<start> - <end>)</title>\n<内容>")
 
 # 或追加到已有文档
-lark_docs_update(api_version="v2", doc="<url_or_token>", command="append", doc_format="markdown", content="<内容>")
+lark_docs_update(doc="<url_or_token>", command="append", doc_format="markdown", content="<内容>")
 ```
 
 ## 参考
 
-- `lark_get_skill(domain="vc")` — `lark_vc_search`、`lark_vc_notes` 详细用法
+- `lark_get_skill(domain="vc")` — `lark_vc_search`、`lark_vc_detail` 详细用法
 - `lark_get_skill(domain="note")` — `lark_note_detail`、`lark_note_transcript`（unified 纪要逐字稿）
 - `lark_get_skill(domain="doc")` — `lark_docs_fetch`、`lark_docs_create`、`lark_docs_update` 详细用法

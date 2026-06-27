@@ -34,7 +34,7 @@ lark_minutes_download(minute_tokens="obcnxxxxxxxxxxxxxxxxxxxx,obcnyyyyyyyyyyyyyy
 | `overwrite` | 否 | 覆盖已存在的输出文件 |
 | `url_only` | 否 | 仅返回下载链接，不下载文件 |
 
-> **默认落点**：未指定 `output` / `output_dir` 时，文件落到 `./minutes/{minute_token}/<server-filename>`。文件名沿用服务端 Content-Disposition / Content-Type 推断，Agent 可从 `saved_path` 字段读取实际路径。同一 minute_token 的录像和 `vc +notes` 的逐字稿默认会落在**同一目录**下，方便聚合。
+> **默认落点**：未指定 `output` / `output_dir` 时，文件落到 `./minutes/{minute_token}/<server-filename>`。文件名沿用服务端 Content-Disposition / Content-Type 推断，Agent 可从 `saved_path` 字段读取实际路径。同一 minute_token 的录像和 `lark_minutes_detail` 的逐字稿默认会落在**同一目录**下，方便聚合。
 
 ## 核心约束
 
@@ -76,7 +76,7 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 | 字段 | 说明 |
 |------|------|
 | `minute_token` | 妙记 Token（用于 Agent 索引） |
-| `artifact_type` | 固定为 `"recording"`（与 `vc +notes` 的 `"transcript"` 区分） |
+| `artifact_type` | 固定为 `"recording"`（与 `lark_minutes_detail` 的 `"transcript"` 区分） |
 | `saved_path` | 文件保存的本地路径（绝对路径） |
 | `size_bytes` | 文件大小（字节） |
 
@@ -115,10 +115,10 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 ## 提示
 
 - 音视频文件可能较大，下载无固定超时限制。
-- 默认落点 `./minutes/{minute_token}/` 与 `vc +notes` 的逐字稿共享同一目录，方便 Agent 聚合同一会议的所有产物。
-- 如需获取妙记的纪要内容（逐字稿、AI 总结等），请使用 `lark_get_skill(domain="vc", section="notes")`。
+- 默认落点 `./minutes/{minute_token}/` 与 `lark_minutes_detail` 的逐字稿共享同一目录，方便 Agent 聚合同一会议的所有产物。
+- 如需获取妙记的纪要内容（逐字稿、AI 总结等），请使用 `lark_get_skill(domain="minutes", section="detail")`。
 
 ## 参考
 
 - `lark_get_skill(domain="minutes")` — 妙记全部命令
-- `lark_get_skill(domain="vc", section="notes")` — 会议纪要查询
+- `lark_get_skill(domain="minutes", section="detail")` — 妙记详情与 AI 产物查询

@@ -1,19 +1,17 @@
 ---
 name: lark-doc
-description: "飞书云文档（Docx / Wiki 文档，v2 API）：读取和编辑飞书文档内容。当用户给出文档 URL 或 token，或需要查看、创建、编辑文档、插入或下载文档图片附件时使用。文档中嵌入的电子表格、多维表格、画板，先用本 skill 提取 token 再切到对应 skill。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill；路由依据是 URL 路径模式和 token，而不是域名。不负责文档评论管理，也不负责表格或 Base 的数据操作。"
+description: "飞书云文档（Docx / Wiki 文档）：读取和编辑飞书文档内容。当用户给出文档 URL 或 token，或需要查看、创建、编辑文档、插入或下载文档图片附件时使用。文档中嵌入的电子表格、多维表格、画板，先用本 skill 提取 token 再切到对应 skill。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill；路由依据是 URL 路径模式和 token，而不是域名。不负责文档评论管理，也不负责表格或 Base 的数据操作。"
 ---
 
-# docs (v2)
+# docs
 
 **认证由 MCP server 自动处理，无需手动配置。**
 
-> **CRITICAL — API 版本：本 skill 使用 v2 API。执行 `lark_docs_create`、`lark_docs_fetch`、`lark_docs_update` 时必须显式传入 `api_version="v2"`。**
-
 ```
 # 常用示例
-lark_docs_fetch(api_version="v2", doc="文档URL或token")
-lark_docs_create(api_version="v2", content='<title>标题</title><p>内容</p>')
-lark_docs_update(api_version="v2", doc="文档URL或token", command="append", content='<p>内容</p>')
+lark_docs_fetch(doc="文档URL或token")
+lark_docs_create(content='<title>标题</title><p>内容</p>')
+lark_docs_update(doc="文档URL或token", command="append", content='<p>内容</p>')
 ```
 
 ## 前置条件 — 执行操作前必读
@@ -51,7 +49,7 @@ lark_docs_update(api_version="v2", doc="文档URL或token", command="append", co
 | `<cite type="doc" file-type="sheets" token="..." sheet-id="...">` | 同 `<sheet>` | `lark-sheets` |
 | `<cite type="doc" file-type="bitable" token="..." table-id="...">` | 同 `<bitable>` | `lark-base` |
 | `<vc-transcribe-tab vc-node-id="...">` | `vc-node-id` -> note_id | `lark-note`：先 `lark_note_detail(note_id="<vc-node-id>")` |
-| `<synced_reference src-token="..." src-block-id="...">` | `src-token` -> doc_token, `src-block-id` -> block_id | 用 `lark_docs_fetch(api_version="v2")` 读取 src-token 文档，定位 block |
+| `<synced_reference src-token="..." src-block-id="...">` | `src-token` -> doc_token, `src-block-id` -> block_id | 用 `lark_docs_fetch` 读取 src-token 文档，定位 block |
 
 ## Shortcuts（推荐优先使用）
 

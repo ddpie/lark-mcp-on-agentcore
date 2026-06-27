@@ -10,7 +10,7 @@ description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、
 | 用户需求 | 优先动作 | 关键文档 / 工具 |
 |----------|----------|-----------------|
 | 新建 PPT | 先规划 `slide_plan.json`，再按复杂度选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`lark_slides_create` |
-| 大幅改写页面 | 先回读现有 XML，写入新 plan，再替换或重建相关页面 | `lark_invoke(tool_name="lark_slides_xml_presentations_get")`、`lark_slides_replace_slide`、`lark-slides-edit-workflows.md` |
+| 已有 PPT 大幅改写 | 多页整页重建用 `lark_slides_replace_pages`，单页局部编辑用 `lark_slides_replace_slide` | `lark_invoke(tool_name="lark_slides_xml_presentations_get")`、`lark-slides-replace-pages.md`、`lark-slides-edit-workflows.md` |
 | 编辑单个标题、文本块、图片或局部元素 | 优先块级替换/插入，不改页序 | `lark_slides_replace_slide` |
 | 读取或分析已有 PPT | 解析 slides/wiki token，回读全文或单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `lark_invoke(tool_name="lark_slides_xml_presentations_get")`、`lark_invoke(tool_name="lark_slides_xml_presentation_slide_get")` |
 | 获取幻灯片页面截图 | 用 `slide_id` 或页号指定页面 | `lark_slides_screenshot`、`lark_get_skill(domain="slides", section="screenshot")` |
@@ -32,7 +32,7 @@ description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、
 
 **CRITICAL — 创建前自检或失败排障时，MUST 按 `lark_get_skill(domain="slides", section="troubleshooting")` 检查 XML 转义、结构、图片 token、3350001 和布局风险。**
 
-**编辑已有幻灯片页面**：优先用 `lark_slides_replace_slide`（块级替换/插入，不动页序）；选择 action 和完整读-改-写流程见 `lark_get_skill(domain="slides", section="edit-workflows")`。
+**编辑已有幻灯片页面**：单个标题、文本块、图片或局部元素优先用 `lark_slides_replace_slide`（块级替换/插入，不动页序）；已有 Slides 的多页大改优先用 `lark_slides_replace_pages` 在原 presentation 内批量重建页面，避免 `lark_slides_create` 生成新链接。选择 action 和完整读-改-写流程见 `lark_get_skill(domain="slides", section="edit-workflows")`。
 
 ## 身份选择
 
@@ -53,7 +53,7 @@ description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、
 按需再读：
 
 - 创建：`lark_get_skill(domain="slides", section="create")`
-- 编辑：`lark_get_skill(domain="slides", section="edit-workflows")`、`lark_get_skill(domain="slides", section="replace-slide")`
+- 编辑：`lark_get_skill(domain="slides", section="edit-workflows")`、`lark_get_skill(domain="slides", section="replace-slide")`、`lark_get_skill(domain="slides", section="replace-pages")`
 - 截图：`lark_get_skill(domain="slides", section="screenshot")`
 - 图片：`lark_get_skill(domain="slides", section="media-upload")`
 - 流程图 / 时序图 / 架构图 / 装饰图案：`lark_get_skill(domain="slides", section="whiteboard")`
@@ -99,6 +99,7 @@ lark_invoke(tool_name="lark_wiki_spaces_get_node", args={params: {"token": "wiki
 | `lark_get_skill(domain="slides", section="create")` | 创建 PPT（可选 `slides` 一步添加页面，支持 `<img src="@./local.png">` 占位符自动上传） |
 | `lark_get_skill(domain="slides", section="media-upload")` | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
 | `lark_get_skill(domain="slides", section="replace-slide")` | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
+| `lark_get_skill(domain="slides", section="replace-pages")` | 在原演示文稿内批量重建多个页面：先创建新页到旧页前，再删除旧页；适合已有 Slides 的多页大改，不新建链接 |
 
 ```
 lark_discover(query="slides.xml_presentations.get")   # 调用 API 前必须先查看参数结构
@@ -115,5 +116,5 @@ lark_invoke(tool_name="lark_slides_xml_presentations_get", args={params: {"xml_p
 4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内
 5. **保存关键 ID**：后续操作需要 `xml_presentation_id`、`slide_id`、`revision_id`
 6. **删除谨慎**：删除操作不可逆，且至少保留一页幻灯片
-7. **编辑已有页面优先块级替换**：修改单个 shape/img 用 `lark_slides_replace_slide`（`block_replace` / `block_insert`），不要整页重建
+7. **编辑已有页面优先原链接更新**：修改单个 shape/img 用 `lark_slides_replace_slide`（`block_replace` / `block_insert`），不要整页重建；已有 Slides 的多页整页重建用 `lark_slides_replace_pages`，不要用 `lark_slides_create` 新建整份 PPT；只有没有 shortcut 覆盖的特殊单页整页操作才手动 `lark_invoke(tool_name="lark_slides_xml_presentation_slide_create")` + `lark_invoke(tool_name="lark_slides_xml_presentation_slide_delete")`
 8. **`<img src>` 只能用上传到飞书 drive 的 `file_token`，禁止使用 http(s) 外链 URL**

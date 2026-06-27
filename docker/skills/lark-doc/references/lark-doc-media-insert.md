@@ -48,7 +48,7 @@ lark_docs_media_insert(doc="doxcnXXX", from_clipboard=true)
 
 # 从本地文件插入
 # 除了上传本地文件，还可以在 lark_docs_update 时直接通过网络 URL 插入图片，无需先下载到本地：
-lark_docs_update(api_version="v2", doc="<doc_id>", command="block_insert_after", block_id="目标 block_id", content='<img href="https://example.com/photo.png"/>')
+lark_docs_update(doc="<doc_id>", command="block_insert_after", block_id="目标 block_id", content='<img href="https://example.com/photo.png"/>')
 
 # 插入图片（默认）
 lark_docs_media_insert(doc="doxcnXXX", file="./image.png")
