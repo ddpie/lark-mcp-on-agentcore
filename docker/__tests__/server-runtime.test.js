@@ -22,6 +22,8 @@ import Module from 'node:module';
 // before importing server.js (read at module load).
 process.env.MAX_CONCURRENT = '1';
 process.env.MAX_QUEUE_DEPTH = '20';
+// Needed for patchPermissionError to mint authorize_url in the R8 tests below.
+process.env.AUTHORIZE_BASE = 'https://auth.example.test';
 // Bind a port distinct from mcp-contract.test.js's 8000. Both files import the
 // side-effectful server.js (which calls server.listen); a shared vitest worker
 // would otherwise collide on the same port. server.js reads process.env.PORT.
@@ -46,7 +48,9 @@ const FAKE_TOOL_DEF_DELETE = {
 // One raw API for lark_invoke paths: a high-risk-write delete (confirmation gate)
 // that doubles as the JSON-validation target via its params/data flags.
 const FAKE_RAW_DELETE = { service: 'drive', resource: 'file', method: 'delete', description: 'Delete a drive file', risk: 'high-risk-write', supportsYes: true };
-const FAKE_CATALOG = { _larkCliVersion: 'test', _scopeMapVersion: 'test', tools: [FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DELETE], rawApis: [FAKE_RAW_DELETE] };
+// A read-risk raw API (no confirmation gate) for exercising the permission path.
+const FAKE_RAW_READ = { service: 'contact', resource: 'user_profiles', method: 'batch_query', description: 'Bulk fetch profiles', risk: 'read' };
+const FAKE_CATALOG = { _larkCliVersion: 'test', _scopeMapVersion: 'test', tools: [FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DELETE], rawApis: [FAKE_RAW_DELETE, FAKE_RAW_READ] };
 const FAKE_TIER1 = ['lark_calendar_agenda', 'lark_base_delete_table'];
 
 // Controllable child_process mock. Each test sets `execFileBehavior` to steer
@@ -100,6 +104,9 @@ Module._load = function (request) {
           // Node sets BOTH name=AbortError and killed=true when a signal aborts.
           const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError', killed: true });
           setTimeout(() => cb(err, '', ''), 0);
+        } else if (b.mode === 'stdout') {
+          // Inject arbitrary lark-cli stdout (e.g. a permission-error envelope).
+          setTimeout(() => cb(null, b.stdout ?? OK_STDOUT, ''), 0);
         } else {
           setTimeout(() => cb(null, OK_STDOUT, ''), 0);
         }
@@ -323,5 +330,61 @@ describe('R7: raw-API params/data JSON is validated before spawning lark-cli', (
     execFileBehavior = { mode: 'instant' };
     const r = await callTool('lark_invoke', { tool_name: 'lark_drive_file_delete', args: { _confirm: true, params: '{"file_type":"docx"}', data: '{"k":1}' } }, 72);
     expect(r.data?.result?.isError).toBeUndefined();
+  });
+});
+
+describe('R8: missing-scope responses carry an authorize_url and are non-error', () => {
+  // Regression: a missing-scope error is patched to include authorize_url +
+  // user_action, but was returned with isError:true — lenient clients (Quick
+  // Suite) then swallow the link as a generic "unknown error". A grantable scope
+  // is "needs authorization" (normal control flow), not a tool failure.
+  const textOf = r => r.data?.result?.content?.[0]?.text ?? '';
+
+  it('typed missing_scope → isError:false + authorize_url the client can show', async () => {
+    execFileBehavior = { mode: 'stdout', stdout: JSON.stringify({
+      ok: false,
+      error: { type: 'authorization', subtype: 'missing_scope',
+        message: 'unauthorized: required scope(s): profile:user_profile:read',
+        missing_scopes: ['profile:user_profile:read'] },
+    }) };
+    const r = await callTool('lark_calendar_agenda', {}, 80);
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.error.authorize_url).toContain('profile%3Auser_profile%3Aread');
+    expect(p.error.required_scopes).toContain('profile:user_profile:read');
+  });
+
+  it('same fix on the raw-API (lark_invoke) path', async () => {
+    execFileBehavior = { mode: 'stdout', stdout: JSON.stringify({
+      ok: false,
+      error: { type: 'authorization', subtype: 'missing_scope',
+        message: 'unauthorized: required scope(s): profile:user_profile:read',
+        missing_scopes: ['profile:user_profile:read'] },
+    }) };
+    const r = await callTool('lark_invoke', { tool_name: 'lark_contact_user_profiles_batch_query', args: { data: '{"user_ids":["ou_x"]}' } }, 81);
+    expect(r.data?.result?.isError).toBe(false);
+    expect(JSON.parse(textOf(r)).error.authorize_url).toContain('profile%3Auser_profile%3Aread');
+  });
+
+  it('missing scope that cannot be determined → no link, stays isError:true', async () => {
+    // permission error code but no missing_scopes / console_url / extractable
+    // message → only the "contact the admin" fallback; that IS a dead end.
+    execFileBehavior = { mode: 'stdout', stdout: JSON.stringify({
+      error: { code: 99991679, message: 'Permission denied' },
+    }) };
+    const r = await callTool('lark_calendar_agenda', {}, 82);
+    expect(r.data?.result?.isError).toBe(true);
+    const p = JSON.parse(textOf(r));
+    expect(p.error.authorize_url).toBeUndefined();
+    expect(p.error.user_action).toContain('admin');
+  });
+
+  it('genuine auth failure (token expired) stays isError:true → reconnect', async () => {
+    execFileBehavior = { mode: 'stdout', stdout: JSON.stringify({
+      error: { type: 'auth', message: 'token is expired' },
+    }) };
+    const r = await callTool('lark_calendar_agenda', {}, 83);
+    expect(r.data?.result?.isError).toBe(true);
+    expect(JSON.parse(textOf(r)).error.user_action).toContain('reconnect');
   });
 });

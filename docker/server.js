@@ -276,6 +276,18 @@ const findByName = (name) => findByNameLib(catalogIndex, name);
 const patchPermissionError = (output, toolName, incrAuthToken) =>
   patchPermissionErrorLib(toolScopeMap, AUTHORIZE_BASE, output, toolName, incrAuthToken);
 
+// Wrap a patched permission response. When the patch produced an actionable
+// authorize_url, this is "needs authorization" — normal control flow asking the
+// user to grant a scope, NOT a tool failure. Return isError:false so lenient
+// MCP clients (e.g. Quick Suite) render the link instead of swallowing it as a
+// generic "unknown error". Without authorize_url the patch only added the
+// "contact the admin" fallback — that IS a dead end, keep isError:true.
+function permissionResult(patched) {
+  let hasAuthUrl = false;
+  try { hasAuthUrl = !!JSON.parse(patched).error?.authorize_url; } catch {}
+  return { content: [{ type: 'text', text: patched }], isError: !hasAuthUrl };
+}
+
 function buildReauthResponse(_incrAuthToken) {
   return JSON.stringify({
     ok: false,
@@ -369,7 +381,7 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     const output = stdout.trim() || '{"ok":true,"data":null}';
     const patched = patchPermissionError(output, toolName, incrAuthToken);
     if (patched !== output) {
-      return { content: [{ type: 'text', text: patched }], isError: true };
+      return permissionResult(patched);
     }
     if (isAuthError(output)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
@@ -395,7 +407,7 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     const message = extractJson(raw) || raw;
     const patchedErr = patchPermissionError(message, toolName, incrAuthToken);
     if (patchedErr !== message) {
-      return { content: [{ type: 'text', text: patchedErr }], isError: true };
+      return permissionResult(patchedErr);
     }
     if (isAuthError(message)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
@@ -487,7 +499,7 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
     const output = stdout.trim() || '{"ok":true,"data":null}';
     const patched = patchPermissionError(output, toolName, incrAuthToken);
     if (patched !== output) {
-      return { content: [{ type: 'text', text: patched }], isError: true };
+      return permissionResult(patched);
     }
     if (isAuthError(output)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
@@ -510,7 +522,7 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
     const message = extractJson(raw) || raw;
     const patchedErr = patchPermissionError(message, toolName, incrAuthToken);
     if (patchedErr !== message) {
-      return { content: [{ type: 'text', text: patchedErr }], isError: true };
+      return permissionResult(patchedErr);
     }
     if (isAuthError(message)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
