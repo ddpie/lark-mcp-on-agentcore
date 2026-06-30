@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.59",
+    "lark_cli_version": "1.0.60",
     "source": "lark-cli schema _meta.scopes"
   },
   "rawApis": [
