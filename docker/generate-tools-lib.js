@@ -94,13 +94,25 @@ function parseShortcuts(helpText, knownNoPlus = new Set()) {
   return shortcuts;
 }
 
+// Section headers of the per-command "affordance" guidance block that lark-cli
+// (since 1.0.60) renders INTO `--help` output, below the authoritative `Risk:`
+// line. Its free prose ("unlike risk: write commands…", "Avoid when … this is
+// destructive") would poison a naive whole-text substring scan, so risk
+// detection must ignore it: match the Risk line at line-start, and apply the
+// keyword fallback only to the text ABOVE the first affordance header.
+const AFFORDANCE_SECTION_RE = /\n(?=(?:When to use|Avoid when|Prerequisites|Tips|Examples):)/;
+
 function detectRisk(helpText, commandName) {
-  const lower = helpText.toLowerCase();
-  // Prefer explicit "Risk:" line from lark-cli help output
-  if (lower.includes('risk: high-risk-write')) return 'high-risk-write';
-  if (lower.includes('risk: write')) return 'write';
-  if (lower.includes('risk: read')) return 'read';
-  // Fallback: heuristics from command name
+  // Authoritative signal: lark-cli emits a `Risk:` line per command. Anchor to
+  // line-start and return on first hit so affordance prose that merely *mentions*
+  // "risk: write" cannot override (or downgrade) the real classification.
+  for (const line of helpText.split('\n')) {
+    const m = line.match(/^\s*Risk:\s*(high-risk-write|write|read)\b/i);
+    if (m) return m[1].toLowerCase();
+  }
+  // Fallback (no Risk line): name/keyword heuristics, scanning only the text
+  // before the affordance block so its prose can't trip the `destructive` keyword.
+  const lower = helpText.split(AFFORDANCE_SECTION_RE)[0].toLowerCase();
   if (lower.includes('destructive') || commandName.includes('delete') || commandName.includes('remove')) return 'high-risk-write';
   if (commandName.includes('create') || commandName.includes('send') || commandName.includes('update') || commandName.includes('patch')) return 'write';
   return 'read';

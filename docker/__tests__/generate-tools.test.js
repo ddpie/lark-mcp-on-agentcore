@@ -51,6 +51,69 @@ describe('detectRisk', () => {
     expect(detectRisk('risk: HIGH-RISK-WRITE', '+foo')).toBe('high-risk-write');
   });
 
+  // Regression: lark-cli >=1.0.60 renders a per-command "affordance" guidance
+  // block (When to use / Avoid when / Tips / Examples) INTO --help, below the
+  // Risk line. Its free prose must NOT poison risk detection — a whole-text
+  // substring scan misclassified all of these.
+  describe('affordance block does not poison risk detection', () => {
+    it('keeps authoritative read when Tips prose mentions "risk: write"', () => {
+      const help = [
+        'Bulk-fetch user status.',
+        '',
+        'Risk: read',
+        '',
+        'When to use:',
+        '  • Bulk-fetch status for ids you already have.',
+        '',
+        'Tips:',
+        '  • unlike risk: write commands, this never mutates state',
+      ].join('\n');
+      expect(detectRisk(help, 'batch_query')).toBe('read');
+    });
+
+    it('keeps authoritative read when "Avoid when" prose mentions "destructive"', () => {
+      const help = [
+        'Read something.',
+        '',
+        'Risk: read',
+        '',
+        'Avoid when:',
+        '  • This is not destructive; to delete use [[xxx delete]]',
+      ].join('\n');
+      expect(detectRisk(help, 'get')).toBe('read');
+    });
+
+    it('does not downgrade authoritative high-risk-write when Tips mention "risk: read"', () => {
+      const help = [
+        'Delete a resource permanently.',
+        '',
+        'Risk: high-risk-write',
+        '',
+        'Tips:',
+        '  • safer than a risk: read preview — double-check the id first',
+      ].join('\n');
+      expect(detectRisk(help, 'remove_thing')).toBe('high-risk-write');
+    });
+
+    it('keyword fallback ignores affordance prose when no Risk line', () => {
+      // No authoritative Risk line; "destructive" only appears inside the
+      // affordance block, so the read-shaped command must stay read.
+      const help = [
+        'List the items.',
+        '',
+        'Avoid when:',
+        '  • Bulk destructive cleanup → use [[items purge]]',
+      ].join('\n');
+      expect(detectRisk(help, '+list-items')).toBe('read');
+    });
+
+    it('keyword fallback still fires for "destructive" in the real description', () => {
+      // Above any affordance header → genuine signal, must still escalate.
+      const help = 'This is a destructive operation that wipes the table.\n\nTips:\n  • irreversible';
+      expect(detectRisk(help, '+some-cmd')).toBe('high-risk-write');
+    });
+  });
+
   // Regression: these were previously misdetected as "read"
   it('correctly detects write for drive +upload', () => {
     const help = 'Upload a local file to Drive\n\nUsage:\n  lark-cli drive +upload [flags]\n\nFlags:\n      --file string\n\nRisk: write';
