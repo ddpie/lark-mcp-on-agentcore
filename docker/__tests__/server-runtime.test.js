@@ -22,6 +22,8 @@ import Module from 'node:module';
 // before importing server.js (read at module load).
 process.env.MAX_CONCURRENT = '1';
 process.env.MAX_QUEUE_DEPTH = '20';
+// Needed for patchPermissionError to mint authorize_url in the R8 tests below.
+process.env.AUTHORIZE_BASE = 'https://auth.example.test';
 // Bind a port distinct from mcp-contract.test.js's 8000. Both files import the
 // side-effectful server.js (which calls server.listen); a shared vitest worker
 // would otherwise collide on the same port. server.js reads process.env.PORT.
@@ -35,8 +37,21 @@ const FAKE_TOOL_DEF_READ = {
   risk: 'read',
   flags: [{ name: 'days', type: 'number', description: 'Number of days', required: false }],
 };
-const FAKE_CATALOG = { _larkCliVersion: 'test', _scopeMapVersion: 'test', tools: [FAKE_TOOL_DEF_READ] };
-const FAKE_TIER1 = ['lark_calendar_agenda'];
+const FAKE_TOOL_DEF_DELETE = {
+  service: 'base',
+  command: '+delete-table',
+  description: 'Delete a table',
+  risk: 'high-risk-write',
+  supportsYes: true,
+  flags: [{ name: 'table-id', type: 'string', description: 'Table id', required: true }],
+};
+// One raw API for lark_invoke paths: a high-risk-write delete (confirmation gate)
+// that doubles as the JSON-validation target via its params/data flags.
+const FAKE_RAW_DELETE = { service: 'drive', resource: 'file', method: 'delete', description: 'Delete a drive file', risk: 'high-risk-write', supportsYes: true };
+// A read-risk raw API (no confirmation gate) for exercising the permission path.
+const FAKE_RAW_READ = { service: 'contact', resource: 'user_profiles', method: 'batch_query', description: 'Bulk fetch profiles', risk: 'read' };
+const FAKE_CATALOG = { _larkCliVersion: 'test', _scopeMapVersion: 'test', tools: [FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DELETE], rawApis: [FAKE_RAW_DELETE, FAKE_RAW_READ] };
+const FAKE_TIER1 = ['lark_calendar_agenda', 'lark_base_delete_table'];
 
 // Controllable child_process mock. Each test sets `execFileBehavior` to steer
 // how the next lark-cli call resolves.
@@ -89,6 +104,9 @@ Module._load = function (request) {
           // Node sets BOTH name=AbortError and killed=true when a signal aborts.
           const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError', killed: true });
           setTimeout(() => cb(err, '', ''), 0);
+        } else if (b.mode === 'stdout') {
+          // Inject arbitrary lark-cli stdout (e.g. a permission-error envelope).
+          setTimeout(() => cb(null, b.stdout ?? OK_STDOUT, ''), 0);
         } else {
           setTimeout(() => cb(null, OK_STDOUT, ''), 0);
         }
@@ -250,5 +268,136 @@ describe('R5: execFile is abortable and its timeout aligns under the Lambda', ()
     const elapsed = Date.now() - t0;
     expect(after.data?.result?.isError).toBeUndefined();
     expect(elapsed).toBeLessThan(2000);
+  });
+});
+
+describe('R6: confirmation gate is a non-error control-flow result', () => {
+  // Regression: the gate used isError:true, so lenient MCP clients dropped the
+  // content and showed a generic "unknown error" instead of the approval prompt.
+  const textOf = r => r.data?.result?.content?.[0]?.text ?? '';
+
+  it('tier1 high-risk-write without _confirm: isError:false + user_approval_required', async () => {
+    execFileBehavior = { mode: 'instant' };
+    const r = await callTool('lark_base_delete_table', { table_id: 'tbl_1' }, 60);
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.status).toBe('user_approval_required');
+    expect(p.message).toContain('confirm');
+  });
+
+  it('raw-API high-risk-write without _confirm: isError:false + user_approval_required', async () => {
+    execFileBehavior = { mode: 'instant' };
+    const r = await callTool('lark_invoke', { tool_name: 'lark_drive_file_delete', args: { params: '{"file_type":"docx"}' } }, 61);
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.status).toBe('user_approval_required');
+  });
+
+  it('the gate actually blocks: lark-cli is never spawned without _confirm', async () => {
+    // mode:'fail' would surface a CLI error; the gate must short-circuit before that.
+    execFileBehavior = { mode: 'instant' };
+    const r = await callTool('lark_base_delete_table', { table_id: 'tbl_1' }, 62);
+    expect(JSON.parse(textOf(r)).status).toBe('user_approval_required');
+    // with _confirm it proceeds to (mocked) execution — proving the gate was the only blocker
+    const ok = await callTool('lark_base_delete_table', { table_id: 'tbl_1', _confirm: true }, 63);
+    expect(ok.data?.result?.isError).toBeUndefined();
+  });
+});
+
+describe('R7: raw-API params/data JSON is validated before spawning lark-cli', () => {
+  const textOf = r => r.data?.result?.content?.[0]?.text ?? '';
+
+  it('rejects a non-JSON params string with a clear invalid_json error', async () => {
+    execFileBehavior = { mode: 'instant' };
+    // The real-world mistake: params="user_id_type=open_id" (key=value, not JSON).
+    // Use a read-risk-free raw tool path by confirming the delete so the gate is passed,
+    // then the JSON guard must still fire BEFORE execution.
+    const r = await callTool('lark_invoke', { tool_name: 'lark_drive_file_delete', args: { _confirm: true, params: 'file_type=docx' } }, 70);
+    // isError:false — a malformed arg is self-correctable, so lenient clients must
+    // see the hint instead of swallowing it as "unknown error".
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.error).toBe('invalid_json');
+    expect(p.field).toBe('params');
+  });
+
+  it('rejects a non-JSON data string', async () => {
+    execFileBehavior = { mode: 'instant' };
+    const r = await callTool('lark_invoke', { tool_name: 'lark_drive_file_delete', args: { _confirm: true, data: 'not json' } }, 71);
+    expect(r.data?.result?.isError).toBe(false);
+    expect(JSON.parse(textOf(r)).field).toBe('data');
+  });
+
+  it('accepts valid JSON params/data and proceeds to execution', async () => {
+    execFileBehavior = { mode: 'instant' };
+    const r = await callTool('lark_invoke', { tool_name: 'lark_drive_file_delete', args: { _confirm: true, params: '{"file_type":"docx"}', data: '{"k":1}' } }, 72);
+    expect(r.data?.result?.isError).toBeUndefined();
+  });
+
+  it('unknown tool_name → isError:false + discover hint (self-correctable)', async () => {
+    // Real case: caller typed lark_sheets_delete_sheet (real name is _sheet_delete).
+    // The discover hint must reach the client, not be hidden as "unknown error".
+    execFileBehavior = { mode: 'instant' };
+    const r = await callTool('lark_invoke', { tool_name: 'lark_sheets_delete_sheet', args: {} }, 73);
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.error).toBe('unknown_tool');
+    expect(p.hint).toContain('lark_discover');
+  });
+});
+
+describe('R8: missing-scope responses carry an authorize_url and are non-error', () => {
+  // Regression: a missing-scope error is patched to include authorize_url +
+  // user_action, but was returned with isError:true — lenient clients (Quick
+  // Suite) then swallow the link as a generic "unknown error". A grantable scope
+  // is "needs authorization" (normal control flow), not a tool failure.
+  const textOf = r => r.data?.result?.content?.[0]?.text ?? '';
+
+  it('typed missing_scope → isError:false + authorize_url the client can show', async () => {
+    execFileBehavior = { mode: 'stdout', stdout: JSON.stringify({
+      ok: false,
+      error: { type: 'authorization', subtype: 'missing_scope',
+        message: 'unauthorized: required scope(s): profile:user_profile:read',
+        missing_scopes: ['profile:user_profile:read'] },
+    }) };
+    const r = await callTool('lark_calendar_agenda', {}, 80);
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.error.authorize_url).toContain('profile%3Auser_profile%3Aread');
+    expect(p.error.required_scopes).toContain('profile:user_profile:read');
+  });
+
+  it('same fix on the raw-API (lark_invoke) path', async () => {
+    execFileBehavior = { mode: 'stdout', stdout: JSON.stringify({
+      ok: false,
+      error: { type: 'authorization', subtype: 'missing_scope',
+        message: 'unauthorized: required scope(s): profile:user_profile:read',
+        missing_scopes: ['profile:user_profile:read'] },
+    }) };
+    const r = await callTool('lark_invoke', { tool_name: 'lark_contact_user_profiles_batch_query', args: { data: '{"user_ids":["ou_x"]}' } }, 81);
+    expect(r.data?.result?.isError).toBe(false);
+    expect(JSON.parse(textOf(r)).error.authorize_url).toContain('profile%3Auser_profile%3Aread');
+  });
+
+  it('missing scope that cannot be determined → no link, stays isError:true', async () => {
+    // permission error code but no missing_scopes / console_url / extractable
+    // message → only the "contact the admin" fallback; that IS a dead end.
+    execFileBehavior = { mode: 'stdout', stdout: JSON.stringify({
+      error: { code: 99991679, message: 'Permission denied' },
+    }) };
+    const r = await callTool('lark_calendar_agenda', {}, 82);
+    expect(r.data?.result?.isError).toBe(true);
+    const p = JSON.parse(textOf(r));
+    expect(p.error.authorize_url).toBeUndefined();
+    expect(p.error.user_action).toContain('admin');
+  });
+
+  it('genuine auth failure (token expired) stays isError:true → reconnect', async () => {
+    execFileBehavior = { mode: 'stdout', stdout: JSON.stringify({
+      error: { type: 'auth', message: 'token is expired' },
+    }) };
+    const r = await callTool('lark_calendar_agenda', {}, 83);
+    expect(r.data?.result?.isError).toBe(true);
+    expect(JSON.parse(textOf(r)).error.user_action).toContain('reconnect');
   });
 });

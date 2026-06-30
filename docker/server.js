@@ -276,6 +276,18 @@ const findByName = (name) => findByNameLib(catalogIndex, name);
 const patchPermissionError = (output, toolName, incrAuthToken) =>
   patchPermissionErrorLib(toolScopeMap, AUTHORIZE_BASE, output, toolName, incrAuthToken);
 
+// Wrap a patched permission response. When the patch produced an actionable
+// authorize_url, this is "needs authorization" — normal control flow asking the
+// user to grant a scope, NOT a tool failure. Return isError:false so lenient
+// MCP clients (e.g. Quick Suite) render the link instead of swallowing it as a
+// generic "unknown error". Without authorize_url the patch only added the
+// "contact the admin" fallback — that IS a dead end, keep isError:true.
+function permissionResult(patched) {
+  let hasAuthUrl = false;
+  try { hasAuthUrl = !!JSON.parse(patched).error?.authorize_url; } catch {}
+  return { content: [{ type: 'text', text: patched }], isError: !hasAuthUrl };
+}
+
 function buildReauthResponse(_incrAuthToken) {
   return JSON.stringify({
     ok: false,
@@ -318,14 +330,18 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
   // spec-compliant MCP client will pop a confirmation UI. _confirm is layered
   // defense for clients that ignore annotations.
   if (def.risk === 'high-risk-write' && args._confirm !== true) {
+    // NOT isError: this is a normal control-flow result ("stop and ask the
+    // user"), not a tool failure. Flagging it isError:true makes lenient MCP
+    // clients drop the content and render a generic "unknown error", hiding the
+    // very instruction the agent needs to act on.
     return {
       content: [{ type: 'text', text: JSON.stringify({
-        error: 'user_approval_required',
+        status: 'user_approval_required',
         message: 'This is a destructive operation. STOP. Ask the user to confirm in plain language (describe exactly what will be deleted/modified). Only after the user explicitly approves, re-call this tool with args._confirm=true. Do NOT silently retry.',
         tool: toolName,
         risk: def.risk,
       }) }],
-      isError: true,
+      isError: false,
     };
   }
 
@@ -365,7 +381,7 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     const output = stdout.trim() || '{"ok":true,"data":null}';
     const patched = patchPermissionError(output, toolName, incrAuthToken);
     if (patched !== output) {
-      return { content: [{ type: 'text', text: patched }], isError: true };
+      return permissionResult(patched);
     }
     if (isAuthError(output)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
@@ -391,7 +407,7 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     const message = extractJson(raw) || raw;
     const patchedErr = patchPermissionError(message, toolName, incrAuthToken);
     if (patchedErr !== message) {
-      return { content: [{ type: 'text', text: patchedErr }], isError: true };
+      return permissionResult(patchedErr);
     }
     if (isAuthError(message)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
@@ -405,19 +421,51 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
 async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSignal) {
   const entry = rawApiMap.get(toolName);
   if (!entry) {
-    return { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool', tool_name: toolName, hint: 'Use lark_discover(query) to find valid tool names.' }) }], isError: true };
+    // NOT isError: a wrong tool name is self-correctable (call lark_discover for
+    // the right one). isError:true makes lenient clients hide the hint behind a
+    // generic "unknown error", so the agent retries blindly instead of fixing it.
+    return { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool', tool_name: toolName, hint: 'Use lark_discover(query) to find valid tool names.' }) }], isError: false };
   }
 
   if (entry.risk === 'high-risk-write' && args._confirm !== true) {
+    // NOT isError (see executeTool): a confirmation prompt is normal control
+    // flow, not a failure — isError:true makes lenient clients hide the message.
     return {
       content: [{ type: 'text', text: JSON.stringify({
-        error: 'user_approval_required',
+        status: 'user_approval_required',
         message: 'This is a destructive operation. STOP. Ask the user to confirm in plain language. Only after explicit approval, re-call with args._confirm=true.',
         tool: toolName,
         risk: entry.risk,
       }) }],
-      isError: true,
+      isError: false,
     };
+  }
+
+  // Validate --params / --data JSON BEFORE spawning lark-cli. These flags are
+  // raw JSON (lark-cli: "Raw URL/query params JSON" / "JSON request body"). A
+  // non-JSON string (e.g. params="user_id_type=open_id") would otherwise be
+  // passed through verbatim and fail deep inside lark-cli with an opaque error
+  // the client surfaces as "unknown error" — wasting the agent's debugging on a
+  // self-correctable input mistake.
+  for (const field of ['params', 'data']) {
+    if (typeof args[field] === 'string' && args[field].trim() !== '') {
+      try {
+        JSON.parse(args[field]);
+      } catch {
+        // NOT isError: a malformed JSON arg is self-correctable (the message
+        // states the right shape). isError:true makes lenient clients hide it
+        // behind a generic "unknown error", defeating the whole point of the hint.
+        return {
+          content: [{ type: 'text', text: JSON.stringify({
+            error: 'invalid_json',
+            message: `args.${field} must be a JSON object (or a JSON string), not a raw "key=value" string. Example: ${field}={"user_id_type":"open_id"}.`,
+            field,
+            tool: toolName,
+          }) }],
+          isError: false,
+        };
+      }
+    }
   }
 
   const cliArgs = [entry.service, entry.resource, entry.method];
@@ -457,7 +505,7 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
     const output = stdout.trim() || '{"ok":true,"data":null}';
     const patched = patchPermissionError(output, toolName, incrAuthToken);
     if (patched !== output) {
-      return { content: [{ type: 'text', text: patched }], isError: true };
+      return permissionResult(patched);
     }
     if (isAuthError(output)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
@@ -480,7 +528,7 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
     const message = extractJson(raw) || raw;
     const patchedErr = patchPermissionError(message, toolName, incrAuthToken);
     if (patchedErr !== message) {
-      return { content: [{ type: 'text', text: patchedErr }], isError: true };
+      return permissionResult(patchedErr);
     }
     if (isAuthError(message)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };

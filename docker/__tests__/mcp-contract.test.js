@@ -382,17 +382,22 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       }
     });
 
-    it('returns result.isError:true for error conditions (destructive without confirm)', async () => {
+    it('destructive without confirm returns a non-error approval prompt', async () => {
+      // user_approval_required is normal control flow, NOT a tool failure:
+      // isError:false so lenient clients render the prompt instead of swallowing
+      // it as a generic "unknown error".
       const { body } = await sendMcpRequest('tools/call', {
         name: 'lark_base_delete_table',
         arguments: { app_token: 'base123', table_id: 'tbl456' },
       }, 22, { 'x-user-access-token': 'fake-token' });
       const { data } = parseSSE(body);
 
-      expect(data.result.isError).toBe(true);
+      expect(data.result.isError).toBe(false);
       expect(Array.isArray(data.result.content)).toBe(true);
       expect(data.result.content[0].type).toBe('text');
-      expect(typeof data.result.content[0].text).toBe('string');
+      const payload = JSON.parse(data.result.content[0].text);
+      expect(payload.status).toBe('user_approval_required');
+      expect(payload.message).toContain('confirm');
     });
 
     it('returns isError:true with content blocks when no user token', async () => {

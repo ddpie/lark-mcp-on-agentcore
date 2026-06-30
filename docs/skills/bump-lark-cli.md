@@ -325,6 +325,13 @@ Include all changed files:
   to upstream.
 - [ ] Removed-upstream skills deleted: `comm -13 <(ls -1 /tmp/lark-cli-$NEW_VER/skills | sort) <(ls -1 docker/skills | sort)` prints nothing (no orphan adapted dirs)
 - [ ] No remaining references to old version (`grep -r "OLD_VERSION" --include="*.json" --include="Dockerfile*"`)
+- [ ] **Affordance unchanged or still unpolluted** — lark-cli >=1.0.60 renders per-command
+  "affordance" guidance into `--help`, which `generate-tools.js` parses. If
+  `git diff --no-index /tmp/lark-cli-$OLD_VER/affordance /tmp/lark-cli-$NEW_VER/affordance`
+  shows new/changed `*.md`, confirm the generated catalog's `risk`/`flags` aren't poisoned by
+  that prose. `detectRisk` (anchored `Risk:` line + affordance-aware keyword fallback) and
+  `parseFlags` are covered by the "affordance block does not poison risk detection" tests in
+  `docker/__tests__/generate-tools.test.js` — extend them if a new affordance shape appears.
 
 ## MCP Skill Tools
 
