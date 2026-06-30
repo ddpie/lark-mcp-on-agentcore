@@ -421,7 +421,10 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
 async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSignal) {
   const entry = rawApiMap.get(toolName);
   if (!entry) {
-    return { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool', tool_name: toolName, hint: 'Use lark_discover(query) to find valid tool names.' }) }], isError: true };
+    // NOT isError: a wrong tool name is self-correctable (call lark_discover for
+    // the right one). isError:true makes lenient clients hide the hint behind a
+    // generic "unknown error", so the agent retries blindly instead of fixing it.
+    return { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_tool', tool_name: toolName, hint: 'Use lark_discover(query) to find valid tool names.' }) }], isError: false };
   }
 
   if (entry.risk === 'high-risk-write' && args._confirm !== true) {
@@ -449,6 +452,9 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
       try {
         JSON.parse(args[field]);
       } catch {
+        // NOT isError: a malformed JSON arg is self-correctable (the message
+        // states the right shape). isError:true makes lenient clients hide it
+        // behind a generic "unknown error", defeating the whole point of the hint.
         return {
           content: [{ type: 'text', text: JSON.stringify({
             error: 'invalid_json',
@@ -456,7 +462,7 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
             field,
             tool: toolName,
           }) }],
-          isError: true,
+          isError: false,
         };
       }
     }

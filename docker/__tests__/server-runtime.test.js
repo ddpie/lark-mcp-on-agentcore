@@ -313,7 +313,9 @@ describe('R7: raw-API params/data JSON is validated before spawning lark-cli', (
     // Use a read-risk-free raw tool path by confirming the delete so the gate is passed,
     // then the JSON guard must still fire BEFORE execution.
     const r = await callTool('lark_invoke', { tool_name: 'lark_drive_file_delete', args: { _confirm: true, params: 'file_type=docx' } }, 70);
-    expect(r.data?.result?.isError).toBe(true);
+    // isError:false — a malformed arg is self-correctable, so lenient clients must
+    // see the hint instead of swallowing it as "unknown error".
+    expect(r.data?.result?.isError).toBe(false);
     const p = JSON.parse(textOf(r));
     expect(p.error).toBe('invalid_json');
     expect(p.field).toBe('params');
@@ -322,7 +324,7 @@ describe('R7: raw-API params/data JSON is validated before spawning lark-cli', (
   it('rejects a non-JSON data string', async () => {
     execFileBehavior = { mode: 'instant' };
     const r = await callTool('lark_invoke', { tool_name: 'lark_drive_file_delete', args: { _confirm: true, data: 'not json' } }, 71);
-    expect(r.data?.result?.isError).toBe(true);
+    expect(r.data?.result?.isError).toBe(false);
     expect(JSON.parse(textOf(r)).field).toBe('data');
   });
 
@@ -330,6 +332,17 @@ describe('R7: raw-API params/data JSON is validated before spawning lark-cli', (
     execFileBehavior = { mode: 'instant' };
     const r = await callTool('lark_invoke', { tool_name: 'lark_drive_file_delete', args: { _confirm: true, params: '{"file_type":"docx"}', data: '{"k":1}' } }, 72);
     expect(r.data?.result?.isError).toBeUndefined();
+  });
+
+  it('unknown tool_name → isError:false + discover hint (self-correctable)', async () => {
+    // Real case: caller typed lark_sheets_delete_sheet (real name is _sheet_delete).
+    // The discover hint must reach the client, not be hidden as "unknown error".
+    execFileBehavior = { mode: 'instant' };
+    const r = await callTool('lark_invoke', { tool_name: 'lark_sheets_delete_sheet', args: {} }, 73);
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.error).toBe('unknown_tool');
+    expect(p.hint).toContain('lark_discover');
   });
 });
 
