@@ -12,6 +12,8 @@
 
 > **资源发现入口统一**：`lark_drive_search` 同样返回 `SHEET` / `Base` / `FOLDER` 等全部云空间（云盘/云存储）对象，不只是文档 / Wiki。用户说"找一个表格"、"找报表"、"最近打开的表格"时，也从这里开始；定位后再切到对应业务 skill（如 `lark-sheets`）做对象内部操作。
 
+> **身份边界**：`mine` / `created_by_me` 依赖当前登录用户的 open_id 自动填充过滤条件；如果要按他人 owner / 原始创建者过滤，改用显式 `creator_ids` / `original_creator_ids`。
+
 ## 命令
 
 > **关键约束：搜索关键词必须通过 `query` 参数传递。**

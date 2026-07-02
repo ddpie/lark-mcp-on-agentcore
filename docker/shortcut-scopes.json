@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.60",
-    "extracted_at": "2026-06-30",
+    "lark_cli_version": "1.0.63",
+    "extracted_at": "2026-07-02",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -21,6 +21,13 @@
     },
     {
       "service": "apps",
+      "command": "+analytics-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
       "command": "+chat",
       "scopes": [
         "spark:app:write"
@@ -35,6 +42,55 @@
     },
     {
       "service": "apps",
+      "command": "+db-audit-disable",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-audit-enable",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-audit-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-audit-status",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-changelog-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-data-export",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-data-import",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
       "command": "+db-env-create",
       "scopes": [
         "spark:app:write"
@@ -42,7 +98,42 @@
     },
     {
       "service": "apps",
+      "command": "+db-env-diff",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-env-migrate",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
       "command": "+db-execute",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-quota-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-recovery-apply",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+db-recovery-diff",
       "scopes": [
         "spark:app:write"
       ]
@@ -63,9 +154,79 @@
     },
     {
       "service": "apps",
+      "command": "+env-delete",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+env-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
       "command": "+env-pull",
       "scopes": [
         "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+env-set",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+file-delete",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+file-download",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+file-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+file-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+file-quota-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+file-sign",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+file-upload",
+      "scopes": [
+        "spark:app:write"
       ]
     },
     {
@@ -103,6 +264,100 @@
       "scopes": [
         "spark:app:read"
       ]
+    },
+    {
+      "service": "apps",
+      "command": "+log-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+log-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+metric-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+openapi-key-create",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+openapi-key-delete",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+openapi-key-disable",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+openapi-key-enable",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+openapi-key-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+openapi-key-list",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+openapi-key-reset",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+openapi-key-update",
+      "scopes": [
+        "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+plugin-install",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+plugin-list",
+      "scopes": []
+    },
+    {
+      "service": "apps",
+      "command": "+plugin-uninstall",
+      "scopes": []
     },
     {
       "service": "apps",
@@ -158,6 +413,20 @@
       "command": "+session-stop",
       "scopes": [
         "spark:app:write"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+trace-get",
+      "scopes": [
+        "spark:app:read"
+      ]
+    },
+    {
+      "service": "apps",
+      "command": "+trace-list",
+      "scopes": [
+        "spark:app:read"
       ]
     },
     {
@@ -2792,6 +3061,13 @@
       "command": "+meeting-list-active",
       "scopes": [
         "vc:meeting.meetingevent:read"
+      ]
+    },
+    {
+      "service": "vc",
+      "command": "+meeting-message-send",
+      "scopes": [
+        "vc:meeting.message:write"
       ]
     },
     {

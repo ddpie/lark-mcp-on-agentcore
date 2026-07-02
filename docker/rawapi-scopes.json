@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.60",
+    "lark_cli_version": "1.0.63",
     "source": "lark-cli schema _meta.scopes"
   },
   "rawApis": [
@@ -1345,6 +1345,22 @@
       "method": "search",
       "scopes": [
         "mail:user_mailbox.message:readonly"
+      ]
+    },
+    {
+      "service": "mindnotes",
+      "resource": "nodes",
+      "method": "create",
+      "scopes": [
+        "mindnote:node:create"
+      ]
+    },
+    {
+      "service": "mindnotes",
+      "resource": "nodes",
+      "method": "list",
+      "scopes": [
+        "mindnote:node:read"
       ]
     },
     {

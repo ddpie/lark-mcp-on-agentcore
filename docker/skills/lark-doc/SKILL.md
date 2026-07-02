@@ -27,6 +27,7 @@ lark_docs_update(doc="文档URL或token", command="append", content='<p>内容</
 > - **精准编辑场景**（`lark_docs_update` 的 `str_replace` / `block_insert_after` / `block_replace` / `block_delete` / `block_move_after` 等局部精修指令）：优先使用 XML（`doc_format="xml"`，即默认值）。XML 能稳定表达 block 结构和样式，局部精修更可控；不要因为 Markdown 更简单就自行切换。
 
 ## 快速决策
+- 用户要**复制文档 / 创建文档副本 / 另存为副本**时，切到 `lark_get_skill(domain="drive")`，按其中的复制指引通过 `lark_invoke(tool_name="lark_drive_files_copy", ...)` 完成；不要用 `lark_docs_fetch` + `lark_docs_create` 重建正文，也不要走 `lark_drive_export` / `lark_drive_import`。
 - 先判定任务路径：找文档 / 导入导出走 `lark_get_skill(domain="drive")`；只读 / 摘要用 `lark_docs_fetch` 默认 `simple`；明确旧文本 → 新文本直接 `str_replace`；只有 block 链接、评论锚点、插入 / 替换 / 删除 / 移动才局部 fetch `with-ids`；保真改写已有内容才读 `full`
 - block 直达链接格式：`文档基础 URL#block_id`；没有 block_id 时局部 fetch `with-ids`
 - 连续执行多个文档写操作时，必须按 `lark_get_skill(domain="doc", section="update")` 的「Block ID 生命周期」判断旧 block ID 是否还能复用；`overwrite` / `block_replace` / `block_delete` 后不要复用受影响的旧 ID，插入 / 复制后要重新 fetch 才能拿到新 block ID
@@ -39,6 +40,7 @@ lark_docs_update(doc="文档URL或token", command="append", content='<p>内容</
 - `lark_docs_resource_*` 目前仅支持 Docx 封面资源；其他图片、附件或素材请走 `lark_docs_media_*`
 - 如果目标是画板/whiteboard/画板缩略图 → 只能用 `lark_docs_media_download(type="whiteboard")`（不要用 `lark_docs_media_preview`）
 - 拿到 spreadsheet URL/token 后 → 切到 `lark-sheets` 做对象内部操作
+- 用户需要统计文档的**总字数 / 总字符数**（word count / character count）时，先读取 `lark_get_skill(domain="doc", section="word-stat")`，并按其中流程调用 `lark_exec_script(script="lark-doc/scripts/doc_word_stat.py", ...)`；统计口径以该脚本为准，不要改用其他方式自行计算。
 - 用户说"给文档加评论""查看评论""回复评论""给评论加/删除表情 reaction" → 切到 `lark-drive` 处理
 - 文档内容中出现嵌入的 `<sheet>`、`<bitable>` 或 `<cite file-type="sheets|bitable">` 标签时 → **必须主动提取 token 并切到对应技能下钻读取内部数据**，不能只呈现标签本身
 

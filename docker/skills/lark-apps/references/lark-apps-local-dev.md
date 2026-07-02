@@ -11,7 +11,7 @@
 
 ## 端到端流程（新建应用）
 
-`lark_apps_create(app_type="full_stack")` -> `lark_apps_init`（或手动 `lark_apps_git_credential_init` + `git clone`）-> `npm install && npm run dev` -> 按需 `lark_apps_db_*` 调库 -> `git add` + `git commit`（提交本次改动）-> `git push origin sprint/default` -> `lark_apps_release_create` -> `lark_apps_release_get`。
+`lark_apps_create(app_type="full_stack")` -> `lark_apps_init`（或手动 `lark_apps_git_credential_init` + `git clone`）-> 读仓库 Skill -> `npm install && npm run dev` -> 按需 `lark_apps_db_*` 调库 -> `git add` + `git commit`（提交本次改动）-> `git push origin sprint/default` -> `lark_apps_release_create` -> `lark_apps_release_get`。
 
 ```
 # 新建 full_stack 应用
@@ -40,6 +40,8 @@ lark_apps_release_create(app_id="app_xxx")
 
 `lark_apps_init` 是推荐便捷入口；想逐步手动控制时，先 `lark_apps_git_credential_init` 拿 `repository_url`，再用原生 `git clone` / `git checkout sprint/default`。
 
+**`lark_apps_init` 完成后必须执行**：读取克隆下来的项目里的 `<project-path>/.agents/skills/plugin-guide/SKILL.md`，取仓库插件指引。该文件包含插件目录、实例配置规则和调用代码生成方式——不读就无法正确集成插件能力。文件不存在则跳过。
+
 ## 改完代码后部署上线
 
 已拉到本地、改完代码，用户说"推上去""部署""上线""发布到云端"时，按此序列。
@@ -60,8 +62,8 @@ lark_apps_release_create(app_id="app_xxx")
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `lark_apps_env_pull`。
 - DB 调试用 `lark_apps_db_table_list` / `lark_apps_db_table_get` / `lark_apps_db_execute`；不要裸连数据库或自行拼连接串。
-- DB 分 `dev` / `online`；日常调试优先 `env="dev"`。dev 的库结构变更要上线时，仍按应用发布链路走 `lark_apps_release_create`，不要另造"数据库发布"步骤。
-- 存量单库应用需要 dev/online 多环境时，用 `lark_apps_db_env_create(env="dev")`。这是不可逆 high-risk 操作。
+- DB 分 `dev` / `online`；日常调试优先 `environment="dev"`。dev 的库结构变更要上线时，仍按应用发布链路走 `lark_apps_release_create`，不要另造"数据库发布"步骤。
+- 存量单库应用需要 dev/online 多环境时，用 `lark_apps_db_env_create(environment="dev")`。这是不可逆 high-risk 操作。
 - 只从 `lark_apps_list` 看到 `is_published=true`，不能证明本地刚推送的代码已经部署；必须有本轮 `lark_apps_release_get` 的 `finished`。
 
 ## 存量应用入口
