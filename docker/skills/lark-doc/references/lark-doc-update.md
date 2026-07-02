@@ -24,6 +24,7 @@
 | `command` | 是 | 操作指令（见下方指令速查表） |
 | `doc_format` | 否 | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
 | `content` | 视指令 | 写入内容（`str_replace` 传空字符串可实现删除） |
+| `reference_map` | 否 | 结构化 `reference_map` JSON object；当 `content` 使用正文外部载荷 / 引用映射时与内容一起传给服务。通常用于回写已有 `document.reference_map`。 |
 | `pattern` | 视指令 | 匹配文本（str_replace） |
 | `block_id` | 视指令 | 目标 block ID（block_* 操作），逗号分隔可批量删除，-1 表示末尾 |
 | `src_block_ids` | 视指令 | 源 block ID（逗号分隔），用于 block_copy_insert_after / block_move_after |

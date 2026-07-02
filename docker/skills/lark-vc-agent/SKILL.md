@@ -1,6 +1,6 @@
 ---
 name: lark-vc-agent
-description: "飞书视频会议会中能力：发现当前用户正在进行中的会议并读取当前身份可见的会中事件，如参会人加入/离开、发言、聊天、屏幕共享。适用于用户询问正在开的会议发生了什么、谁在发言、是否共享内容，或需要发现当前可读的进行中会议 ID（lark_vc_meeting_list_active）。读取事件用 lark_vc_meeting_events。不负责已结束会议搜索、参会人快照、纪要、逐字稿或录制查询，这些使用 lark-vc 技能。"
+description: "飞书视频会议会中能力：发现当前用户正在进行中的会议并读取当前身份可见的会中事件，如参会人加入/离开、发言、聊天、屏幕共享，也可向进行中的会议发送会中文本消息或会中表情。适用于用户询问正在开的会议发生了什么、谁在发言、是否共享内容、想在会里发一句话或发反馈，或需要发现当前可读的进行中会议 ID（lark_vc_meeting_list_active）。读取事件用 lark_vc_meeting_events，发送会中文本或表情用 lark_vc_meeting_message_send。不负责已结束会议搜索、参会人快照、纪要、逐字稿或录制查询，这些使用 lark-vc 技能。"
 ---
 
 # vc-agent (v1)
@@ -20,7 +20,7 @@ description: "飞书视频会议会中能力：发现当前用户正在进行中
 本 skill 与 `lark-vc` 并列：
 
 - **`lark-vc`** **负责"会后查询"**：搜索历史会议、参会人快照、纪要/逐字稿/录制
-- **`lark-vc-agent`** **负责"会中动作"**：发现进行中会议 / 读取进行中会议的实时事件 /（应用身份）机器人入会、离会
+- **`lark-vc-agent`** **负责"会中动作"**：发现进行中会议 / 读取进行中会议的实时事件 / 发送会中文本或会中表情 /（应用身份）机器人入会、离会
 
 按此分工路由，避免两个 skill 语义混淆。
 
@@ -28,6 +28,7 @@ description: "飞书视频会议会中能力：发现当前用户正在进行中
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | "我/某个用户现在在哪个会里"、"给我找当前可拉事件的 meeting_id"               | **本 skill** `lark_vc_meeting_list_active`                                                                                                             |
 | "会议现在还开着，谁刚加入了"、"会议里谁在发言"、"有人共享屏幕吗"（**进行中会议**）       | **本 skill** `lark_vc_meeting_events`                                                                                                                  |
+| "在会里发一句 xx"、"提示大家 xx"、"反馈听不到/看不到/声音清楚/效果不错"（**进行中会议**） | **本 skill** `lark_vc_meeting_message_send`                                                                                                          |
 | "帮我入会 123456789"、"代我参会"、"让机器人进会旁听"、"退出会议"、"让机器人离开" | ⚠️ 入会 / 离会是**应用身份**写操作，**MCP server 不可用**（详见下方"身份路由"与"应用身份操作（⚠️ MCP 不可用）"）                                                                          |
 | "昨天那场会有谁参加过"、"搜昨天的会"、"查纪要/逐字稿/录制"                          | `lark_get_skill(domain="vc")`                                                                                                                      |
 | "帮我参会，结束后把纪要发到群" 等跨阶段场景                                    | 按序编排：本 skill（发现 → 读事件）→ 会议结束后用 `lark_get_skill(domain="vc")` / `lark_get_skill(domain="minutes")` 拉纪要 → `lark_get_skill(domain="im")` 发群 |
@@ -44,7 +45,7 @@ description: "飞书视频会议会中能力：发现当前用户正在进行中
 
 > ⚠️ **MCP server 始终以用户身份（user identity）调用，无法切换为应用身份（bot/app identity）。** 因此本 skill 中**应用身份**路径——应用机器人真实入会（`lark_vc_meeting_join`）、离会（`lark_vc_meeting_leave`）、以及应用身份的 active meeting 发现（`lark_vc_meeting_list_active` 带 `user_id`）——**在 MCP server 上不可用**。可用的是**用户身份**路径：用 `lark_vc_meeting_list_active`（不带 `user_id`）发现当前登录用户正在参加的会议，再用 `lark_vc_meeting_events` 读取该会议的会中事件。
 
-硬规则：`meeting_id` 从哪种身份路径拿到，后续 `lark_vc_meeting_events` 就沿用哪种身份。通过 MCP server 时身份始终是用户身份，因此应使用用户身份发现的 `meeting_id`。
+硬规则：`meeting_id` 从哪种身份路径拿到，后续 `lark_vc_meeting_events` / `lark_vc_meeting_message_send` 就沿用哪种身份。通过 MCP server 时身份始终是用户身份，因此应使用用户身份发现的 `meeting_id`。
 
 ## 核心场景（MCP server 可用：用户身份）
 
@@ -89,6 +90,25 @@ lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="pretty"
 lark_vc_detail(meeting_ids="<meeting_id>")
 ```
 
+### 3. 发送会中文本或会中表情（写操作）
+
+1. 用户明确要求在当前进行中的会议里发送提示、说明、会中表情，或反馈"听不到 / 看不到 / 声音清楚 / 效果不错"时，用 `lark_vc_meeting_message_send`。
+2. 输入是长数字 `meeting_id`，不是 9 位会议号。若用户只给 9 位会议号，先用用户身份执行 `lark_vc_meeting_list_active` 并按 `meeting_no` 匹配，匹配到唯一会议后再发送；不要为了发消息尝试入会（入会是应用身份写操作，MCP 不可用）。
+3. 通过 MCP server 时身份始终是用户身份：用用户身份发现的 `meeting_id` 继续用用户身份发送，前提是当前用户正在该会议中。
+4. 文本消息使用 `text`；会中表情 / 反馈使用 `emoji_type`。`emoji_type` 必须从 `lark_get_skill(domain="vc-agent", section="meeting-message-send")` 里的完整列表中选择，大小写敏感。
+5. 支持普通 Feishu reaction emoji（如 `LOVE`、`SMILE`、`THUMBSUP`）和 4 个 VC 反馈 key（`VC_CanNotSee`、`VC_NoSound`、`VC_LooksGood`、`VC_SoundsClear`）。
+6. 不要编造列表外的 `emoji_type`，也不要把 natural language 硬编码成不存在的 key；如果用户只给语义，可在完整列表中选择最接近的 key，无法判断时先确认。
+7. 该工具只暴露会中文本和会中表情，不作为"发送绑定群消息"的默认能力；如果用户明确要发群聊，请路由到 `lark_get_skill(domain="im")`。
+8. 用户身份发送时，当前用户必须正在该会议中。权限错误时按"用户身份被拒绝时"处理。
+
+示例：
+
+```
+lark_vc_meeting_message_send(meeting_id="<meeting_id>", text="稍等，我在看文档")
+lark_vc_meeting_message_send(meeting_id="<meeting_id>", msg_type="reaction", emoji_type="LOVE")
+lark_vc_meeting_message_send(meeting_id="<meeting_id>", msg_type="reaction", emoji_type="VC_NoSound")
+```
+
 ## 应用身份操作（⚠️ MCP server 不可用）
 
 > ⚠️ 以下操作要求**应用身份（bot/app identity）**，而 MCP server 始终以用户身份调用，**因此这些操作通过 MCP server 不可用**。这里仅作能力说明，便于解释为什么某些请求无法在 MCP 上完成；不要把它们当作可直接调用的工具向用户承诺执行。
@@ -107,11 +127,13 @@ Shortcut 是对常用操作的高级封装。
 | ------------------------- | -- | -------------------------------------------------------------------------- |
 | `lark_vc_meeting_list_active` | 读  | List active meetings and discover meeting_id for event reads（用户身份在 MCP 可用） |
 | `lark_vc_meeting_events`  | 读  | List meeting events visible to current identity (participant joined/left, transcript, chat, share) |
+| `lark_vc_meeting_message_send` | 写  | Send an in-meeting text message or reaction emoji（用户身份在 MCP 可用） |
 | `lark_vc_meeting_join`    | 写  | ⚠️ 应用身份入会，MCP server 不可用 |
 | `lark_vc_meeting_leave`   | 写  | ⚠️ 应用身份离会，MCP server 不可用 |
 
 - 使用 `lark_vc_meeting_list_active` 前**必须**调用 `lark_get_skill(domain="vc-agent", section="meeting-list-active")`，了解用户身份和应用身份的不同返回范围。
 - 使用 `lark_vc_meeting_events` 前**必须**调用 `lark_get_skill(domain="vc-agent", section="meeting-events")`，了解 `meeting_id` 来源、身份延续、分页和错误码（10005 / 20001 / 20002）。
+- `lark_get_skill(domain="vc-agent", section="meeting-message-send")`：会中文本、完整 `emoji_type` 列表、身份延续和写操作风险。
 - `lark_get_skill(domain="vc-agent", section="meeting-join")`：⚠️ 应用身份入会能力说明（MCP server 不可用）——入参格式、写操作可见性风险、入会失败排查。
 - `lark_get_skill(domain="vc-agent", section="meeting-leave")`：⚠️ 应用身份离会能力说明（MCP server 不可用）——`meeting_id` 的来源与写操作可见性。
 
