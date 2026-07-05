@@ -109,5 +109,5 @@ lark_task_get_my_tasks(complete="false", page_all=true)
 
 ## 参考
 
-- `lark_get_skill(domain="calendar")` — `+agenda` 详细用法
-- `lark_get_skill(domain="task")` — `+get-my-tasks` 详细用法
+- `lark_get_skill(domain="calendar", section="agenda")` — `lark_calendar_agenda` 详细用法
+- `lark_get_skill(domain="task", section="get-my-tasks")` — `lark_task_get_my_tasks` 详细用法

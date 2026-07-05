@@ -2,14 +2,15 @@
 
 ## 执行摘要
 
-- **原生审批提单必须固定走 `approvals search` -> `approvals get` -> `instances create`。** 不要跳过 `get` 直接拼请求。
+- **原生审批提单如果用户未明确给出 `approval_code`，必须固定走 `approvals search` -> `approvals get` -> `instances create`** 不要跳过 `get` 直接拼请求。
+- **原生审批提单如果用户明确给出 `approval_code`，固定走 `approvals get` -> `instances create`** 不要跳过 `get` 直接拼请求。
 - **`is_external=true` 的定义是三方定义。** 这类定义不要调用 `instances create`，应优先使用 `create_link`。
 - **所有人员类参数默认使用 `open_id`。** 若用户给的是姓名、邮箱或其他身份，先用 `lark_get_skill(domain="contact")` 解析。
-- **先读控件参数 reference 和值来源 reference，再看 `schema`。** 提单前必须先调用 `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 和 `lark_get_skill(domain="approval", section="instance-value-sourcing")`，并 `lark_discover(query="approval.instances.create")`。
-- **`approvals get` 返回的 `form` 不是创建 payload 的原样模板。** 它主要用于识别控件 `id`、`type`、选项值范围和明细子控件结构；真正的 `instances create` 请求体里的 `form`，请求字段与节点字段以 `schema` / `meta` 为准，控件 `value` 结构以 `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 为准。
-- **节点参数只从 `node_list` 和 `schema` / `meta` 里取。** 节点 key 必须来自定义详情返回的节点标识；审批人/抄送人列表传用户 ID 时，要先与当前 `schema` 字段名和 ID 口径对齐，不要混用姓名或其他身份标识。
+- **先读控件参数 reference 和值来源 reference，再读本文里的创建参数规则。** 提单前必须先调用 `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 和 `lark_get_skill(domain="approval", section="instance-value-sourcing")`。
+- **`approvals get` 返回的 `form` 不是创建 payload 的原样模板。** 它主要用于识别控件 `id`、`type`、选项值范围和明细子控件结构；真正的 `instances create` 请求体里的 `form`，控件 `value` 结构以 `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 为准。
+- **节点参数只从 `node_list` 和本文里的节点参数规则里取。** 节点 key 必须来自定义详情返回的节点标识；审批人/抄送人列表传用户 ID 时，不要混用姓名或其他身份标识。
 - **看到 `need_approver=true` 就说明该节点需要发起人补充审批人。** 如果 `approver_chosen_multi=false`，该节点只允许一个 `open_id`。
-- **创建实例前先确认。** `lark_approval_instances_create` 是高风险写操作，执行前先向用户确认。
+- **创建实例前先确认。** `lark_approval_instances_create` 是高风险写操作，执行前，让用户确认最终定义、表单值和节点参数；真正执行时显式传 `_confirm=true`。
 
 ## 适用场景
 
@@ -20,8 +21,7 @@
 
 ## 严禁行为
 
-- **严禁在未先查看 `schema` 的情况下猜测请求体结构。**
-- **严禁在未先调用 `lark_get_skill(domain="approval", section="instance-form-control-parameters")`、`lark_get_skill(domain="approval", section="instance-value-sourcing")` 且未先查看 `schema` 的情况下直接提单。**
+- **严禁在未先阅读本文中的创建参数规则、`lark_get_skill(domain="approval", section="instance-form-control-parameters")` 和 `lark_get_skill(domain="approval", section="instance-value-sourcing")` 的情况下直接提单。**
 - **严禁跳过 `approvals get`。** 未拿到 `form` 和 `node_list` 前，不得调用 `instances create`。
 - **严禁把姓名直接写进 `node_approver_list`、`node_cc_list` 或表单人员控件。** 必须先转成 `open_id`。
 - **严禁对三方定义调用 `instances create`。**
@@ -33,10 +33,9 @@
 
 ### 1. 搜索可发起审批定义
 
-先用 `schema` 看参数，再搜索定义：
+先搜索定义：
 
 ```
-lark_discover(query="approval.approvals.search")
 lark_invoke(tool_name="lark_approval_approvals_search", args={data: {"keyword":"请假"}})
 ```
 
@@ -52,7 +51,6 @@ lark_invoke(tool_name="lark_approval_approvals_search", args={data: {"keyword":"
 拿到 `approval_code` 后，读取定义详情：
 
 ```
-lark_discover(query="approval.approvals.get")
 lark_invoke(tool_name="lark_approval_approvals_get", args={params: {"approval_code":"7C468A54-8745-2245-9675-08B7C63E7A85"}})
 ```
 
@@ -62,12 +60,28 @@ lark_invoke(tool_name="lark_approval_approvals_get", args={params: {"approval_co
 - `form`: 表单定义快照，用于识别控件 `id`、`type`、选项值范围以及明细子控件结构；不是创建实例时可直接原样提交的 payload 模板。
 - `node_list`: 流程节点信息，是后续 `node_approver_list` / `node_cc_list` 的唯一可靠来源。
 
-### 3. 组装 `form`
+### 3. 创建请求参数速查
+
+输入参数如下：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `data` | 是 | 请求体，JSON 对象 |
+| `approval_code` | 是 | 审批定义 Code；必须先通过 `approvals search` / `approvals get` 确认 |
+| `form` | 是 | 表单值，**JSON 数组字符串**，不是普通对象 |
+| `node_approver_list` | 否 | 节点审批人列表；仅在定义要求补充审批人时传 |
+| `node_cc_list` | 否 | 节点抄送人列表；仅在用户明确需要补充节点抄送人时传 |
+| `uuid` | 否 | 幂等标识；重复重试同一请求时建议显式传入 |
+| `params` | 否 | 查询参数，JSON 对象 |
+| `user_id_type` | 否 | 用户 ID 类型：`user_id`、`union_id`、`open_id`；涉及人员类 ID 时建议显式传 `open_id` |
+| `_confirm` | 是 | 高风险写操作确认；真实执行时必须显式传入 `_confirm=true` |
+
+### 4. 组装 `form`
 
 `instances create` 请求体里的 `form` 是一个 JSON 数组字符串。组装原则：
 
-- 先用 `approvals get` 返回的 `form` 识别有哪些控件、每个控件的 `id` / `type` / 可选值范围，再按 `schema` / `meta` 与 `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 重新组装创建 payload。
-- 提交时必须至少保证每个控件的 `id`、`type` 与 `value` 符合当前 `schema` 要求；不要假设定义快照里出现的其他字段都能直接照搬。
+- 先用 `approvals get` 返回的 `form` 识别有哪些控件、每个控件的 `id` / `type` / 可选值范围，再按本文中的创建参数规则与 `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 重新组装创建 payload。
+- 提交时必须至少保证每个控件的 `id`、`type` 与 `value` 符合当前接口要求；不要假设定义快照里出现的其他字段都能直接照搬。
 - 如果用户提供的是人员信息，优先转换成 `open_id` 后再写入对应控件。
 - 单选/多选控件提交的是选项 `value`，该值可从 `approvals get` 返回的 `form` 的选项定义中取得。
 - `contact`、`department`、`fieldList`、`dateInterval`、`amount`、`telephone`、`document` 等控件的 `value` 结构各不相同，必须按 `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 单独组装，不要套用文本控件的写法。
@@ -99,7 +113,7 @@ lark_invoke(tool_name="lark_approval_approvals_get", args={params: {"approval_co
 - `input` / `textarea`: `value` 是字符串
 - `date`: `value` 是 RFC3339 时间字符串
 - `dateInterval`: `value` 是对象，包含 `start` / `end` / `interval`
-- `radio` / `radioV2`: `value` 是单个选项值，取自定义详情里的 option.value；关联外部选项时传 `options.id`
+- `radio` / `radioV2`: `value` 是单个选项值，取定义详情里的 `option.value`；关联外部选项时传 `options.id`
 - `checkbox` / `checkboxV2`: `value` 是选项值数组
 - `number`: `value` 是数字
 - `amount`: `value` 是数字，还要带 `currency`
@@ -128,7 +142,7 @@ lark_invoke(tool_name="lark_approval_approvals_get", args={params: {"approval_co
 - 再严格按 `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 的示例组装 `value`
 - 不要把控件组整体当成普通字符串或扁平对象提交
 
-### 4. 组装节点参数
+### 5. 组装节点参数
 
 从 `node_list` 推导节点参数：
 
@@ -138,13 +152,13 @@ lark_invoke(tool_name="lark_approval_approvals_get", args={params: {"approval_co
 - 若 `approver_chosen_multi=false`，该节点只允许一个审批人 `open_id`。
 - `node_cc_list` 仅在用户明确需要补充节点抄送人时才填写；其 `key/value` 规则与 `node_approver_list` 相同。
 
-### 5. 创建审批实例
+### 6. 创建审批实例
 
-先看 `schema`，确认最终结构后再执行：
+创建实例使用 `lark_invoke(tool_name="lark_approval_instances_create", ...)`，需要的 scopes: ["approval:instance:write"]
+
+确认最终表单值和节点参数后再执行：
 
 ```
-lark_discover(query="approval.instances.create")
-
 lark_invoke(tool_name="lark_approval_instances_create", args={
   data: {
     "approval_code": "7C468A54-8745-2245-9675-08B7C63E7A85",
@@ -155,7 +169,9 @@ lark_invoke(tool_name="lark_approval_instances_create", args={
         "value": ["ou_xxx"]
       }
     ]
-  }
+  },
+  params: {"user_id_type":"open_id"},
+  _confirm: true
 })
 ```
 
@@ -169,7 +185,7 @@ lark_invoke(tool_name="lark_approval_instances_create", args={
 
 优先级固定如下：
 
-1. `lark_discover(query="approval.instances.create")` 与对应 `meta`：决定创建请求体有哪些字段、节点参数怎么传。
+1. 本文中的创建请求参数、节点参数和返回结果说明：决定 `instances create` 要传哪些字段、怎么执行、成功后回什么。
 2. `lark_get_skill(domain="approval", section="instance-form-control-parameters")`：决定每种控件的 `value` 结构与支持范围。
 3. `lark_get_skill(domain="approval", section="instance-value-sourcing")`：决定每类值应该从哪里拿，以及当前哪些值必须由用户直接提供。
 4. `approvals get` 返回的 `form`：提供当前审批定义里实际有哪些控件、控件 `id`、控件 `type`、选项值范围、明细子控件结构。
@@ -193,3 +209,13 @@ lark_invoke(tool_name="lark_approval_instances_create", args={
 - `approval_name`
 - `instance_code`
 - `instance_link`
+
+建议整理为下面这种结构：
+
+```text
+审批已创建成功：
+
+- approval_name: 请假申请
+- instance_code: 19EAC829-F1CB-527F-BE2A-1330422E60C0
+- instance_link: https://...
+```

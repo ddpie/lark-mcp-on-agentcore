@@ -1,6 +1,6 @@
 # XML 格式指南
 
-本文档基于 [slides_xml_schema_definition.xml](slides_xml_schema_definition.xml) 整理，说明飞书 Slides XML Schema（SML 2.0）的核心结构和常用写法。
+本文档基于 `slides_xml_schema_definition.xml`（skill 内置 XSD）整理，说明飞书 Slides XML Schema（SML 2.0）的核心结构和常用写法。
 
 ## 基本结构
 
@@ -223,15 +223,15 @@
 
 | `src` 形式 | 说明 |
 |---|---|
-| `file_token`（如 `boxcnXXXXXXXXXXXXXXXXXXXXXX`） | 通过 `slides +media-upload` 上传后返回的 token |
-| `@<本地路径>`（如 `@./assets/chart.png`） | **仅在 `slides +create --slides` 中可用**：CLI 会自动上传该文件并替换为 file_token |
+| `file_token`（如 `boxcnXXXXXXXXXXXXXXXXXXXXXX`） | 通过 `lark_slides_media_upload` 上传后返回的 token |
+| `@<本地路径>`（如 `@./assets/chart.png`） | **仅在 `lark_slides_create` 的 `slides` 参数中可用**：会自动上传该文件并替换为 file_token |
 
 > **禁止使用 http(s) 外链 URL**：飞书 slides 渲染端不会代理外链图片，`src="https://..."` 在 PPT 里通常显示破图。要用网图必须先 `curl`/下载到 CWD 内，再走上传流程拿 `file_token`。
 
 本地图片的两种姿势：
 
-- **新建带图 PPT**：`+create --slides` 里直接写 `src="@./pic.png"`，CLI 在创空白 PPT 后、加 slides 前自动上传并替换 token
-- **给已有 PPT 加带图新页**：先 `slides +media-upload --file ./pic.png --presentation $PID` 拿 token，再用 token 写进 `xml_presentation.slide create` 的 XML
+- **新建带图 PPT**：`lark_slides_create` 的 `slides` 参数里直接写 `src="@./pic.png"`，创空白 PPT 后、加 slides 前自动上传并替换 token
+- **给已有 PPT 加带图新页**：先 `lark_slides_media_upload(file="./pic.png", presentation="<PID>")` 拿 token，再用 token 写进 `xml_presentation.slide create` 的 XML
 
 ### `<icon>`
 
@@ -363,7 +363,5 @@
 
 ## 参考文档
 
-- [xml-schema-quick-ref.md](xml-schema-quick-ref.md)
-- [slides_xml_schema_definition.xml](slides_xml_schema_definition.xml)
-- [examples.md](examples.md)
-- [slides_demo.xml](slides_demo.xml)
+- `lark_get_skill(domain="slides", section="xml-schema-quick-ref")`
+- `lark_get_skill(domain="slides", section="examples")`

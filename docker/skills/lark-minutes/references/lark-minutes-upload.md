@@ -64,7 +64,7 @@ lark_minutes_detail(minute_tokens="obcnxxxxxxxxxxxxxxxx", summary=true)
 
 ### 1. 必须提供 file_token
 
-本接口不直接处理本地文件的上传，必须先使用 `drive +upload` 将文件上传到云空间（云盘/云存储）获取 `file_token`，然后再调用本接口。
+本接口不直接处理本地文件的上传，必须先使用 `lark_drive_upload` 将文件上传到云空间（云盘/云存储）获取 `file_token`，然后再调用本接口。
 
 ### 2. 先上传，再生成妙记
 

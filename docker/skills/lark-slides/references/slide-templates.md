@@ -84,7 +84,7 @@ lark_invoke(tool_name="lark_slides_xml_presentation_slide_create", args={
 
 ## 带图版式
 
-> **关键提醒**：`<img>` 的 `width:height` = 原图比例时才不会被裁剪。每个模板都标注了图框比例和建议原图比例，**选模板前先对照你的素材比例**，不要硬塞（如把横图放进竖框，会被左右裁掉大半）。把 `@./your-image.jpg` 替换为实际路径（仅 `+create --slides` 支持 `@` 占位符；其他场景需先用 `slides +media-upload` 拿 `file_token`）。
+> **关键提醒**：`<img>` 的 `width:height` = 原图比例时才不会被裁剪。每个模板都标注了图框比例和建议原图比例，**选模板前先对照你的素材比例**，不要硬塞（如把横图放进竖框，会被左右裁掉大半）。把 `@./your-image.jpg` 替换为实际路径（仅 `lark_slides_create` 的 `slides` 参数支持 `@` 占位符；其他场景需先用 `lark_slides_media_upload` 拿 `file_token`）。
 
 ### 封面右图（左字右图）
 

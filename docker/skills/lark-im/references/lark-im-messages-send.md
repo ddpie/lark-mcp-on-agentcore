@@ -151,6 +151,16 @@ lark_im_messages_send(chat_id="oc_xxx", audio="./voice.opus")
 
 # Use an idempotency key (same key sends only once within 1 hour)
 lark_im_messages_send(chat_id="oc_xxx", text="Hello", idempotency_key="my-unique-id")
+
+# ===== Interactive Card =====
+# 🚫 STOP — before constructing ANY interactive card JSON, you MUST call
+#    lark_get_skill(domain="im", section="card/lark-im-card-create") and follow
+#    its workflow. Do NOT hand-write or copy a card payload from the examples
+#    below. The JSON passed to content must be the OUTPUT of that workflow.
+#    This is non-negotiable.
+
+# Once the workflow has produced the card JSON, send it:
+lark_im_messages_send(chat_id="oc_xxx", msg_type="interactive", content="<card_json_from_workflow>")
 ```
 
 ## Media Input Rules
@@ -204,7 +214,9 @@ lark_im_messages_send(chat_id="oc_xxx", text="Hello", idempotency_key="my-unique
 | `media` | `{"file_key":"file_xxx","image_key":"img_xxx"}` (video; `image_key` is the cover from `video_cover` — **required**) |
 | `share_chat` | `{"chat_id":"oc_xxx"}` |
 | `share_user` | `{"user_id":"ou_xxx"}` |
-| `interactive` | Card JSON (see Feishu interactive card documentation) |
+| `interactive` | Card JSON — **MUST** be produced by the `lark_get_skill(domain="im", section="card/lark-im-card-create")` workflow. Read it before writing any card; never hand-craft the JSON here |
+
+> **`post` vs `interactive`:** `post` is a static rich-text message (title, paragraphs, @mentions, links, inline images) — content is fixed once sent. `interactive` is a card with structured layout and UI components (buttons, forms, selects, date pickers, charts) — content can be updated after sending and supports user-action callbacks. Use `post` for read-only content; use `interactive` when the message needs user interaction or dynamic updates.
 
 `interactive` cards support callback events (`card.action.trigger`). ⚠️ Card callbacks require bot identity and are not available via the MCP server (user-identity only) — see `lark_get_skill(domain="im", section="card-action-reply")`.
 
@@ -255,3 +267,4 @@ Card content is **not** normalized — use the card-native `<at>` syntax inside 
 - Bot identity uses a tenant access token (TAT) and requires the `im:message:send_as_bot` scope
 - When sending as a bot, the app must already be in the target group or already have a direct-message relationship with the target user
 - When using `markdown` with images, pre-uploading via `images.create` to obtain an `image_key` is recommended for reliability; remote URLs may be auto-resolved at runtime, but if download/upload fails the image is removed with a warning; local paths are not supported
+- **Interactive cards are gated:** you MUST read and follow the `lark_get_skill(domain="im", section="card/lark-im-card-create")` workflow to produce the card JSON *before* sending. Do not hand-write or copy a card payload — the JSON given to `msg_type="interactive"` + `content` must be the workflow's output. This applies every time, with no exception

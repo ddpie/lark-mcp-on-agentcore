@@ -6,14 +6,14 @@
 
 阅读顺序固定如下：
 
-1. `lark_discover(query="approval.instances.create")`
+1. `lark_get_skill(domain="approval", section="initiate")` 中的创建请求参数、节点参数和返回结果说明
 2. `approvals get` 返回的 `form` / `node_list`
 3. `lark_get_skill(domain="approval", section="instance-form-control-parameters")`
 4. 本文
 
 ## 总原则
 
-- `schema` / `meta` 决定请求字段名、字段层级、节点参数结构。
+- `lark_get_skill(domain="approval", section="initiate")` 决定创建请求字段名、字段层级、节点参数结构。
 - `approvals get` 返回的 `form` 决定控件 `id`、`type`、选项值范围、子控件结构。
 - `approvals get` 返回的 `node_list` 决定节点 key、是否必须补审批人、是否允许多人。
 - `lark_get_skill(domain="approval", section="instance-form-control-parameters")` 决定各控件 `value` 的最终结构。

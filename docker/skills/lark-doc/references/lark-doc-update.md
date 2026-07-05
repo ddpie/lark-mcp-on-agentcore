@@ -3,8 +3,8 @@
 
 > **前置条件（MUST READ）：** 生成文档内容前，必须先调用以下技能参考，缺一不可：
 > 1. `lark_get_skill(domain="doc", section="xml")` — XML 语法规则（使用 Markdown 格式时改读 `lark_get_skill(domain="doc", section="md")`）
-> 2. `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 排版指南（元素选择、丰富度规则、颜色语义）
-> 3. `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
+> 2. `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 写作原则（默认段落、按体裁、组件克制）
+> 3. `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、单 Agent 串行改写）
 >
 > **未读完以上参考就生成内容会导致格式错误。**
 
@@ -24,7 +24,7 @@
 | `command` | 是 | 操作指令（见下方指令速查表） |
 | `doc_format` | 否 | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
 | `content` | 视指令 | 写入内容（`str_replace` 传空字符串可实现删除） |
-| `reference_map` | 否 | 结构化 `reference_map` JSON object；当 `content` 使用正文外部载荷 / 引用映射时与内容一起传给服务。通常用于回写已有 `document.reference_map`。 |
+| `reference_map` | 否 | 结构化 `reference_map` JSON object；必须与 `content` 一起使用。普通写入优先把结构写在正文里；该参数主要用于保留或回放已有 `document.reference_map`。 |
 | `pattern` | 视指令 | 匹配文本（str_replace） |
 | `block_id` | 视指令 | 目标 block ID（block_* 操作），逗号分隔可批量删除，-1 表示末尾 |
 | `src_block_ids` | 视指令 | 源 block ID（逗号分隔），用于 block_copy_insert_after / block_move_after |
@@ -195,7 +195,7 @@ lark_docs_update(doc="<doc_id>", command="str_replace", pattern="v1.0", content=
 
 > **`lark_docs_update` 不能直接编辑已有画板的内容。** 本工具只能**新增**画板块；要修改已有画板，先用 `lark_docs_fetch` 取到 `<whiteboard token="...">`，再按 `lark_get_skill(domain="doc", section="whiteboard")` 启动 SubAgent 读取 `lark_get_skill(domain="whiteboard")` 并写入。
 
-画板的语法选型与插入示例见 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的「画板语法与插入」章节。
+画板的语法选型与插入示例见 `lark_get_skill(domain="doc", section="xml")` 与 `lark_get_skill(domain="doc", section="whiteboard")`。
 
 ## 最佳实践
 
@@ -215,8 +215,8 @@ lark_docs_update(doc="<doc_id>", command="str_replace", pattern="v1.0", content=
 
 ## 参考
 
-- `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、并行执行策略）
-- `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 文档样式指南（元素选择 + 丰富度规则 + 颜色语义）
+- `lark_get_skill(domain="doc", section="style/lark-doc-update-workflow")` — 改写增强工作流（Code-Act Loop、单 Agent 串行改写）
+- `lark_get_skill(domain="doc", section="style/lark-doc-style")` — 文档写作原则（默认段落、按体裁、组件克制）
 - `lark_get_skill(domain="doc", section="xml")` — XML 语法规范
 - `lark_get_skill(domain="doc", section="fetch")` — 获取文档
 - `lark_get_skill(domain="doc", section="create")` — 创建文档

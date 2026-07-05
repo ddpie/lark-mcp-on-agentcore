@@ -29,7 +29,7 @@
 | `newest` | 只把本地文件与 `modified_time` 最新的远端文件对齐 |
 | `oldest` | 只把本地文件与 `created_time` 最早的远端文件对齐 |
 
-`+push` 不提供 `rename`：本地一个文件无法表达要覆盖多个远端对象。若用户想保留多个云端副本，应先显式整理云端文件，再重新 push。
+`lark_drive_push` 不提供 `rename`：本地一个文件无法表达要覆盖多个远端对象。若用户想保留多个云端副本，应先显式整理云端文件，再重新 push。
 
 ## 命令
 
@@ -78,7 +78,7 @@ lark_drive_push(local_dir="./repo", folder_token="fldcnxxxxxxxxx", if_exists="ov
 
 `if_exists="smart"` 是给"重复跑同步"的场景增加的增量优化：当远端 `modified_time` 在同等时间精度下已经等于或晚于本地 mtime 时，命令会把该文件计为 `skipped`；时间戳缺失、非法或更旧时，则继续走正常上传/覆盖路径。**也就是说，只要 smart 判定"远端不够新"，它就会进入与 `if_exists="overwrite"` 相同的覆盖实现，因此在未 rollout version 字段的 tenant 上仍可能非零失败。**
 
-> **为什么默认是 `skip` 而不是 `overwrite`：** `upload_all` 接受 `file_token` 字段、并在响应里返回 `version` 是设计文档（Drive 同步盘）规定的协议；此后端尚在灰度发布。在还未开通该字段的 tenant 上，`if_exists="overwrite"` 会因"无 version 返回"而把对应文件标成 `failed`，整次 `+push` 也会因此非零退出。所以默认值故意定为 `skip`：第一次往一个已经有内容的目录里 push，不会因为协议没到位就把整次运行打挂；要真的覆盖远端，必须显式带 `if_exists="overwrite"`。新建上传不依赖该字段，不受影响。
+> **为什么默认是 `skip` 而不是 `overwrite`：** `upload_all` 接受 `file_token` 字段、并在响应里返回 `version` 是设计文档（Drive 同步盘）规定的协议；此后端尚在灰度发布。在还未开通该字段的 tenant 上，`if_exists="overwrite"` 会因"无 version 返回"而把对应文件标成 `failed`，整次 `lark_drive_push` 也会因此非零退出。所以默认值故意定为 `skip`：第一次往一个已经有内容的目录里 push，不会因为协议没到位就把整次运行打挂；要真的覆盖远端，必须显式带 `if_exists="overwrite"`。新建上传不依赖该字段，不受影响。
 
 大文件（>20MB）会自动切到三段式 `upload_prepare` / `upload_part` / `upload_finish`；该路径下 `version` 暂未在响应中返回，覆盖结果中 `items[].version` 会留空，但 `file_token` 与 `action: overwritten` 仍会正确产出。
 
@@ -143,7 +143,7 @@ lark_drive_push(local_dir="./repo", folder_token="fldcnxxxxxxxxx", if_exists="ov
 
 ## 参考
 
-- [lark-drive](../SKILL.md) —— 云空间（云盘/云存储）全部命令
-- [lark-drive-status](lark-drive-status.md) —— 上传前先看差异（避免全量回写）
-- [lark-drive-pull](lark-drive-pull.md) —— Drive → 本地的对称命令
-- [lark-drive-upload](lark-drive-upload.md) —— 单文件按需上传
+- `lark_get_skill(domain="drive")` —— 云空间（云盘/云存储）全部命令
+- `lark_get_skill(domain="drive", section="status")` —— 上传前先看差异（避免全量回写）
+- `lark_get_skill(domain="drive", section="pull")` —— Drive → 本地的对称命令
+- `lark_get_skill(domain="drive", section="upload")` —— 单文件按需上传

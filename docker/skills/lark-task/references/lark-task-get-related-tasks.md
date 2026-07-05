@@ -3,7 +3,7 @@
 > **⚠️ Note:** This tool must be called with user identity. It is not available with bot identity.
 >
 > **Pagination / Time Cursor Rule:**
-> In `+get-related-tasks`, `page_token` is the task `updated_at` cursor in microseconds.
+> In `lark_task_get_related_tasks`, `page_token` is the task `updated_at` cursor in microseconds.
 >
 > **Execution Priority:**
 > 1. If the request contains a start/end time boundary (for example, "今年以来", "最近一个月", "从 3 月 1 日开始"), first convert the **start time** boundary to a microsecond `page_token` and query from that token.
@@ -40,7 +40,7 @@ lark_task_get_related_tasks(created_by_me=true)
 | `created_by_me` | No | Keep only tasks whose creator is the current user. This is a client-side filter applied after fetching related-task pages. |
 | `followed_by_me` | No | Keep only tasks followed by the current user. This is a client-side filter applied after fetching related-task pages. |
 
-> **Page Token Note:** In `+get-related-tasks`, the `page_token` is a microsecond-level cursor representing the task's last update time. For example, `1752730590582902` should be treated as an updated-at cursor, not a task ID.
+> **Page Token Note:** In `lark_task_get_related_tasks`, the `page_token` is a microsecond-level cursor representing the task's last update time. For example, `1752730590582902` should be treated as an updated-at cursor, not a task ID.
 >
 > **Pagination Note for Client-side Filters:** When `created_by_me` or `followed_by_me` is used, filtering happens locally after each upstream related-task page is fetched. The returned `has_more` and `page_token` still describe the upstream cursor, so later pages may contain more matching tasks, or may contain none.
 
