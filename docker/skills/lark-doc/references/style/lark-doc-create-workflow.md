@@ -7,7 +7,7 @@
 通过自适应的 **Code-Act Loop** 驱动文档创作，而非固定模板式的工作流。每次任务都循环执行：
 
 1. **Plan（规划）** — 根据用户目标和文档当前状态，评估下一步该做什么
-2. **Execute（执行）** — 调用相应的 MCP tool，或 **spawn** Agent 子任务并行推进
+2. **Execute（执行）** — 由主 Agent 自己调用相应的 MCP tool 推进正文；仅画板渲染按需隔离到 SubAgent（见步骤三）
 3. **Observe（观察）** — 检查工具输出，验证正确性，确认内容是否满足用户目标
 4. **Iterate（迭代）** — 如需调整，回到 Plan 继续循环
 
@@ -16,43 +16,30 @@
 
 ## 典型 Code-Act Loop 流程
 
-### 步骤一：规划与初始创建（串行）
+### 步骤一：规划与撰写（单 Agent 串行）
+
+正文由主 Agent 串行维护，**不按章节拆给并行 Agent**，避免上下文割裂、重复矛盾和全文级约束失效。
 
 1. 分析用户需求：受众、目的、范围
 2. 设计大纲：根据任务自然选择结构。可以是短文、纪要、FAQ、方案、报告、清单或其他形式；不要默认套固定章节、固定开头或固定富 block 配比
-3. `lark_docs_create` 创建文档。长文档可**只建骨架**：标题 + 各级标题 + 每节一句占位摘要；短文档可以一次写入完整内容
-   - ⚠️ 创建较长文档时，**不要**一次性把完整章节内容塞进 `content`。超长 `content` 容易触发字符/参数限制。
-   - 完整内容留到步骤二，由各 Agent 用 `lark_docs_update(command="block_insert_after", block_id="<章节标题 block_id>")` 分段写入。
+3. `lark_docs_create` 创建并撰写：
+   - **短文档**：一次写入完整内容
+   - **长文档**：先建骨架（标题 + 各级标题），再由主 Agent **顺序逐节**用 `lark_docs_update(command="block_insert_after", block_id="<章节标题 block_id>")` 补全正文；写完一节再写下一节，始终带着已写内容的上下文，保证衔接、不重复
+   - ⚠️ 不要一次性把超长完整内容塞进 `content`，容易触发字符/参数限制；长文按节分次写入
+   - ⚠️ 同一节内多次插入时，要锚到**上一个新插入的 block**（按 `lark_get_skill(domain="doc", section="update")` 的「Block ID 生命周期」），否则反复锚同一个标题会让段落顺序颠倒
+   - ⚠️ 若先建骨架写了占位摘要，补正文时**删除占位摘要**，不要留残渣
 
-### 步骤二：分段撰写（并行 Agent）
+### 步骤二：整合审查与画板识别（串行）
 
-4. Spawn Agent 并行撰写各章节。每个 Agent 需收到：
-   - 文档 token、负责的章节范围、用户目标、目标读者和已有风格线索
-   - `lark_get_skill(domain="doc", section="xml")` 和 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的引用（Agent 须先读取）
-   - 使用 `lark_docs_update(command="block_insert_after", block_id="<章节标题 block_id>")` 写入对应章节内容
+4. `lark_docs_fetch(detail="with-ids")` 获取文档，审查整体效果
+5. 评估内容是否满足用户目标：事实是否完整、结构是否清楚、语气是否匹配、是否保留必要素材；检查跨节有无重复、矛盾或断流。再按 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的「写完自检」快速核对，发现问题就地定向修正
+6. **画板识别**：逐章节扫描，判断是否有段落用图明显比文字更易懂（流程 / 架构 / 时间线 / 对比 / 占比等，见 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的画板原则）。默认用文字，只有确需图示才记录需要插图的章节、推荐画板类型、mermaid/SVG 路径和用于画图的源内容
 
-### 步骤三：整合审查与画板识别（串行）
+### 步骤三：画板处理与润色
 
-5. `lark_docs_fetch(detail="with-ids")` 获取文档，审查整体效果
-6. 评估内容是否满足用户目标：事实是否完整、结构是否清楚、语气是否匹配、是否保留必要素材
-7. **画板意图识别**：逐章节扫描，按 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 「画板意图识别」表判断是否有段落适合用图表达。重要信息优先画板化，记录需要插图的章节、推荐画板类型、mermaid/SVG 路径和用于画图的源内容
+7. **优先处理步骤二识别出的画板需求**：读取并按 `lark_get_skill(domain="doc", section="whiteboard")` 选型和插入；正文本身不交给 SubAgent
+8. 由**主 Agent 自行润色**（不另起内容子 Agent，正文始终一人维护）：文字密集且不易读时，优先拆段、加小标题或调整顺序——叙述内容保持成段，**不要默认改成列表**，只有确属并列要点 / 步骤才用列表（见 `lark_get_skill(domain="doc", section="style/lark-doc-style")`）；只有确实存在行列数据时才用 `<table>`。其余富 block 的取舍一律遵循 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的写作原则，不主动堆叠。需要明显分隔的主题可补充 `<hr/>`，不强制章节间都使用。本地图片使用 `lark_docs_media_insert` 插入
 
-### 步骤四：画板处理与润色（并行 Agent）
+### 步骤四：专项校验（按需执行）
 
-8. **优先处理步骤三识别出的画板需求**：
-   参考 `lark_get_skill(domain="doc", section="whiteboard")` 中的方式，插入图表画板。
-9. Spawn 内容改写 Agent 定向润色：
-   - 文字密集且不易读时，优先拆段、改列表、增加小标题或调整顺序；只有确实存在行列数据、并列对比或强提醒信息时，才考虑 `<table>` / `<grid>` / `<callout>`
-   - 需要明显分隔的主题可补充 `<hr/>`，不强制章节间都使用
-   - 本地图片使用 `lark_docs_media_insert` 插入
-
-
-## Agent 子任务要求
-
-内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark_get_skill(domain="doc", section="xml")` 和 `lark_get_skill(domain="doc", section="style/lark-doc-style")` 的引用、用户目标/风格要求、具体的 `lark_docs_update` command 和 `block_id`。
-
-Mermaid 图由主 Agent 直接插入 `<whiteboard type="mermaid">...</whiteboard>`，无需 SubAgent。
-
-SVG SubAgent 必须收到：文档 token、插入位置（标题/block ID）、图表目标、源内容片段、`lark_get_skill(domain="doc", section="xml")` 引用，以及 `lark_get_skill(domain="doc", section="whiteboard")` 中的 "SVG 设计 Workflow" 指南。它只负责插入一个 `<whiteboard type="svg">...</whiteboard>`，不改其他正文，也不读取 `lark-whiteboard`。
-
-已有画板更新 SubAgent 必须收到：board_token、图表目标、推荐画板类型、源内容片段、`lark_get_skill(domain="whiteboard")` 引用。它只负责写入画板，不改文档正文。
+9. 仅当用户预期需要校验字数时，才读取并执行 `lark_get_skill(domain="doc", section="word-stat")` 的「字数遵循校验」；否则跳过本项，不读取该 workflow。若执行了专项校验，向用户呈现结果

@@ -39,20 +39,20 @@ lark_okr_cycle_list(user_id="ou_xxx", time_range="2025-01--2025-06")
   "cycles": [
     {
       "id": "1234567890123456789",
-      "create_time": "2025-01-01 00:00:00",
-      "update_time": "2025-01-01 00:00:00",
-      "tenant_cycle_id": "789",
-      "owner": {
-        "owner_type": "user",
-        "user_id": "ou_xxx"
-      },
       "start_time": "2025-01-01 00:00:00",
       "end_time": "2025-06-30 00:00:00",
-      "cycle_status": "normal",
-      "score": 0
+      "cycle_status": "normal"
     }
   ],
-  "total": 1
+  "total": 1,
+  "current_active_cycles": [
+    {
+      "id": "1234567890123456789",
+      "start_time": "2025-01-01 00:00:00",
+      "end_time": "2025-06-30 00:00:00",
+      "cycle_status": "normal"
+    }
+  ]
 }
 ```
 
@@ -65,6 +65,9 @@ lark_okr_cycle_list(user_id="ou_xxx", time_range="2025-01--2025-06")
     - 如果一个周期从某年1月1日开始，某年12月31日结束，则它是这一年的年度周期，如 "2025-01-01开始，2025-12-31结束" 的周期就是
       "2025 年" 的年度周期
 - `cycle_status` 为周期状态值，参见下文。
+- `current_active_cycles` 是当前生效的周期列表，不过根据用户的周期设置，可能会出现为空的场景。
+
+如果需要获取周期的创建时间/总分等信息，可以通过 `lark_invoke` 调用原生 API `lark_okr_cycles_list` 获取。
 
 ### 周期状态值
 

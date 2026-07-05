@@ -22,6 +22,8 @@ description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、
 
 **CRITICAL — 生成任何 XML 之前，MUST 先调用 `lark_get_skill(domain="slides", section="xml-schema-quick-ref")` 获取 XML 协议规则，禁止凭记忆猜测 XML 结构。**
 
+**CRITICAL — PPT 生成与模板编辑硬约束：PPT 的尺寸是 960x540，确保主体内容在页面边界内。多用生图，辅助搜图，必须要图文并茂。不要为了画出一个具象物体而堆叠 3 个以上仅用于拟形的 shape。生成背景图时必须在 prompt 中明确要求不要出现任何文字。用户指定 PPT 模板时，用 `lark_drive_import(type="slides")` 导入成 lark slides，回读理解每页版式后，直接在该 slides 上编辑，可以填改文字和图片、按需增删模板页，必须严格沿用原版式和字体，只改内容不做设计，完成后回读并微调，凝练文字或缩减字号消除文字溢出，调整 shape 顺序或位置避免文字遮挡。**
+
 **CRITICAL — 新建演示文稿或大幅改写页面时，MUST 先生成 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`，再生成 XML。先创建对应目录，规划层规则和中间产物生命周期见 `lark_get_skill(domain="slides", section="planning-layer")`。仅替换一个标题、插入一个块等小型已有页编辑可豁免。**
 
 **CRITICAL — 新建演示文稿或大幅改写页面时，生成 XML 前 MUST 调用 `lark_get_skill(domain="slides", section="visual-planning")`，确保 `layout_type`、`visual_focus`、`text_density` 实际改变页面几何、主视觉和文本量。**
@@ -58,7 +60,6 @@ description: "飞书幻灯片：创建和编辑幻灯片。创建演示文稿、
 - 图片：`lark_get_skill(domain="slides", section="media-upload")`
 - 流程图 / 时序图 / 架构图 / 装饰图案：`lark_get_skill(domain="slides", section="whiteboard")`
 - 图标：`lark_get_skill(domain="slides", section="iconpark")`、`lark_exec_script(script="lark-slides/scripts/iconpark_tool.py", ...)`
-- 模板：`lark_get_skill(domain="slides", section="template-catalog")`
 - 排障：`lark_get_skill(domain="slides", section="troubleshooting")`
 
 ## Workflow
@@ -110,7 +111,7 @@ lark_invoke(tool_name="lark_slides_xml_presentations_get", args={params: {"xml_p
 
 ## 核心规则
 
-1. **先规划再写 XML**：新建演示文稿或大幅改写页面时，必须先写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`
+1. **先规划再写 XML**：新建演示文稿或大幅改写页面时，必须先写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`；风格和大纲只能作为规划输入，不能绕过规划层
 2. **创建流程**：简单短 XML 可用 `lark_slides_create(title="...", slides='[...]')` 一步创建；复杂内容默认先创建空白 PPT，再逐页添加
 3. **`<slide>` 直接子元素只有 `<style>`、`<data>`、`<note>`**：文本和图形必须放在 `<data>` 内
 4. **文本通过 `<content>` 表达**：必须用 `<content><p>...</p></content>`，不能把文字直接写在 shape 内

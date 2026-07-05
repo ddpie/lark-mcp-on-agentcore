@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.63",
-    "extracted_at": "2026-07-02",
+    "lark_cli_version": "1.0.65",
+    "extracted_at": "2026-07-05",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -1157,6 +1157,28 @@
     },
     {
       "service": "docs",
+      "command": "+history-list",
+      "scopes": [
+        "docx:document:readonly"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+history-revert",
+      "scopes": [
+        "docx:document:write_only",
+        "docx:document:readonly"
+      ]
+    },
+    {
+      "service": "docs",
+      "command": "+history-revert-status",
+      "scopes": [
+        "docx:document:readonly"
+      ]
+    },
+    {
+      "service": "docs",
       "command": "+media-download",
       "scopes": [
         "docs:document.media:download"
@@ -1453,6 +1475,13 @@
       "command": "+chat-list",
       "scopes": [
         "im:chat:read"
+      ]
+    },
+    {
+      "service": "im",
+      "command": "+chat-members-list",
+      "scopes": [
+        "im:chat.members:read"
       ]
     },
     {
@@ -1927,6 +1956,13 @@
     {
       "service": "okr",
       "command": "+indicator-update",
+      "scopes": [
+        "okr:okr.content:writeonly"
+      ]
+    },
+    {
+      "service": "okr",
+      "command": "+patch",
       "scopes": [
         "okr:okr.content:writeonly"
       ]

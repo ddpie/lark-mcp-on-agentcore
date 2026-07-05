@@ -73,6 +73,8 @@ lark_minutes_speaker_replace(minute_token="obcnxxxxxxxxxxxxxxxxxxxx", from_speak
 
 Agent 必须先用 `lark_invoke` 裸调 `.../speakerlist`，再 `lark_minutes_speaker_replace`；`from_speaker_id` 只接受 `speaker_id`。
 
+`lark_minutes_speaker_replace` **不会**自己请求 speakerlist：`from_speaker_id` 的值会原样发给替换接口。整条链路只在 Agent 一开始查一次 speakerlist，务必传入上一步拿到的 `speaker_id`（不要传展示名，否则替换接口会返回 speaker-not-found）。
+
 ### 2. 新说话人必须是 open_id
 
 `to_user_id` 仅支持 `ou_` 开头的 open_id，**不支持直接传姓名**；如果用户只给了姓名，请先用 `lark_get_skill(domain="contact")` 把姓名解析成 `open_id`。
