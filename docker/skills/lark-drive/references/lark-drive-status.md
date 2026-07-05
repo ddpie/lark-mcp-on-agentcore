@@ -115,9 +115,9 @@ lark_drive_status(local_dir="./repo", folder_token="fldcnxxxxxxxxx", quick=true)
 | 列出文件夹 / 子目录 | `drive:drive.metadata:readonly` |
 | 下载并 hash 文件 | `drive:file:download` |
 
-默认会先要求 `drive:drive.metadata:readonly`。在 `detection=exact` 路径（默认，不传 `quick`）下，工具还会额外要求 `drive:file:download`；传 `quick=true` 时不会要求下载 scope。如果当前 token 缺本次执行路径需要的 scope，命令会报 `missing_scope` 并提示重新登录。`drive:drive` 在部分企业被策略禁用，所以 +status 故意只依赖上面这些细粒度 scope。
+默认会先要求 `drive:drive.metadata:readonly`。在 `detection=exact` 路径（默认，不传 `quick`）下，工具还会额外要求 `drive:file:download`；传 `quick=true` 时不会要求下载 scope。如果当前 token 缺本次执行路径需要的 scope，命令会报 `missing_scope` 并提示重新登录。`drive:drive` 在部分企业被策略禁用，所以 `lark_drive_status` 故意只依赖上面这些细粒度 scope。
 
 ## 参考
 
-- [lark-drive](../SKILL.md) —— 云空间（云盘/云存储）全部命令
-- [lark-drive-upload](lark-drive-upload.md) / [lark-drive-download](lark-drive-download.md) —— 把 +status 输出接到推/拉动作上
+- `lark_get_skill(domain="drive")` —— 云空间（云盘/云存储）全部命令
+- `lark_get_skill(domain="drive", section="upload")` / `lark_get_skill(domain="drive", section="download")` —— 把 `lark_drive_status` 输出接到推/拉动作上

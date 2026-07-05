@@ -3,10 +3,10 @@
 
 将文件或文件夹移动到用户云空间（云盘/云存储）的其他位置。
 
-## 与 `wiki +move` 的区别
+## 与 `lark_wiki_move` 的区别
 
 - `lark_drive_move` 只处理 **Drive 文件夹树内部** 的位置调整，目标位置用 `folder_token` 表示
-- `wiki +move` 处理的是 **Wiki 知识空间 / 页面层级**：要么移动已有 Wiki 节点，要么把 Drive 文档迁入 Wiki
+- `lark_wiki_move` 处理的是 **Wiki 知识空间 / 页面层级**：要么移动已有 Wiki 节点，要么把 Drive 文档迁入 Wiki
 - 如果用户说"移动到某个文件夹""移动到我的空间根目录"，应使用 `lark_drive_move`
 - 如果用户说"移动到某个知识库 / 页面下""迁入 Wiki / 知识空间"，应使用 `lark_wiki_move`
 - 如果用户说"移动到我的文档库 / 我的知识库 / 个人知识库 / my_library"，不要使用 `lark_drive_move`；先按 Wiki 目标处理

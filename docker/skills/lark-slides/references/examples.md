@@ -68,5 +68,5 @@ lark_slides_replace_slide(presentation="slides_example_presentation_id", slide_i
 
 ## 相关文档
 
-- [slides_xml_schema_definition.xml](slides_xml_schema_definition.xml) — 完整 XML Schema
-- [slides_demo.xml](slides_demo.xml) — 更完整的页面示例
+- `slides_xml_schema_definition.xml`（skill 内置 XSD）— 完整 XML Schema
+- `slides_demo.xml`（skill 内置示例）— 更完整的页面示例

@@ -123,6 +123,6 @@ lark_drive_pull(local_dir="./repo", folder_token="fldcnxxxxxxxxx", delete_local=
 
 ## 参考
 
-- [lark-drive](../SKILL.md) —— 云空间（云盘/云存储）全部命令
-- [lark-drive-status](lark-drive-status.md) —— 下载前先看差异
-- [lark-drive-download](lark-drive-download.md) —— 单文件按需拉取
+- `lark_get_skill(domain="drive")` —— 云空间（云盘/云存储）全部命令
+- `lark_get_skill(domain="drive", section="status")` —— 下载前先看差异
+- `lark_get_skill(domain="drive", section="download")` —— 单文件按需拉取
