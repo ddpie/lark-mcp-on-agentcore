@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.65",
-    "extracted_at": "2026-07-05",
+    "lark_cli_version": "1.0.66",
+    "extracted_at": "2026-07-07",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -1083,6 +1083,13 @@
       "command": "+freebusy",
       "scopes": [
         "calendar:calendar.free_busy:read"
+      ]
+    },
+    {
+      "service": "calendar",
+      "command": "+get",
+      "scopes": [
+        "calendar:calendar.event:read"
       ]
     },
     {

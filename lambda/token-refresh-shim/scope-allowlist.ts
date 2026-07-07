@@ -132,6 +132,8 @@ export const SCOPE_ALLOWLIST: ReadonlySet<string> = new Set([
   "im:message.send_as_user",
   "im:message:readonly",
   "im:message:recall",
+  "im:resource",
+  "im:resource:upload",
   "mail:event",
   "mail:user_mailbox",
   "mail:user_mailbox.event.mail_address:read",

@@ -18,7 +18,8 @@ description: "飞书 Markdown：查看、创建、上传、编辑和比较 Markd
 - 用户要先拿 Markdown 文件的历史版本号，再做比较/下载/回滚，先用 `lark_get_skill(domain="drive", section="version-history")` 查看 `lark_drive_version_history`
 - 用户要把本地 Markdown **导入成在线新版文档（docx）**，不要用本 skill，改用 `lark_get_skill(domain="drive", section="import")` 查看 `lark_drive_import(type="docx")`
 - 用户要对 Markdown 文件做**rename / move / delete / 搜索 / 权限 / 评论**等云空间（云盘/云存储）操作，不要留在本 skill，切到 `lark_get_skill(domain="drive")`
-- `lark_markdown_create` / `lark_markdown_overwrite` 命中 `missing scope`、`permission denied`、`not found`、`version limit` 时，默认停止重试并按报错 hint 处理；只有 `rate limit` 或临时网络错误才做有限重试。
+- `lark_markdown_create` / `lark_markdown_overwrite` 命中 `missing scope`、`permission denied`、`not found`、`quota_exceeded`、`version limit` 时，默认停止重试并按报错 hint 处理；只有 `rate_limit`、`server_error` 或临时网络错误才做有限退避重试。
+- `lark_markdown_create` 的目标参数不要猜：Drive 文件夹用 `folder_token`，Wiki 节点用 `wiki_token`。如果用户给的是 URL，可以直接传完整 URL；工具会归一成 token。不要把 doc/sheet/wiki URL 放进 `folder_token` 试错。
 
 ## 核心边界
 

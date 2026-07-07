@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.65",
+    "lark_cli_version": "1.0.66",
     "source": "lark-cli schema _meta.scopes"
   },
   "rawApis": [
@@ -790,6 +790,15 @@
       "method": "update",
       "scopes": [
         "im:feed_group_v1:write"
+      ]
+    },
+    {
+      "service": "im",
+      "resource": "images",
+      "method": "create",
+      "scopes": [
+        "im:resource:upload",
+        "im:resource"
       ]
     },
     {

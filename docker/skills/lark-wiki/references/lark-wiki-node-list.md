@@ -11,6 +11,9 @@ lark_wiki_node_list(space_id="<SPACE_ID>")
 # Drill into a sub-directory (still single page by default)
 lark_wiki_node_list(space_id="<SPACE_ID>", parent_node_token="<NODE_TOKEN>")
 
+# Drill with a wiki URL (normalizes /wiki/<token> to node_token)
+lark_wiki_node_list(space_id="<SPACE_ID>", parent_node_token="https://feishu.cn/wiki/wikcn_xxx")
+
 # Personal document library
 lark_wiki_node_list(space_id="my_library")
 
@@ -31,8 +34,8 @@ lark_wiki_node_list(space_id="<SPACE_ID>", format="pretty")
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `space_id` | string | **Yes** | — | Wiki space ID. Use `my_library` for personal document library |
-| `parent_node_token` | string | No | — | Parent node token; omit to list the space root |
+| `space_id` | string | **Yes** | — | Numeric wiki space ID. Use `my_library` for personal document library |
+| `parent_node_token` | string | No | — | Parent wiki node token, or a `/wiki/<token>` URL; omit to list the space root |
 | `page_size` | int | No | 50 | Page size, 1-50 |
 | `page_token` | string | No | — | Page cursor; implies single-page fetch (no auto-pagination) |
 | `page_all` | bool | No | `false` | Automatically paginate through all pages (capped by `page_limit`) |
@@ -81,6 +84,10 @@ lark_wiki_node_list(space_id="6946843325487912356", parent_node_token="wikcn_EXA
 ## Notes
 
 - `space_id="my_library"` is a per-user alias. The MCP server always runs with user identity so this works by default.
+- `space_id` is a numeric wiki `space_id`. Do not pass a wiki URL, wiki node token, document token, or title. Use `lark_wiki_space_list` to discover it.
+- `parent_node_token` must resolve to a wiki node token. If you have a docx/sheet/base/file URL, first call `lark_wiki_node_get(node_token="<url>")` and use the returned `node_token`.
+- Treat `invalid_parameters` (`space_id is not int`, `invalid page_token`), `not_found` (`node not found by parent node token`), and `permission_denied` as terminal for the current arguments. Fix the argument or permission before retrying.
+- For `rate_limit`, stop immediate retries and retry later with exponential backoff or a smaller `page_limit`.
 
 ## Required Scope
 

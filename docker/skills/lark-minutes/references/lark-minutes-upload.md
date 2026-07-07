@@ -23,12 +23,12 @@
      ```
    - 执行成功后，将返回生成的妙记链接 `minute_url`。
 
-3. **如需纪要 / 逐字稿 / 文字稿 / 撰写文字，继续提取 `minute_token` 调用 `lark_minutes_detail`**
-   - 从返回的 `minute_url` 中提取路径最后一段，得到 `minute_token`。
-   - 如果用户要的是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，继续调用：
+3. **如需纪要 / 逐字稿 / 文字稿 / 撰写文字，使用返回的 `minute_token` 调用 `lark_minutes_detail`**
+   - 如果用户要的是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，使用上一步返回的 `minute_token` 继续调用：
      ```
-     lark_minutes_detail(minute_tokens="<minute_token>", summary=true, todo=true, chapter=true, keyword=true, transcript=true)
+     lark_minutes_detail(minute_tokens="<minute_token>", wait_ready=true, summary=true, todo=true, chapter=true, keyword=true, transcript=true)
      ```
+   - `wait_ready=true` 表示等待妙记生成完毕后再获取产物，上传后立即读取详情时必须加上此参数。
    - `lark_minutes_detail` 会返回妙记产物（总结、待办、章节、关键词、逐字稿）；必要时还会把逐字稿落地到本地文件。
 
 > **异步生成提示**：API 会立即返回 `minute_url`，但妙记可能仍在异步生成中，您可以直接通过该妙记链接查看当前的处理状态和转写结果。
@@ -39,8 +39,8 @@
 # 通过已上传到云空间（云盘/云存储）的 file_token 生成妙记
 lark_minutes_upload(file_token="boxcnxxxxxxxxxxxxxxxx")
 
-# 通过 minute_token 继续获取妙记产物（summary / todo / chapter / keyword / transcript 按需传入）
-lark_minutes_detail(minute_tokens="obcnxxxxxxxxxxxxxxxx", summary=true)
+# 上传后立即获取妙记产物，需加 wait_ready=true 等待生成完毕（summary / todo / chapter / keyword / transcript 按需传入）
+lark_minutes_detail(minute_tokens="obcnxxxxxxxxxxxxxxxx", wait_ready=true, summary=true)
 ```
 
 ## 参数
@@ -73,7 +73,7 @@ lark_minutes_detail(minute_tokens="obcnxxxxxxxxxxxxxxxx", summary=true)
 1. 使用 `lark_drive_upload(file="<path>")` 上传本地音视频文件到云空间
 2. 从返回结果中取出 `file_token`
 3. 调用 `lark_minutes_upload(file_token="<file_token>")` 生成妙记
-4. 如果目标是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，再从 `minute_url` 提取 `minute_token`，继续调用 `lark_minutes_detail(minute_tokens="<minute_token>")`
+4. 如果目标是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，使用返回的 `minute_token`，继续调用 `lark_minutes_detail(minute_tokens="<minute_token>", wait_ready=true)`
 
 > **边界说明**：`lark_minutes_upload` 本身只负责把文件转成妙记并返回 `minute_url`。纪要内容、逐字稿、文字稿、撰写文字、总结、待办、章节属于后续产物获取，应由 `lark_get_skill(domain="minutes", section="detail")` 承接。
 
@@ -81,13 +81,15 @@ lark_minutes_detail(minute_tokens="obcnxxxxxxxxxxxxxxxx", summary=true)
 
 ```json
 {
-  "minute_url": "http(s)://<host>/minutes/<minute-token>"
+  "minute_url": "http(s)://<host>/minutes/<minute-token>",
+  "minute_token": "<minute-token>"
 }
 ```
 
 | 字段 | 说明 |
 |------|------|
 | `minute_url` | 生成的妙记访问链接 |
+| `minute_token` | 从 `minute_url` 提取出的妙记 Token，可直接传给 `lark_minutes_detail(minute_tokens=...)` |
 
 ## 参考
 
