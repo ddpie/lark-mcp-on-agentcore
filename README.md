@@ -392,6 +392,7 @@ Spanning 20+ domains: Calendar, IM, Bitable, Mail, Docs, VC, Task, Wiki, Sheets,
 | Security | [docs/security_en.md](docs/security_en.md) |
 | Observability & Alarms | [docs/observability_en.md](docs/observability_en.md) |
 | Operations & Commands | [docs/operations_en.md](docs/operations_en.md) |
+| Releasing (version scheme) | [docs/releasing_en.md](docs/releasing_en.md) |
 | FAQ | [docs/faq_en.md](docs/faq_en.md) |
 | Cost | [docs/cost_en.md](docs/cost_en.md) |
 | Project Structure | [docs/structure_en.md](docs/structure_en.md) |

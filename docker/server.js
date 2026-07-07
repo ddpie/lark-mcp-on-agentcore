@@ -618,7 +618,7 @@ async function handleRequest(req, res, body) {
       result: {
         protocolVersion: '2024-11-05',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'lark-mcp-on-agentcore', version: '2.0.0' },
+        serverInfo: { name: 'lark-mcp-on-agentcore', version: '1.0.0', larkCliVersion: catalogRaw._larkCliVersion },
         instructions: [
           'WORKFLOW: call lark_list_skills → pick the domain matching user intent → call lark_get_skill(domain) to read the guide → then call tools following the guide. Do not skip the guide — it contains required parameter formats and call sequences.',
           'DISCOVERY: 28 high-frequency tools are directly available. For anything else, use lark_discover(query) to find the tool, then lark_invoke(tool_name, args) to call it.',
