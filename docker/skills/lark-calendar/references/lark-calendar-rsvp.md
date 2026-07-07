@@ -2,8 +2,6 @@
 
 回复指定的日程，更新当前用户的 RSVP 状态（接受、拒绝或待定）。
 
-需要的scopes: ["calendar:calendar.event:reply"]
-
 ## 工具调用
 
 ```
@@ -31,8 +29,8 @@ lark_calendar_rsvp(calendar_id="cal_xxx", event_id="evt_xxx", rsvp_status="accep
 ## 提示
 
 - 只能回复你被邀请的日程。
-- 调用前通常需要通过 `lark_calendar_agenda` 等工具获取到具体的 `event_id`。
+- 调用前通常需要通过 `lark_calendar_agenda` 等获取到具体的 `event_id`。
 
 ## 参考
 
-- lark_get_skill(domain="calendar") -- 日历全部命令
+- lark_get_skill(domain="calendar") -- skill 入口与路由

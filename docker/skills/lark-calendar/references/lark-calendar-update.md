@@ -4,8 +4,6 @@
 
 `lark_calendar_update` 支持三类互相独立的动作：更新日程字段、添加参会人/会议室、移除参会人/会议室。它们可以单独执行，也可以在同一次调用中组合执行。
 
-需要的 scopes: ["calendar:calendar.event:update"]
-
 ## 推荐调用
 
 ```
@@ -26,7 +24,7 @@ lark_calendar_update(event_id="<EVENT_ID>", summary="产品评审", start="2026-
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `event_id` | 是 | 要更新的日程 ID。重复性日程要先定位到目标实例的 `event_id`，不要直接使用原重复日程 ID |
+| `event_id` | 是 | 要更新的日程 ID。重复性日程请根据操作范围选择 ID，详见 lark_get_skill(domain="calendar", section="recurring") |
 | `calendar_id` | 否 | 日历 ID（省略则使用 `primary`） |
 | `summary` | 否 | 新日程标题。仅在显式传入 `summary` 时更新；若传空字符串，会把标题清空 |
 | `description` | 否 | 新日程描述。目前 API 方式不支持编辑富文本描述；如果日程描述通过客户端编辑为富文本内容，则使用 API 更新描述会导致富文本格式丢失。仅在显式传入 `description` 时更新；若传空字符串，会把描述清空 |
@@ -41,15 +39,15 @@ lark_calendar_update(event_id="<EVENT_ID>", summary="产品评审", start="2026-
 
 ## 使用规则
 
-- `add_attendee_ids` 是**增量添加**，不是替换最终参与人列表。不要用它表达"只保留这些人"。
-- 对 `summary`、`description`，以"是否显式传入该参数"判断是否更新，而不是以"值是否为空"判断；如果显式传入空字符串，会把对应字段清空。
+- `add_attendee_ids` 是**增量添加**，不是替换最终参与人列表。不要用它表达“只保留这些人”。
+- 对 `summary`、`description`，以“是否显式传入该参数”判断是否更新，而不是以“值是否为空”判断；如果显式传入空字符串，会把对应字段清空。
 - 只想增删参会人或会议室时，不需要同时传 `summary`、`start`、`end` 等日程字段。
 - 只想修改标题、描述、时间或重复规则时，不需要同时传 `add_attendee_ids` 或 `remove_attendee_ids`。
 - 如需替换某个参与人、群组或会议室，使用 `remove_attendee_ids="<旧ID>"` + `add_attendee_ids="<新ID>"`。
 - 会议室是 resource attendee，必须使用 `omm_` ID 添加到参会人列表，不能脱离日程单独预定。
-- 更新重复性日程的某一次实例时，必须先通过 `lark_calendar_agenda`、`lark_calendar_search_event` 或实例视图定位该实例的 `event_id`。
-- 如果需要验证更新结果，等待至少 2 秒后再查询，避免同步延迟导致读到旧数据。
-- 当同一次调用组合多个动作时，执行顺序为"日程字段 -> 移除参会人 -> 添加参会人"。若中途失败，不会自动回滚已成功步骤；错误信息会说明已完成的步骤。
+- 更新重复性日程时，必须先确定操作范围（仅此次/全部/此次及后续），然后按 lark_get_skill(domain="calendar", section="recurring") 执行。
+- 当同一次调用组合多个动作时，执行顺序为“日程字段 -> 移除参会人 -> 添加参会人”。若中途失败，不会自动回滚已成功步骤；错误信息会说明已完成的步骤。
+**⚠️ 高风险操作**: 修改时间时必须先读取原日程时长并计算新 end。如果 end 计算错误，会导致日程时长变化，用户会直接感知，禁止擅自改变原日程的时长。
 
 ## 高级用法（完整 API 命令）
 
@@ -61,7 +59,7 @@ lark_calendar_update(event_id="<EVENT_ID>", summary="产品评审", start="2026-
 
 ## 预约/改约会议室场景
 
-如果用户要"改会议时间""换会议室""给现有日程加会议室"，必须先调用 lark_get_skill(domain="calendar", section="schedule-meeting") 并按其中工作流处理：
+如果用户要“改会议时间”“换会议室”“给现有日程加会议室”，必须先调用 lark_get_skill(domain="calendar", section="schedule-meeting") 并按其中工作流处理：
 
 - 明确时间且需要会议室：先 `lark_calendar_room_find`，再按需 `lark_calendar_freebusy`，用户确认后再 `lark_calendar_update`。
 - 模糊时间或无时间：先 `lark_calendar_suggestion`，如需会议室再批量 `lark_calendar_room_find`，用户确认后再 `lark_calendar_update`。
@@ -80,7 +78,6 @@ lark_calendar_update(event_id="<EVENT_ID>", summary="产品评审", start="2026-
 
 ## 参考
 
-- lark_get_skill(domain="calendar") -- 日历全部命令
+- lark_get_skill(domain="calendar") -- skill 入口与路由
 - lark_get_skill(domain="calendar", section="schedule-meeting") -- 预约/改约会议与会议室工作流
 - lark_get_skill(domain="calendar", section="room-find") -- 查找可用会议室
-- lark_get_skill(domain="calendar", section="freebusy") -- 查询忙闲
