@@ -134,4 +134,5 @@ See `docs/agent/playbooks.md` for change-specific test steps.
 - Structure: `docs/structure_en.md` · Security: `docs/security_en.md`
 - Operations: `docs/operations_en.md` · Observability: `docs/observability_en.md`
 - Cost: `docs/cost_en.md` · FAQ: `docs/faq_en.md` · Skills: `docs/skills_en.md`
+- Releasing (version scheme + procedure): `docs/releasing_en.md`
 - lark-cli bump runbook: `docs/skills/bump-lark-cli.md`
