@@ -392,6 +392,61 @@ if [ "$DEPS_OK" = "false" ]; then
   exit 1
 fi
 
+# AWS Profile selection. Chosen BEFORE the credential check so every downstream
+# aws/cdk call inherits it via AWS_PROFILE. Multi-profile users pick which
+# account to deploy into; single-profile / default-only setups stay silent and
+# byte-identical to before. The choice persists to deploy-config (AWS_PROFILE=)
+# and is honored on redeploy (interactive default + --yes source).
+list_aws_profiles() {
+  # Union of ~/.aws/config ([profile x] and bare [default]) and
+  # ~/.aws/credentials ([x]). One name per line, de-duplicated, order-stable.
+  { [ -f "${HOME}/.aws/config" ] && sed -n 's/^[[:space:]]*\[profile[[:space:]]\+\([^]]*\)\].*/\1/p; s/^[[:space:]]*\[\(default\)\].*/\1/p' "${HOME}/.aws/config"
+    [ -f "${HOME}/.aws/credentials" ] && sed -n 's/^[[:space:]]*\[\([^]]*\)\].*/\1/p' "${HOME}/.aws/credentials"
+  } 2>/dev/null | awk 'NF && !seen[$0]++'
+}
+
+select_profile() {
+  # An explicit env AWS_PROFILE wins and is never overridden here.
+  [ -n "${AWS_PROFILE:-}" ] && { info "$(t profile_using "$AWS_PROFILE")"; return; }
+
+  # Saved profile from a prior deploy (also set by --yes via sourced config).
+  local _saved=""
+  [ -f "$DEPLOY_CONFIG" ] && _saved=$(grep '^AWS_PROFILE=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+
+  local -a _profiles=()
+  while IFS= read -r _p; do [ -n "$_p" ] && _profiles+=("$_p"); done < <(list_aws_profiles)
+
+  # Non-interactive: honor a saved profile if present, else leave default alone.
+  if [ "$AUTO_YES" = "1" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
+    [ -n "$_saved" ] && { export AWS_PROFILE="$_saved"; info "$(t profile_using "$AWS_PROFILE")"; }
+    return
+  fi
+
+  # Nothing to choose from (0 or 1 profile and no saved override): stay silent.
+  if [ "${#_profiles[@]}" -le 1 ] && [ -z "$_saved" ]; then
+    return
+  fi
+
+  # A saved profile still present in the config → offer to keep it without a menu.
+  if [ -n "$_saved" ] && printf '%s\n' "${_profiles[@]}" | grep -qxF "$_saved"; then
+    info "$(t profile_existing "$_saved")"
+    if confirm "${L[profile_keep]}"; then
+      export AWS_PROFILE="$_saved"; info "$(t profile_using "$AWS_PROFILE")"; return
+    fi
+  fi
+
+  echo ""
+  echo "  ${L[select_profile]}"
+  echo ""
+  local -a _labels=("${L[profile_default_env]}" "${_profiles[@]}")
+  local _choice
+  pick _choice "${_labels[@]}"
+  if [ "$_choice" != "${L[profile_default_env]}" ]; then
+    export AWS_PROFILE="$_choice"; info "$(t profile_using "$AWS_PROFILE")"
+  fi
+}
+select_profile
+
 # AWS 凭证
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
 if [ -z "$ACCOUNT_ID" ]; then
@@ -990,6 +1045,20 @@ export ALARM_WEBHOOK_KEYWORD="${ALARM_WEBHOOK_KEYWORD:-}"
 # CDK Bootstrap (deploy region + us-east-1 for the CloudFront-scope WAF)
 ensure_bootstrap() {
   local target_region="$1"
+  # Fail-fast reachability preflight. Without it the describe-stacks call below is
+  # the first thing to touch AWS, and on a network that can't reach the region it
+  # hangs on the CLI's default 60s connect timeout (times retries) with no output
+  # — which reads as "stuck at bootstrap". A bounded STS ping turns that silent
+  # hang into a clear, actionable error in a few seconds.
+  info "$(t bootstrap_preflight "$target_region")"
+  if ! AWS_STS_REGIONAL_ENDPOINTS=regional AWS_MAX_ATTEMPTS=2 \
+       AWS_METADATA_SERVICE_TIMEOUT=2 AWS_METADATA_SERVICE_NUM_ATTEMPTS=1 \
+       aws sts get-caller-identity --region "$target_region" \
+         --cli-connect-timeout 5 --cli-read-timeout 10 \
+         --output text >/dev/null 2>&1; then
+    err "$(t bootstrap_unreachable "$target_region" "$target_region")"
+    exit 1
+  fi
   local check
   check=$(aws cloudformation describe-stacks --stack-name CDKToolkit --region "$target_region" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
   if [ "$check" = "NOT_FOUND" ]; then
@@ -1546,6 +1615,7 @@ DEPLOY_STARTED=false
 # the bare write is always safe to `source` back (no spaces/quotes/metachars).
 cat > "$DEPLOY_CONFIG" << CFGEOF
 LARK_LANG=${LARK_LANG}
+AWS_PROFILE=${AWS_PROFILE:-}
 REGION=${REGION}
 CUSTOM_DOMAIN=${CUSTOM_DOMAIN:-}
 EXTRA_ALLOWED_DOMAINS=${EXTRA_ALLOWED_DOMAINS:-}
