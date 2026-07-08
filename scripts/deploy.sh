@@ -413,8 +413,13 @@ select_profile() {
   [ -n "${AWS_PROFILE:-}" ] && { info "$(t profile_using "$AWS_PROFILE")"; return; }
 
   # Saved profile from a prior deploy (also set by --yes via sourced config).
+  # The value is single-quoted in the file (names may contain spaces), so eval
+  # the one matched assignment in a subshell to unquote it exactly as `source`
+  # would — grep|cut would leave the literal quotes on.
   local _saved=""
-  [ -f "$DEPLOY_CONFIG" ] && _saved=$(grep '^AWS_PROFILE=' "$DEPLOY_CONFIG" 2>/dev/null | cut -d= -f2- || echo "")
+  if [ -f "$DEPLOY_CONFIG" ]; then
+    _saved=$(eval "$(grep '^AWS_PROFILE=' "$DEPLOY_CONFIG" 2>/dev/null)"; printf '%s' "${AWS_PROFILE:-}")
+  fi
 
   local -a _profiles=()
   while IFS= read -r _p; do [ -n "$_p" ] && _profiles+=("$_p"); done < <(list_aws_profiles)
@@ -1065,7 +1070,7 @@ ensure_bootstrap() {
   if ! AWS_STS_REGIONAL_ENDPOINTS=regional AWS_MAX_ATTEMPTS=2 \
        AWS_METADATA_SERVICE_TIMEOUT=2 AWS_METADATA_SERVICE_NUM_ATTEMPTS=1 \
        aws sts get-caller-identity --region "$target_region" \
-         --cli-connect-timeout 5 --cli-read-timeout 10 \
+         --cli-connect-timeout 8 --cli-read-timeout 10 \
          --output text >/dev/null 2>&1; then
     err "$(t bootstrap_unreachable "$target_region" "$target_region")"
     exit 1
@@ -1640,7 +1645,13 @@ CFGEOF
 # `AWS_PROFILE=` would, on a --yes redeploy, `set -a; source` an EXPORTED empty
 # string — which makes the AWS CLI fail with "config profile () could not be
 # found" and blocks default-credential users. Absent line = today's behavior.
-[ -n "${AWS_PROFILE:-}" ] && printf 'AWS_PROFILE=%s\n' "$AWS_PROFILE" >> "$DEPLOY_CONFIG"
+# Single-quote the value (with '\'' escaping) because AWS profile names may
+# legally contain spaces/quotes/metachars — a bare `AWS_PROFILE=my dev` would,
+# on `source`, run `dev` as a command (and backticks/$() would inject). The
+# other fields above are pre-normalized token(s), but this one is not.
+if [ -n "${AWS_PROFILE:-}" ]; then
+  printf "AWS_PROFILE='%s'\n" "${AWS_PROFILE//\'/\'\\\'\'}" >> "$DEPLOY_CONFIG"
+fi
 chmod 600 "$DEPLOY_CONFIG"
 
 # Record/refresh this app in the registry (for `ops.sh list-apps` and
