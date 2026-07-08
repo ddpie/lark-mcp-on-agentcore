@@ -400,7 +400,10 @@ fi
 list_aws_profiles() {
   # Union of ~/.aws/config ([profile x] and bare [default]) and
   # ~/.aws/credentials ([x]). One name per line, de-duplicated, order-stable.
-  { [ -f "${HOME}/.aws/config" ] && sed -n 's/^[[:space:]]*\[profile[[:space:]]\+\([^]]*\)\].*/\1/p; s/^[[:space:]]*\[\(default\)\].*/\1/p' "${HOME}/.aws/config"
+  # NB: POSIX BRE `[[:space:]][[:space:]]*` (one-or-more), NOT `\+` — BSD sed
+  # (macOS) treats `\+` as a literal plus, which would silently drop every
+  # [profile x] line and leave macOS users with an empty/wrong picker.
+  { [ -f "${HOME}/.aws/config" ] && sed -n 's/^[[:space:]]*\[profile[[:space:]][[:space:]]*\([^]]*\)\].*/\1/p; s/^[[:space:]]*\[\(default\)\].*/\1/p' "${HOME}/.aws/config"
     [ -f "${HOME}/.aws/credentials" ] && sed -n 's/^[[:space:]]*\[\([^]]*\)\].*/\1/p' "${HOME}/.aws/credentials"
   } 2>/dev/null | awk 'NF && !seen[$0]++'
 }
@@ -417,8 +420,14 @@ select_profile() {
   while IFS= read -r _p; do [ -n "$_p" ] && _profiles+=("$_p"); done < <(list_aws_profiles)
 
   # Non-interactive: honor a saved profile if present, else leave default alone.
+  # If nothing is saved, actively unset AWS_PROFILE so a stray EXPORTED empty
+  # string (e.g. sourced from an older config) can't reach the AWS CLI as "".
   if [ "$AUTO_YES" = "1" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
-    [ -n "$_saved" ] && { export AWS_PROFILE="$_saved"; info "$(t profile_using "$AWS_PROFILE")"; }
+    if [ -n "$_saved" ]; then
+      export AWS_PROFILE="$_saved"; info "$(t profile_using "$AWS_PROFILE")"
+    elif [ -z "${AWS_PROFILE:-}" ]; then
+      unset AWS_PROFILE
+    fi
     return
   fi
 
@@ -428,7 +437,9 @@ select_profile() {
   fi
 
   # A saved profile still present in the config → offer to keep it without a menu.
-  if [ -n "$_saved" ] && printf '%s\n' "${_profiles[@]}" | grep -qxF "$_saved"; then
+  # Guard the array expansion: under `set -u` on bash <4.4 an empty "${arr[@]}"
+  # errors (same idiom as select_app above).
+  if [ -n "$_saved" ] && printf '%s\n' ${_profiles[@]+"${_profiles[@]}"} | grep -qxF "$_saved"; then
     info "$(t profile_existing "$_saved")"
     if confirm "${L[profile_keep]}"; then
       export AWS_PROFILE="$_saved"; info "$(t profile_using "$AWS_PROFILE")"; return
@@ -1615,7 +1626,6 @@ DEPLOY_STARTED=false
 # the bare write is always safe to `source` back (no spaces/quotes/metachars).
 cat > "$DEPLOY_CONFIG" << CFGEOF
 LARK_LANG=${LARK_LANG}
-AWS_PROFILE=${AWS_PROFILE:-}
 REGION=${REGION}
 CUSTOM_DOMAIN=${CUSTOM_DOMAIN:-}
 EXTRA_ALLOWED_DOMAINS=${EXTRA_ALLOWED_DOMAINS:-}
@@ -1626,6 +1636,11 @@ AGENTCORE_IDLE_TIMEOUT=${AGENTCORE_IDLE_TIMEOUT:-600}
 ALARM_WEBHOOK_SECRET=${ALARM_WEBHOOK_SECRET:-}
 ALARM_WEBHOOK_KEYWORD=${ALARM_WEBHOOK_KEYWORD:-}
 CFGEOF
+# Persist AWS_PROFILE ONLY when one is actually set. Writing a bare
+# `AWS_PROFILE=` would, on a --yes redeploy, `set -a; source` an EXPORTED empty
+# string — which makes the AWS CLI fail with "config profile () could not be
+# found" and blocks default-credential users. Absent line = today's behavior.
+[ -n "${AWS_PROFILE:-}" ] && printf 'AWS_PROFILE=%s\n' "$AWS_PROFILE" >> "$DEPLOY_CONFIG"
 chmod 600 "$DEPLOY_CONFIG"
 
 # Record/refresh this app in the registry (for `ops.sh list-apps` and
