@@ -413,12 +413,20 @@ select_profile() {
   [ -n "${AWS_PROFILE:-}" ] && { info "$(t profile_using "$AWS_PROFILE")"; return; }
 
   # Saved profile from a prior deploy (also set by --yes via sourced config).
-  # The value is single-quoted in the file (names may contain spaces), so eval
-  # the one matched assignment in a subshell to unquote it exactly as `source`
-  # would — grep|cut would leave the literal quotes on.
-  local _saved=""
+  # The value is single-quoted in the file (names may contain spaces), so undo
+  # our own quoting with pure string ops — no eval: a hand-mangled config line
+  # then just fails the quote check and is ignored, instead of executing or
+  # crashing the script with a bare syntax error. last match wins, like source.
+  local _saved="" _line _v
   if [ -f "$DEPLOY_CONFIG" ]; then
-    _saved=$(eval "$(grep '^AWS_PROFILE=' "$DEPLOY_CONFIG" 2>/dev/null)"; printf '%s' "${AWS_PROFILE:-}")
+    # `|| true`: under pipefail a missing line makes grep's rc=1 the pipeline's
+    # rc, and a bare assignment would then trip set -e and kill the script.
+    _line=$(grep '^AWS_PROFILE=' "$DEPLOY_CONFIG" 2>/dev/null | tail -n1 || true)
+    _v="${_line#AWS_PROFILE=}"
+    if [ "${#_v}" -ge 2 ] && [[ "$_v" == \'*\' ]]; then
+      _v="${_v#\'}"; _v="${_v%\'}"       # strip outer quotes
+      _saved="${_v//\'\\\'\'/\'}"        # unescape '\'' -> '
+    fi
   fi
 
   local -a _profiles=()
@@ -436,9 +444,17 @@ select_profile() {
     return
   fi
 
-  # Nothing to choose from (0 or 1 profile and no saved override): stay silent.
-  if [ "${#_profiles[@]}" -le 1 ] && [ -z "$_saved" ]; then
-    return
+  # Nothing to choose from: stay silent when there are no profiles, or when the
+  # only one is `default` (the credential chain picks it up anyway). A single
+  # NAMED profile still gets the picker — silently skipping it would let stray
+  # env credentials deploy to an unintended account while the user assumes
+  # their ~/.aws profile is in effect.
+  if [ -z "$_saved" ]; then
+    if [ "${#_profiles[@]}" -eq 0 ]; then
+      return
+    elif [ "${#_profiles[@]}" -eq 1 ] && [ "${_profiles[0]}" = "default" ]; then
+      return
+    fi
   fi
 
   # A saved profile still present in the config → offer to keep it without a menu.
@@ -451,10 +467,18 @@ select_profile() {
     fi
   fi
 
+  # Degenerate menu guard: saved profile set but its ~/.aws entry (indeed every
+  # entry) is gone — a one-item "picker" would be noise; fall through to the
+  # default credential chain silently.
+  if [ "${#_profiles[@]}" -eq 0 ]; then
+    return
+  fi
+
   echo ""
   echo "  ${L[select_profile]}"
   echo ""
-  local -a _labels=("${L[profile_default_env]}" "${_profiles[@]}")
+  # Same empty-array guard idiom as above (bash <4.4 + set -u).
+  local -a _labels=("${L[profile_default_env]}" ${_profiles[@]+"${_profiles[@]}"})
   local _choice
   pick _choice "${_labels[@]}"
   if [ "$_choice" != "${L[profile_default_env]}" ]; then
@@ -1065,14 +1089,28 @@ ensure_bootstrap() {
   # the first thing to touch AWS, and on a network that can't reach the region it
   # hangs on the CLI's default 60s connect timeout (times retries) with no output
   # — which reads as "stuck at bootstrap". A bounded STS ping turns that silent
-  # hang into a clear, actionable error in a few seconds.
+  # hang into a clear, actionable error, with the "checking connectivity" line
+  # above telling the user a wait here is deliberate.
+  #
+  # Tuning notes:
+  # - connect 20s (not tighter): the preflight must never be stricter than the
+  #   operations it guards, or slow-but-working proxy links that would deploy
+  #   fine get bounced at the door. 20s x 2 attempts still beats the old
+  #   silent 60s-per-call hang.
+  # - AWS_METADATA_SERVICE_* is left alone on purpose: botocore's IMDS default
+  #   is already 1s/1-attempt, so EC2 instance-role credentials work unchanged;
+  #   env/~/.aws credentials never touch IMDS. Both sources are supported.
+  # - stderr is captured and surfaced: "unreachable" may actually be expired
+  #   credentials or an opt-in region (e.g. me-central-1) not enabled on the
+  #   account, and hiding the real error would misdirect users to "check proxy".
   info "$(t bootstrap_preflight "$target_region")"
-  if ! AWS_STS_REGIONAL_ENDPOINTS=regional AWS_MAX_ATTEMPTS=2 \
-       AWS_METADATA_SERVICE_TIMEOUT=2 AWS_METADATA_SERVICE_NUM_ATTEMPTS=1 \
+  local _pf_err=""
+  if ! _pf_err=$(AWS_STS_REGIONAL_ENDPOINTS=regional AWS_MAX_ATTEMPTS=2 \
        aws sts get-caller-identity --region "$target_region" \
-         --cli-connect-timeout 8 --cli-read-timeout 10 \
-         --output text >/dev/null 2>&1; then
+         --cli-connect-timeout 20 --cli-read-timeout 10 \
+         --output text 2>&1 >/dev/null); then
     err "$(t bootstrap_unreachable "$target_region" "$target_region")"
+    [ -n "$_pf_err" ] && err "$(printf '%s' "$_pf_err" | head -n1)"
     exit 1
   fi
   local check
