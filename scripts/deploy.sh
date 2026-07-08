@@ -392,6 +392,112 @@ if [ "$DEPS_OK" = "false" ]; then
   exit 1
 fi
 
+# AWS Profile selection. Chosen BEFORE the credential check so every downstream
+# aws/cdk call inherits it via AWS_PROFILE. Multi-profile users pick which
+# account to deploy into; single-profile / default-only setups stay silent and
+# byte-identical to before. The choice persists to deploy-config (AWS_PROFILE=)
+# and is honored on redeploy (interactive default + --yes source).
+list_aws_profiles() {
+  # Union of ~/.aws/config ([profile x] and bare [default]) and
+  # ~/.aws/credentials ([x]). One name per line, de-duplicated, order-stable.
+  # NB: POSIX BRE `[[:space:]][[:space:]]*` (one-or-more), NOT `\+` — BSD sed
+  # (macOS) treats `\+` as a literal plus, which would silently drop every
+  # [profile x] line and leave macOS users with an empty/wrong picker.
+  { [ -f "${HOME}/.aws/config" ] && sed -n 's/^[[:space:]]*\[profile[[:space:]][[:space:]]*\([^]]*\)\].*/\1/p; s/^[[:space:]]*\[\(default\)\].*/\1/p' "${HOME}/.aws/config"
+    [ -f "${HOME}/.aws/credentials" ] && sed -n 's/^[[:space:]]*\[\([^]]*\)\].*/\1/p' "${HOME}/.aws/credentials"
+  } 2>/dev/null | awk 'NF && !seen[$0]++'
+}
+
+select_profile() {
+  # An explicit env AWS_PROFILE wins and is never overridden here.
+  [ -n "${AWS_PROFILE:-}" ] && { info "$(t profile_using "$AWS_PROFILE")"; return; }
+
+  # Saved profile from a prior deploy (also set by --yes via sourced config).
+  # The value is single-quoted in the file (names may contain spaces), so undo
+  # our own quoting with pure string ops — no eval: a hand-mangled config line
+  # then just fails the quote check and is ignored, instead of executing or
+  # crashing the script with a bare syntax error. last match wins, like source.
+  local _saved="" _line _v
+  if [ -f "$DEPLOY_CONFIG" ]; then
+    # `|| true`: under pipefail a missing line makes grep's rc=1 the pipeline's
+    # rc, and a bare assignment would then trip set -e and kill the script.
+    _line=$(grep '^AWS_PROFILE=' "$DEPLOY_CONFIG" 2>/dev/null | tail -n1 || true)
+    _v="${_line#AWS_PROFILE=}"
+    if [ "${#_v}" -ge 2 ] && [[ "$_v" == \'*\' ]]; then
+      _v="${_v#\'}"; _v="${_v%\'}"       # strip outer quotes
+      _saved="${_v//\'\\\'\'/\'}"        # unescape '\'' -> '
+    fi
+  fi
+
+  local -a _profiles=()
+  while IFS= read -r _p; do [ -n "$_p" ] && _profiles+=("$_p"); done < <(list_aws_profiles)
+
+  # Non-interactive (--yes / no tty): can't prompt, so decide silently.
+  # - A saved profile is honored ONLY if it still exists in ~/.aws (same
+  #   existence check as the interactive keep branch); a stale saved name would
+  #   otherwise export a profile the CLI can't find and surface a misleading
+  #   "AWS not configured" error instead of the real cause.
+  # - Otherwise unset AWS_PROFILE so a stray EXPORTED empty string (e.g. sourced
+  #   from an older config) can't reach the AWS CLI as "".
+  # - A lone NAMED profile is deliberately NOT auto-adopted here (we can't ask,
+  #   and env creds may be what the user wants) — but we warn, since the
+  #   interactive path would have offered it.
+  if [ "$AUTO_YES" = "1" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
+    if [ -n "$_saved" ] && printf '%s\n' ${_profiles[@]+"${_profiles[@]}"} | grep -qxF "$_saved"; then
+      export AWS_PROFILE="$_saved"; info "$(t profile_using "$AWS_PROFILE")"
+    else
+      [ -n "$_saved" ] && warn "$(t profile_saved_gone "$_saved")"
+      if [ "${#_profiles[@]}" -eq 1 ] && [ "${_profiles[0]}" != "default" ]; then
+        warn "$(t profile_noninteractive_skip "${_profiles[0]}")"
+      fi
+      [ -z "${AWS_PROFILE:-}" ] && unset AWS_PROFILE
+    fi
+    return
+  fi
+
+  # Nothing to choose from: stay silent when there are no profiles, or when the
+  # only one is `default` (the credential chain picks it up anyway). A single
+  # NAMED profile still gets the picker — silently skipping it would let stray
+  # env credentials deploy to an unintended account while the user assumes
+  # their ~/.aws profile is in effect.
+  if [ -z "$_saved" ]; then
+    if [ "${#_profiles[@]}" -eq 0 ]; then
+      return
+    elif [ "${#_profiles[@]}" -eq 1 ] && [ "${_profiles[0]}" = "default" ]; then
+      return
+    fi
+  fi
+
+  # A saved profile still present in the config → offer to keep it without a menu.
+  # Guard the array expansion: under `set -u` on bash <4.4 an empty "${arr[@]}"
+  # errors (same idiom as select_app above).
+  if [ -n "$_saved" ] && printf '%s\n' ${_profiles[@]+"${_profiles[@]}"} | grep -qxF "$_saved"; then
+    info "$(t profile_existing "$_saved")"
+    if confirm "${L[profile_keep]}"; then
+      export AWS_PROFILE="$_saved"; info "$(t profile_using "$AWS_PROFILE")"; return
+    fi
+  fi
+
+  # Degenerate menu guard: saved profile set but its ~/.aws entry (indeed every
+  # entry) is gone — a one-item "picker" would be noise; fall through to the
+  # default credential chain silently.
+  if [ "${#_profiles[@]}" -eq 0 ]; then
+    return
+  fi
+
+  echo ""
+  echo "  ${L[select_profile]}"
+  echo ""
+  # Same empty-array guard idiom as above (bash <4.4 + set -u).
+  local -a _labels=("${L[profile_default_env]}" ${_profiles[@]+"${_profiles[@]}"})
+  local _choice
+  pick _choice "${_labels[@]}"
+  if [ "$_choice" != "${L[profile_default_env]}" ]; then
+    export AWS_PROFILE="$_choice"; info "$(t profile_using "$AWS_PROFILE")"
+  fi
+}
+select_profile
+
 # AWS 凭证
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
 if [ -z "$ACCOUNT_ID" ]; then
@@ -990,6 +1096,34 @@ export ALARM_WEBHOOK_KEYWORD="${ALARM_WEBHOOK_KEYWORD:-}"
 # CDK Bootstrap (deploy region + us-east-1 for the CloudFront-scope WAF)
 ensure_bootstrap() {
   local target_region="$1"
+  # Fail-fast reachability preflight. Without it the describe-stacks call below is
+  # the first thing to touch AWS, and on a network that can't reach the region it
+  # hangs on the CLI's default 60s connect timeout (times retries) with no output
+  # — which reads as "stuck at bootstrap". A bounded STS ping turns that silent
+  # hang into a clear, actionable error, with the "checking connectivity" line
+  # above telling the user a wait here is deliberate.
+  #
+  # Tuning notes:
+  # - connect 20s (not tighter): the preflight must never be stricter than the
+  #   operations it guards, or slow-but-working proxy links that would deploy
+  #   fine get bounced at the door. 20s x 2 attempts still beats the old
+  #   silent 60s-per-call hang.
+  # - AWS_METADATA_SERVICE_* is left alone on purpose: botocore's IMDS default
+  #   is already 1s/1-attempt, so EC2 instance-role credentials work unchanged;
+  #   env/~/.aws credentials never touch IMDS. Both sources are supported.
+  # - stderr is captured and surfaced: "unreachable" may actually be expired
+  #   credentials or an opt-in region (e.g. me-central-1) not enabled on the
+  #   account, and hiding the real error would misdirect users to "check proxy".
+  info "$(t bootstrap_preflight "$target_region")"
+  local _pf_err=""
+  if ! _pf_err=$(AWS_STS_REGIONAL_ENDPOINTS=regional AWS_MAX_ATTEMPTS=2 \
+       aws sts get-caller-identity --region "$target_region" \
+         --cli-connect-timeout 20 --cli-read-timeout 10 \
+         --output text 2>&1 >/dev/null); then
+    err "$(t bootstrap_unreachable "$target_region" "$target_region")"
+    [ -n "$_pf_err" ] && err "$(printf '%s' "$_pf_err" | head -n1)"
+    exit 1
+  fi
   local check
   check=$(aws cloudformation describe-stacks --stack-name CDKToolkit --region "$target_region" --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NOT_FOUND")
   if [ "$check" = "NOT_FOUND" ]; then
@@ -1556,6 +1690,17 @@ AGENTCORE_IDLE_TIMEOUT=${AGENTCORE_IDLE_TIMEOUT:-600}
 ALARM_WEBHOOK_SECRET=${ALARM_WEBHOOK_SECRET:-}
 ALARM_WEBHOOK_KEYWORD=${ALARM_WEBHOOK_KEYWORD:-}
 CFGEOF
+# Persist AWS_PROFILE ONLY when one is actually set. Writing a bare
+# `AWS_PROFILE=` would, on a --yes redeploy, `set -a; source` an EXPORTED empty
+# string — which makes the AWS CLI fail with "config profile () could not be
+# found" and blocks default-credential users. Absent line = today's behavior.
+# Single-quote the value (with '\'' escaping) because AWS profile names may
+# legally contain spaces/quotes/metachars — a bare `AWS_PROFILE=my dev` would,
+# on `source`, run `dev` as a command (and backticks/$() would inject). The
+# other fields above are pre-normalized token(s), but this one is not.
+if [ -n "${AWS_PROFILE:-}" ]; then
+  printf "AWS_PROFILE='%s'\n" "${AWS_PROFILE//\'/\'\\\'\'}" >> "$DEPLOY_CONFIG"
+fi
 chmod 600 "$DEPLOY_CONFIG"
 
 # Record/refresh this app in the registry (for `ops.sh list-apps` and
