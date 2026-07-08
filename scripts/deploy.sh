@@ -171,6 +171,17 @@ info() { echo -e "${CYAN}  $1${NC}"; }
 warn() { echo -e "${YELLOW}  ⚠ $1${NC}"; }
 err()  { echo -e "${RED}  ✗ $1${NC}"; }
 
+# ARM64-only, checked first: the container is built for linux/arm64 (AgentCore
+# Runtime runs ARM64 only). Building on x86_64 without an emulation layer dies
+# mid-build with a cryptic "exec /bin/sh: exec format error". This is a hard
+# precondition, so bail before the app picker / any prompt — right after the
+# i18n helpers so the message is localized.
+_arch="$(uname -m)"
+if [ "$_arch" != "arm64" ] && [ "$_arch" != "aarch64" ]; then
+  err "$(t arch_not_arm64 "$_arch")"
+  exit 1
+fi
+
 # Interactive app selection. Only when a human is at the terminal AND no app was
 # specified up front (--app / APP_SLUG) AND not a --yes redeploy. In every other
 # case behavior is byte-identical to before: the default app (empty slug) is used.

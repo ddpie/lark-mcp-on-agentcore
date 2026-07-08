@@ -185,3 +185,7 @@ A: 部署时可选 5/10/15/30 分钟（默认 10 分钟）。该值决定 sessio
 **Q: 怎么自定义告警阈值？**
 
 A: 部署时提供三个预设（标准/宽松/严格），箭头选择即可应用。如需逐项调整，选"自定义"后箭头选择要修改的告警，会展示含义和建议范围。自定义值保存在 `.local/alarm-thresholds.json`（不进 git），后续 deploy 不会覆盖。
+
+**Q: 部署时报 `exec /bin/sh: exec format error`？**
+
+A: 本项目仅支持 **ARM64**，请换一台 ARM64 机器部署：Apple Silicon Mac，或 AWS Graviton 实例（t4g / c7g 等）。`deploy.sh` 会在构建前检测架构并提前报错。
