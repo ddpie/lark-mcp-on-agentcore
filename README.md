@@ -38,7 +38,9 @@
 
 ## 部署
 
-> **需在 ARM64 机器上部署**（Apple Silicon Mac，或 AWS Graviton 实例如 t4g / c7g）。
+> **需在 ARM64 机器上部署**（Apple Silicon Mac，或 AWS Graviton 实例如 t4g / c7g）。推荐 **Amazon Linux 2023** 或 **Ubuntu 24.04 LTS**（arm64）。
+>
+> **需要较大的 AWS 权限。** 部署过程用 CDK 创建并配置 CloudFormation、IAM、Lambda、API Gateway、CloudFront、DynamoDB、Secrets Manager、SSM、ECR、CloudWatch、SNS、EventBridge、KMS、WAF 等资源，并通过 boto3 直接操作 AgentCore Runtime——横跨十几个服务且含建角色、发权限。**建议部署身份直接用 `AdministratorAccess`**（临时授予即可，部署完可回收），逐项收窄权限既繁琐又容易漏。
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
@@ -258,7 +260,9 @@ Parameter formats, call order, and preconditions like "check free/busy before bo
 
 ## Deploy
 
-> **Deploy from an ARM64 machine** (Apple Silicon Mac, or an AWS Graviton instance such as t4g / c7g).
+> **Deploy from an ARM64 machine** (Apple Silicon Mac, or an AWS Graviton instance such as t4g / c7g). **Amazon Linux 2023** or **Ubuntu 24.04 LTS** (arm64) recommended.
+>
+> **Broad AWS permissions required.** Deployment uses CDK to create and configure CloudFormation, IAM, Lambda, API Gateway, CloudFront, DynamoDB, Secrets Manager, SSM, ECR, CloudWatch, SNS, EventBridge, KMS, and WAF, and drives the AgentCore Runtime directly via boto3 — spanning a dozen-plus services and including role creation and policy grants. **Use `AdministratorAccess` for the deploying identity** (grant it temporarily; you can revoke it after deploy). Scoping down permission-by-permission is tedious and error-prone.
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
