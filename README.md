@@ -38,6 +38,8 @@
 
 ## 部署
 
+> **需在 ARM64 机器上部署**（Apple Silicon Mac，或 AWS Graviton 实例如 t4g / c7g）。
+
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)
 ```
@@ -255,6 +257,8 @@ Parameter formats, call order, and preconditions like "check free/busy before bo
 → Full sequence diagram and the list of orchestration domains: [Smart Orchestration details](docs/skills_en.md).
 
 ## Deploy
+
+> **Deploy from an ARM64 machine** (Apple Silicon Mac, or an AWS Graviton instance such as t4g / c7g).
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/ddpie/lark-mcp-on-agentcore/main/scripts/install.sh)

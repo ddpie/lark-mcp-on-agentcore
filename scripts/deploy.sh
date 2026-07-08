@@ -40,10 +40,15 @@ mkdir -p "$LOCAL_DIR"
 APP_SLUG="${APP_SLUG:-}"
 APP_ALIAS="${APP_ALIAS:-}"
 AUTO_YES=0
+# Verbose by default: deploys often stall at `cdk bootstrap`/`cdk deploy` with
+# no output, and detailed logs are what make that diagnosable. `--quiet`/`-q`
+# restores the terse output for anyone who doesn't want the firehose.
+VERBOSE=1
 _args=("$@")
 for ((_i=0; _i<${#_args[@]}; _i++)); do
   case "${_args[_i]}" in
     --yes|-y) AUTO_YES=1 ;;
+    --quiet|-q) VERBOSE=0 ;;
     --app)    APP_SLUG="${_args[_i+1]:-}"; _i=$((_i+1)) ;;
     --app=*)  APP_SLUG="${_args[_i]#--app=}" ;;
     --alias)  APP_ALIAS="${_args[_i+1]:-}"; _i=$((_i+1)) ;;
@@ -170,6 +175,23 @@ step() { echo -e "\n${GREEN}=== ${L[$1]} ===${NC}\n"; }
 info() { echo -e "${CYAN}  $1${NC}"; }
 warn() { echo -e "${YELLOW}  ⚠ $1${NC}"; }
 err()  { echo -e "${RED}  ✗ $1${NC}"; }
+
+# CDK verbosity flag, derived once. Verbose is the default (see --quiet above);
+# `-v` makes cdk stream per-step progress + AWS SDK calls, which is exactly what
+# turns a silent bootstrap/deploy stall into something diagnosable.
+CDK_VERBOSE_FLAG=""
+[ "$VERBOSE" = "1" ] && CDK_VERBOSE_FLAG="-v"
+
+# ARM64-only, checked first: the container is built for linux/arm64 (AgentCore
+# Runtime runs ARM64 only). Building on x86_64 without an emulation layer dies
+# mid-build with a cryptic "exec /bin/sh: exec format error". This is a hard
+# precondition, so bail before the app picker / any prompt — right after the
+# i18n helpers so the message is localized.
+_arch="$(uname -m)"
+if [ "$_arch" != "arm64" ] && [ "$_arch" != "aarch64" ]; then
+  err "$(t arch_not_arm64 "$_arch")"
+  exit 1
+fi
 
 # Interactive app selection. Only when a human is at the terminal AND no app was
 # specified up front (--app / APP_SLUG) AND not a --yes redeploy. In every other
@@ -1135,7 +1157,7 @@ ensure_bootstrap() {
       # networks that can't reach the AWS notices endpoint.
       ( cd "${PROJECT_DIR}/infra" && npm install && \
         AWS_REGION="$target_region" CDK_DISABLE_NOTICES=1 \
-          npx cdk bootstrap "aws://${ACCOUNT_ID}/${target_region}" ) || {
+          npx cdk bootstrap ${CDK_VERBOSE_FLAG} "aws://${ACCOUNT_ID}/${target_region}" ) || {
         err "$(t bootstrap_failed "$target_region")"
         exit 1
       }
@@ -1371,7 +1393,7 @@ CDK_STACKS=("$RUNTIME_STACK" "$OAUTH_STACK")
 if [ "${SKIP_WAF:-0}" != "1" ] && [ "$WAF_STATUS" = "NOT_FOUND" ]; then
   CDK_STACKS=("$RUNTIME_STACK" "$WAF_STACK" "$OAUTH_STACK")
 fi
-if ! AWS_REGION="$REGION" npx cdk deploy "${CDK_STACKS[@]}" -c "slug=${SLUG}" --require-approval never 2>&1 | tee /tmp/cdk-deploy.log; then
+if ! AWS_REGION="$REGION" npx cdk deploy ${CDK_VERBOSE_FLAG} "${CDK_STACKS[@]}" -c "slug=${SLUG}" --require-approval never 2>&1 | tee /tmp/cdk-deploy.log; then
   echo ""
   err "${L[cdk_failed]}"
   tail -20 /tmp/cdk-deploy.log

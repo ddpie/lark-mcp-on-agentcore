@@ -185,3 +185,7 @@ Persisted in `.local/deploy-config` as `AGENTCORE_IDLE_TIMEOUT`; re-run `deploy.
 **Q: How to customize alarm thresholds?**
 
 A: During deploy, choose from three presets (Standard/Relaxed/Strict) using arrow keys. Or select "Custom" to pick which alarm to edit (arrow keys), with descriptions and suggested ranges shown. Custom values are saved to `.local/alarm-thresholds.json` (not committed), and subsequent deploys will not overwrite them.
+
+**Q: Deploy fails with `exec /bin/sh: exec format error`?**
+
+A: This project is **ARM64-only**. Deploy from an ARM64 machine: an Apple Silicon Mac, or an AWS Graviton instance (t4g / c7g, etc.). `deploy.sh` detects the architecture before building and fails early.
