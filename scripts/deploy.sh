@@ -432,14 +432,25 @@ select_profile() {
   local -a _profiles=()
   while IFS= read -r _p; do [ -n "$_p" ] && _profiles+=("$_p"); done < <(list_aws_profiles)
 
-  # Non-interactive: honor a saved profile if present, else leave default alone.
-  # If nothing is saved, actively unset AWS_PROFILE so a stray EXPORTED empty
-  # string (e.g. sourced from an older config) can't reach the AWS CLI as "".
+  # Non-interactive (--yes / no tty): can't prompt, so decide silently.
+  # - A saved profile is honored ONLY if it still exists in ~/.aws (same
+  #   existence check as the interactive keep branch); a stale saved name would
+  #   otherwise export a profile the CLI can't find and surface a misleading
+  #   "AWS not configured" error instead of the real cause.
+  # - Otherwise unset AWS_PROFILE so a stray EXPORTED empty string (e.g. sourced
+  #   from an older config) can't reach the AWS CLI as "".
+  # - A lone NAMED profile is deliberately NOT auto-adopted here (we can't ask,
+  #   and env creds may be what the user wants) — but we warn, since the
+  #   interactive path would have offered it.
   if [ "$AUTO_YES" = "1" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
-    if [ -n "$_saved" ]; then
+    if [ -n "$_saved" ] && printf '%s\n' ${_profiles[@]+"${_profiles[@]}"} | grep -qxF "$_saved"; then
       export AWS_PROFILE="$_saved"; info "$(t profile_using "$AWS_PROFILE")"
-    elif [ -z "${AWS_PROFILE:-}" ]; then
-      unset AWS_PROFILE
+    else
+      [ -n "$_saved" ] && warn "$(t profile_saved_gone "$_saved")"
+      if [ "${#_profiles[@]}" -eq 1 ] && [ "${_profiles[0]}" != "default" ]; then
+        warn "$(t profile_noninteractive_skip "${_profiles[0]}")"
+      fi
+      [ -z "${AWS_PROFILE:-}" ] && unset AWS_PROFILE
     fi
     return
   fi
