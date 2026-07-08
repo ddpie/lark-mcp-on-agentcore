@@ -995,8 +995,16 @@ ensure_bootstrap() {
   if [ "$check" = "NOT_FOUND" ]; then
     info "$(t not_bootstrapped "$target_region")"
     if confirm "${L[run_bootstrap]}"; then
-      ( cd "${PROJECT_DIR}/infra" && npm install --silent 2>/dev/null && \
-        AWS_REGION="$target_region" npx cdk bootstrap "aws://${ACCOUNT_ID}/${target_region}" )
+      info "$(t bootstrap_running "$target_region")"
+      # Keep npm install visible (dropping --silent) so a slow/stuck registry is
+      # obvious, and disable cdk's notices network check — it hangs for minutes on
+      # networks that can't reach the AWS notices endpoint.
+      ( cd "${PROJECT_DIR}/infra" && npm install && \
+        AWS_REGION="$target_region" CDK_DISABLE_NOTICES=1 \
+          npx cdk bootstrap "aws://${ACCOUNT_ID}/${target_region}" ) || {
+        err "$(t bootstrap_failed "$target_region")"
+        exit 1
+      }
     else
       err "Bootstrap required: npx cdk bootstrap aws://${ACCOUNT_ID}/${target_region}"
       exit 1
