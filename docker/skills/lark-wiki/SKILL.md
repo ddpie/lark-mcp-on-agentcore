@@ -17,7 +17,7 @@ description: "飞书知识库：管理知识空间、空间成员和文档节点
 
 ## 快速决策
 
-- 用户要**整理 / 盘点 / 归类 / 重构知识库、个人文档库、文档库目录或 Wiki 节点结构**，或要生成整理方案、目标目录树、移动计划时，不要只使用 Wiki 节点 API。必须先调用 `lark_get_skill(domain="drive", section="workflow-knowledge-organize")` 阅读统一整理 workflow（Drive / Wiki / 个人文档库的统一入口解析、资源盘点、分类计划、写前确认和结果验证）。
+- 用户要**整理 / 盘点 / 归类 / 重构知识库、个人文档库、文档库目录或 Wiki 节点结构**，或要生成整理方案、目标目录树、移动计划时，不要只使用 Wiki 节点 API。必须先调用 `lark_get_skill(domain="drive", section="workflow")`，再按其中 `Workflow Registry` 进入 `knowledge_organize` workflow（调用 `lark_get_skill(domain="drive", section="workflow-knowledge-organize")`）；该 workflow 负责 Drive / Wiki / 个人文档库的统一入口解析、资源盘点、分类计划、写前确认和结果验证。
 - 用户给的是知识库 URL（`.../wiki/<token>`），且后续要查成员/加成员/删成员：先调用 `lark_invoke(tool_name="lark_wiki_spaces_get_node", args={params: {"token": "<wiki_token>"}})` 获取 `space_id`，后续成员接口统一使用 `space_id`。
 - 用户要**删除**知识空间（`lark_wiki_delete_space`）但只给了名称或 URL：**不能**把名称 / URL 原样传给 `space_id`，必须先解析出真实 `space_id`。解析方式：
   - URL（`.../wiki/<token>`）：`lark_invoke(tool_name="lark_wiki_spaces_get_node", args={params: {"token": "<wiki_token>"}, format: "json"})`，读 `data.node.space_id`。

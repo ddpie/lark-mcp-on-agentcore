@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "lark_cli_version": "1.0.66",
-    "extracted_at": "2026-07-07",
+    "lark_cli_version": "1.0.68",
+    "extracted_at": "2026-07-10",
     "source": "https://github.com/larksuite/cli"
   },
   "shortcuts": [
@@ -1698,6 +1698,21 @@
         "mail:user_mailbox.message.address:read",
         "mail:user_mailbox.message.subject:read",
         "mail:user_mailbox.message.body:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+message-modify",
+      "scopes": [
+        "mail:user_mailbox.message:modify",
+        "mail:user_mailbox.folder:read"
+      ]
+    },
+    {
+      "service": "mail",
+      "command": "+message-trash",
+      "scopes": [
+        "mail:user_mailbox.message:modify"
       ]
     },
     {

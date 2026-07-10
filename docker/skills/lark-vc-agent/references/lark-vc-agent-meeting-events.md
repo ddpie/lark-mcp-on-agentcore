@@ -26,9 +26,6 @@ lark_vc_meeting_events(meeting_id="69xxxxxxxxxxxxx28", start="2026-04-17T15:00:0
 
 # 基于上一次保存的 page_token 继续查新增事件
 lark_vc_meeting_events(meeting_id="69xxxxxxxxxxxxx28", page_token="<last_page_token>", page_all=true, format="pretty")
-
-# 调试或控制返回体大小时，显式只查一页
-lark_vc_meeting_events(meeting_id="69xxxxxxxxxxxxx28", page_size="20", format="json")
 ```
 
 ## 参数
@@ -103,12 +100,13 @@ lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="pretty"
 - 只有在用户明确要求"就看第一页""先不要翻页"时，才不要默认带 `page_all=true`
 - 只要你是基于 `lark_vc_meeting_events` 来回答一场**正在进行中的会议内容**，就不能直接复用上一次查询结果。无论用户是在问"现在是谁在说话""刚刚发生了什么""最新事件有哪些"，还是让你"总结一下这个会议讲什么"，都必须先重新执行一次 `lark_vc_meeting_events`，确认拿到的是最新事件流，再回答用户。只有在用户明确要求基于某次历史快照继续分析时，才可以复用旧结果。
 
-### 5. pretty / json 输出差异
+### 5. 输出格式差异
 
-- `format="pretty"`：输出会议主题、会议时间和逐条时间线，适合快速理解"发生了什么"，也是本 skill 的默认推荐格式。
-- `format="json"`：保留完整原始 `events[]` 结构——参会人 open_id、聊天原文、share_doc、分页字段都在原始响应里，适合提取字段、联动其他工具或做进一步程序处理。
+- `format="json"`：结构化契约，顶层包含 `meeting`、`identity`、`events`、`has_more`、`page_token`。`identity` 表示当前读取身份；事件 actor 统一含 `participant_type`、`role`、`label`；每条事件保留 `payload` 便于追溯细节。
+- `format="pretty"`：默认推荐格式，输出当前身份和逐条时间线，适合快速理解"发生了什么"。
+- `format="ndjson"`：输出事件行，并带 metadata 行，适合流式消费。
 
-**选型原则**：只要目标是告诉用户"发生了什么"，默认就用 `page_all=true, format="pretty"`；只有在需要完整原始消息流和结构化字段时，才改用 `json`。
+**选型原则**：只在 `pretty`、`json`、`ndjson` 之间选择。目标是告诉用户"发生了什么"时，用 `page_all=true, format="pretty"`；需要稳定字段给 agent 做结构化消费、总结、转发或二次处理时用 `format="json"`；需要流式消费时用 `format="ndjson"`。
 
 > **注意**：pretty 输出中的正文文本会做单行转义，真实换行会显示为 `\n`，避免打乱时间线布局。
 
@@ -152,7 +150,10 @@ lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="pretty"
 
 | 字段 | 说明 |
 |------|------|
-| `events` | 事件列表 |
+| `meeting` | 会议身份与时间状态，包含 `id/topic/meeting_no/start_time/end_time/status` |
+| `identity` | 当前读取身份，包含 `id/name/participant_type/label` |
+| `events` | 结构化事件列表；每条事件含参与者 `actors` 和事件细节 `payload` |
+| `warnings` | 非阻断告警列表；事件列表本身仍可使用 |
 | `has_more` | 是否还有下一页 |
 | `page_token` | 下一页游标 |
 
@@ -166,6 +167,28 @@ lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="pretty"
 | `transcript_received` | 收到转写文本 |
 | `magic_share_started` | 开始共享内容 / 文档 |
 | `magic_share_ended` | 结束共享 |
+
+### 会中聊天与 reaction 转发到 IM
+
+转发到 IM 时，Agent 必须先用 `lark_vc_meeting_events(format="json")` 的结构化事件构造完整 Feishu `post` 内容，再调用 `lark_im_messages_send` 发送。不要解析 pretty/Markdown 输出，也不要先生成纯文本或 Markdown 后再期望 IM 侧二次识别 reaction。
+
+对 `event_type == "chat_received"` 的事件逐项处理 `payload.chat_received_items`：
+
+- `message_type == 3` 是会中 reaction；构造 IM `post` 内容时，先调用 `lark_get_skill(domain="im", section="reactions")` 取 reaction emoji 列表作为 IM `emotion` 白名单。白名单内的 key 写成 `{"tag":"emotion","emoji_type":"<content>"}`，例如 `JIAYI`、`THUMBSUP`、`OK`。
+- 对不在 IM reaction emoji 白名单内的 reaction key，保留原始 key 但写成文本节点，例如 `{"tag":"text","text":"[<content>]"}`；不应直接写入 `emotion.emoji_type`，否则 IM 发送会失败。
+- 不要大小写归一化或猜测映射；`content` 是原始 reaction key，必须原样判断。
+- 其他聊天消息写成文本节点：`{"tag":"text","text":"<content>"}`。
+- 最终调用 `lark_im_messages_send(msg_type="post", content="<post-json>")`，其中 `<post-json>` 应混合使用可渲染 `emotion` 节点和文本 fallback；不要用 markdown 承载会中 reaction。
+- 如果 IM 返回 `message_content_emotion_tag's emoji_type is invalid`，只降级非法 reaction key，不要把整条消息退化成纯文本。
+- 如果用户原始请求已经明确"发给我 / 推送给我 / 发到我的聊天框 / 发到我的单聊"，这已经覆盖本次收件人、内容和发送动作，直接发送给当前用户，不要再二次询问"是否发送"。
+- MCP server 始终以用户身份发送；上游默认用应用身份发送在 MCP server 上不可用。
+- 如果用户要求发给某个群或其他人但收件人不可唯一确定，只询问缺失的收件人信息。
+
+```
+lark_vc_meeting_events(meeting_id="<meeting_id>", page_all=true, format="json")
+```
+
+如果用户已经要求"发给我"，`<open_id>` 使用当前用户的 open_id；需要解析时先用用户查询能力获取当前用户信息。构造 IM post 时只发送用户请求范围内的会中内容，不要把前一条自然语言预览当作发送内容。
 
 ## pretty 输出示例
 
@@ -224,8 +247,8 @@ lark_vc_meeting_events(meeting_id="<meeting_id>", page_token="<last_page_token>"
 | `meeting_id is required` | 未传入 `meeting_id` | 传入长数字 `meeting_id` |
 | `not a 9-digit meeting number` | 把 9 位会议号误传给 `meeting_id` | 如果只是查询会中内容，先用 `lark_vc_meeting_list_active` 按 `meeting_no` 匹配拿长数字 `meeting_id`；不要尝试入会（应用身份写操作，MCP 不可用） |
 | `10005 bot is not in meeting` | 用应用身份读取但应用机器人从未真实入会；或会议已结束但从未在会中出现过 | 如果本来是用户身份发现的 `meeting_id`，确认全程用用户身份读取。⚠️ 应用身份入会读取在 MCP server 上不可用。**如果只是想看参会人快照，改用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<meeting.id>"}, with_participants: true})`** |
-| 用户身份不支持 | 当前事件读取接口不支持用用户身份访问 | ⚠️ 该链路需应用身份，而应用身份在 MCP server 上不可用——向用户说明该能力当前不可用，不要反复重试 |
-| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。先用 `lark_vc_detail(meeting_ids="<meeting.id>")` 获取会议产物信息，再根据 `note_id` / `minute_token` 和用户意图选择纪要正文、逐字稿或妙记；参会人请用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<meeting.id>"}, with_participants: true})` |
+| 用户身份无权限 / 不可见 | 当前用户不是该会议的可见参与者，或 `meeting_id` 不是从用户身份路径获得 | 先确认 `meeting_id` 来自用户身份的 `lark_vc_meeting_list_active`，且当前用户确实正在该会议中。⚠️ 若确实需要应用身份读取，该路径依赖 bot 身份，在 MCP server 上不可用 |
+| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。先用 `lark_vc_detail(meeting_ids="<meeting.id>")` 获取会议产物信息，再根据 `note_display_type` / `note_id` / `minute_token` 和用户意图选择纪要正文、逐字稿或妙记；参会人请用 `lark_invoke(tool_name="lark_vc_meeting_get", args={params: {"meeting_id": "<meeting.id>"}, with_participants: true})` |
 | `20002 meeting not exist` | `meeting_id` 错误，或会议实例当前已不可获取（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
 | 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | ⚠️ 应用身份操作在 MCP server 上不可用；权限配置仅供排查参考，以工具返回的 metadata / error envelope 为准确认缺失权限；检查应用发布/安装，以及开放平台"权限可访问的数据范围"：选择"按条件筛选"，条件为"会议的归属者 包含 与应用的可用范围一致"；仍失败再排查内测 privilege / 灰度 |
 | `HTTP 404` / `HTTP 500` | 服务端当前无法找到或处理该会议实例 | 换一个正在进行且可见的 meeting_id，或排查后端问题 |

@@ -17,7 +17,7 @@ lark_wiki_node_get(node_token="<token>", space_id="<space_id>", format="pretty")
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `node_token` | string | **Yes** | — | `node_token`, cloud-doc `obj_token`, or a Lark URL embedding one (e.g. `https://feishu.cn/wiki/<token>` or `https://feishu.cn/docx/<token>`). |
-| `obj_type` | enum | No | — | Needed when `node_token` is a raw `obj_token`; auto-inferred from the URL path. Not allowed when the token looks like a `node_token` (`wik...`) |
+| `obj_type` | enum | No | — | Needed when `node_token` is a raw `obj_token`; auto-inferred from typed Lark URLs. If omitted for a raw token, the shortcut treats it as a wiki `node_token`. |
 | `space_id` | string | No | — | Optional cross-check: fail if the resolved node does not live in this space |
 | `format` | enum | No | `json` | `json` / `pretty` / `table` / `csv` / `ndjson` |
 
