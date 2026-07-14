@@ -60,10 +60,26 @@ const FAKE_TOOL_DEF_DISCOVERABLE = {
   ],
 };
 
+// Discoverable tool WITH an embedded composite-flag schema (build-time
+// --print-schema extraction). The schema is large, so discover only returns it
+// for an exact-name query — never in broad search results.
+const FAKE_TOOL_DEF_WITH_SCHEMA = {
+  service: 'sheets',
+  command: '+cells-set',
+  description: 'Write cells',
+  risk: 'write',
+  flags: [
+    { name: 'cells', type: 'string', description: 'JSON 2D array of cell objects', required: true },
+  ],
+  payloadSchemas: {
+    cells: { type: 'array', items: { type: 'array', items: { type: 'object' } }, description: '2D rows×cols' },
+  },
+};
+
 const FAKE_CATALOG = {
   _larkCliVersion: '1.0.0-test',
   _scopeMapVersion: '1.0.0-test',
-  tools: [FAKE_TOOL_DEF_WRITE, FAKE_TOOL_DEF_DESTRUCTIVE, FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DISCOVERABLE],
+  tools: [FAKE_TOOL_DEF_WRITE, FAKE_TOOL_DEF_DESTRUCTIVE, FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DISCOVERABLE, FAKE_TOOL_DEF_WITH_SCHEMA],
 };
 
 // Only first 3 tools in tier1; the wiki tool is discoverable
@@ -606,6 +622,39 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       expect(inner.tools.length).toBeGreaterThan(0);
       expect(inner.tools[0].category).toBe('wiki');
     });
+
+    // Exact-name query = the agent's observed self-correction pattern (a call
+    // failed; it re-queries THAT tool for the real contract). Return the
+    // embedded --print-schema payload contracts then — and only then; the
+    // schemas are large (up to ~70KB) so broad search results never carry them.
+    it('lark_discover exact-name query returns payload_schemas', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_discover',
+        arguments: { query: 'lark_sheets_cells_set' },
+      }, 52, { 'x-user-access-token': 'fake-token' });
+      const { data } = parseSSE(body);
+
+      const inner = JSON.parse(data.result.content[0].text);
+      const tool = inner.tools.find(t => t.name === 'lark_sheets_cells_set');
+      expect(tool).toBeDefined();
+      expect(tool.payload_schemas).toBeDefined();
+      expect(tool.payload_schemas.cells.type).toBe('array');
+    });
+
+    it('lark_discover broad search does NOT include payload_schemas', async () => {
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_discover',
+        arguments: { category: 'sheets' },
+      }, 53, { 'x-user-access-token': 'fake-token' });
+      const { data } = parseSSE(body);
+
+      const inner = JSON.parse(data.result.content[0].text);
+      const tool = inner.tools.find(t => t.name === 'lark_sheets_cells_set');
+      expect(tool).toBeDefined();
+      expect(tool.payload_schemas).toBeUndefined();
+      // But the result advertises that schemas exist for this tool.
+      expect(tool.has_payload_schemas).toBe(true);
+    });
   });
 
   describe('meta tools are read-only', () => {
@@ -681,6 +730,10 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       expect(text).toContain('Available sections');
     });
 
+    // The three correction responses are NOT isError: the payload contains the
+    // fix (available lists the right names), and lenient clients hide
+    // isError:true content behind a generic "unknown error" — same convention
+    // as unknown_tool.
     it.skipIf(!skillsAvailable)('lark_get_skill returns error for invalid domain', async () => {
       const { body } = await sendMcpRequest('tools/call', {
         name: 'lark_get_skill',
@@ -688,10 +741,25 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       }, 63);
       const { data } = parseSSE(body);
 
-      expect(data.result.isError).toBe(true);
+      expect(data.result.isError).toBe(false);
       const inner = JSON.parse(data.result.content[0].text);
       expect(inner.error).toBe('unknown_domain');
       expect(Array.isArray(inner.available)).toBe(true);
+    });
+
+    it.skipIf(!skillsAvailable)('lark_get_skill resolves the plural service-name alias (docs→doc pattern)', async () => {
+      // Tool namespace says lark_docs_* (service "docs") but the skill domain
+      // is "doc" — the natural agent guess (domain+'s') must not dead-end.
+      // Fixture only ships lark-calendar, so exercise the same plural alias on
+      // it: "calendars" must resolve to the calendar domain.
+      const { body } = await sendMcpRequest('tools/call', {
+        name: 'lark_get_skill',
+        arguments: { domain: 'calendars' },
+      }, 71);
+      const { data } = parseSSE(body);
+
+      expect(data.result.isError).toBeUndefined();
+      expect(data.result.content[0].text).toContain('calendar');
     });
 
     it.skipIf(!skillsAvailable)('lark_get_skill rejects path traversal in section', async () => {
@@ -701,7 +769,7 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       }, 64);
       const { data } = parseSSE(body);
 
-      expect(data.result.isError).toBe(true);
+      expect(data.result.isError).toBe(false);
       const inner = JSON.parse(data.result.content[0].text);
       expect(inner.error).toBe('invalid_section');
     });
@@ -752,7 +820,7 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
       }, 70);
       const { data } = parseSSE(body);
 
-      expect(data.result.isError).toBe(true);
+      expect(data.result.isError).toBe(false);
       const inner = JSON.parse(data.result.content[0].text);
       expect(inner.error).toBe('unknown_section');
       expect(inner.available).toContain('assets/templates/sample.html');

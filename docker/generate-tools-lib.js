@@ -9,7 +9,10 @@
 // Flags hidden from the LLM-facing schema:
 // - yes / dry-run / jq: lark-cli wrapper concerns, not user intent.
 //   server.js adds --yes itself when needed (gated by supportsYes).
-const HIDDEN_FLAGS = new Set(['yes', 'dry-run', 'jq']);
+// - print-schema / flag-name: build-time introspection controls — the generator
+//   drives them itself to extract composite-flag JSON Schemas (surfaced as
+//   supportsPrintSchema), so they are never user intent at runtime.
+const HIDDEN_FLAGS = new Set(['yes', 'dry-run', 'jq', 'print-schema', 'flag-name']);
 
 // cobra renders a value flag as `--name <type-token>   <description>` and a
 // boolean as `--name   <description>` with NO token. The two gaps differ: the
@@ -43,6 +46,7 @@ function flagTypeFromRest(rest) {
 function parseFlags(helpText) {
   const flags = [];
   let supportsYes = false;
+  let supportsPrintSchema = false;
   const lines = helpText.split('\n');
   for (const line of lines) {
     const m = line.match(/^\s+--(\S+)\s+(.+)/);
@@ -51,6 +55,7 @@ function parseFlags(helpText) {
     const name = rawName;
     if (name.includes(' ')) continue;
     if (name === 'yes') { supportsYes = true; continue; }
+    if (name === 'print-schema') { supportsPrintSchema = true; continue; }
     if (HIDDEN_FLAGS.has(name)) continue;
     let type = flagTypeFromRest(rest);
     // A `(default: false/true)` annotation is an explicit boolean signal even if
@@ -62,7 +67,45 @@ function parseFlags(helpText) {
     const description = rest.replace(/\s*\(required\)/, '').replace(/\s*\(default:[^)]+\)/, '').replace(/\s*\(enum:[^)]+\)/, '').trim();
     flags.push({ name, type, description, required, ...(enumValues && { enum: enumValues }) });
   }
-  return { flags, supportsYes };
+  return { flags, supportsYes, supportsPrintSchema };
+}
+
+// `--help` descriptions speak CLI: @file/stdin hints, `--kebab-flag` references,
+// "run --print-schema" advice. MCP agents cannot run terminal commands or read
+// local files — that prose is pure noise that buries what they DO need (the
+// payload shape), and it's exactly what an agent skims past when it misses the
+// real contract. The skills layer already enforces zero CLI leakage in
+// actionable text (adapt-skill-for-mcp rules + skill-quality test); this
+// extends the same invariant to the catalog path. Payload literals like
+// {"shortcut":"+xxx-yyy"} are kept — there `+name` is data, not CLI usage.
+function translateFlagDescription(desc) {
+  let out = desc;
+  // "(supports @file, - reads stdin ...)" / "(supports - reads stdin ...)"
+  // — allows one level of nested parens inside the hint.
+  out = out.replace(/\s*\(supports (?:@file|- reads stdin)(?:[^()]|\([^()]*\))*\)/g, '');
+  // "; supports @file or -" tails (no parens)
+  out = out.replace(/;?\s*supports @file[^.;)]*/gi, '');
+  // inline "or @file" alternatives ("filter JSON object or @file, ...")
+  out = out.replace(/\s+or @file/gi, '');
+  // "run `--print-schema` for the full structure" → point at the embedded schema
+  out = out.replace(/;?\s*run\s+`?--print-schema`?[^.;]*/gi, '; full structure is in this tool\'s payload_schema (fetch via lark_discover with the exact tool name)');
+  // "For basic flags use lark-cli <svc> <shortcut> --help; ... use --print-schema --flag-name <flag>."
+  out = out.replace(/For basic flags use lark-cli[^.;]*[.;]?\s*/gi, '');
+  out = out.replace(/for composite JSON flags use\s+--print-schema[^.;]*[.;]?\s*/gi, 'composite JSON flag structures are in this tool\'s payload_schema (fetch via lark_discover with the exact tool name). ');
+  // "lark-cli skills read <domain> <path>" advice → the MCP skill tool. The
+  // path arg maps to lark_get_skill(domain, section) — domain drops the lark-
+  // prefix; the section is the reference file path without the .md extension.
+  out = out.replace(/lark-cli skills read\s+lark-([a-z-]+)\s+(\S+?)(?:\.md)?([\s.,;)]|$)/g, 'lark_get_skill(domain="$1", section="$2")$3');
+  out = out.replace(/lark-cli skills read\s+lark-([a-z-]+)/g, 'lark_get_skill(domain="$1")');
+  // Prose citing an equivalent lark-cli command ("the equivalent `lark-cli ...`
+  // writes to cwd") — CLI-only context, drop the sentence. Quoted data literals
+  // like (default "created by lark-cli") are NOT sentences and don't match.
+  out = out.replace(/[^.;]*`lark-cli [^`]*`[^.;]*[.;]?/g, '');
+  // Any residual bare `--flag` reference → the snake_case MCP parameter name.
+  // Only match CLI-style references (start-of-word, letters/hyphens), never
+  // inside payload literals (those are quoted strings, no leading --).
+  out = out.replace(/(^|[\s(`])--([a-z][a-z0-9-]*)/g, (_, pre, flag) => `${pre}${flag.replace(/-/g, '_')}`);
+  return out.replace(/\s{2,}/g, ' ').trim();
 }
 
 // Parse a service's `lark-cli <service> --help` output for its shortcut commands.
@@ -125,4 +168,4 @@ function detectRisk(helpText, commandName) {
   return 'read';
 }
 
-module.exports = { parseFlags, detectRisk, parseShortcuts };
+module.exports = { parseFlags, detectRisk, parseShortcuts, translateFlagDescription };

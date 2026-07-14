@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 // Import the REAL helpers (generate-tools.js itself runs top-level code on
 // require — spawns lark-cli, writes files — so the pure functions live in
 // generate-tools-lib.js and the generator requires them. Single source of truth.)
-import { detectRisk, parseFlags, parseShortcuts } from '../generate-tools-lib.js';
+import { detectRisk, parseFlags, parseShortcuts, translateFlagDescription } from '../generate-tools-lib.js';
 
 describe('detectRisk', () => {
   it('detects "Risk: write" from help text', () => {
@@ -250,8 +250,113 @@ describe('parseFlags', () => {
     expect(flags[0]).toMatchObject({ name: 'properties', type: 'string' });
   });
 
+  // --print-schema / --flag-name are build-time introspection controls (the
+  // generator uses them to extract composite-flag JSON Schemas); they are not
+  // user intent and must be hidden from the LLM-facing schema, with the
+  // command's introspection support surfaced as supportsPrintSchema.
+  it('hides print-schema and flag-name flags and reports supportsPrintSchema', () => {
+    const help = [
+      'Flags:',
+      '      --flag-name string        flag whose schema to print (omit to list introspectable flags); used with --print-schema',
+      '      --print-schema            print JSON Schema for a composite flag instead of executing',
+      '      --cells [[{cell},...],...]   typed cells payload',
+    ].join('\n');
+    const { flags, supportsPrintSchema } = parseFlags(help);
+    expect(supportsPrintSchema).toBe(true);
+    expect(flags.map(f => f.name)).toEqual(['cells']);
+  });
+
+  it('reports supportsPrintSchema=false when the command lacks the flag', () => {
+    const { supportsPrintSchema } = parseFlags('Flags:\n      --days int   Number of days');
+    expect(supportsPrintSchema).toBe(false);
+  });
+});
+
+// The catalog descriptions come verbatim from `--help`, which speaks CLI:
+// @file/stdin hints, `--kebab-flag` references, `run --print-schema` advice.
+// MCP agents cannot run terminal commands or read local files, so every one of
+// those is noise that buries the parts they DO need (the payload shape). The
+// skills layer already enforces zero CLI leakage (adapt-skill-for-mcp rules);
+// translateFlagDescription extends the same invariant to the catalog path.
+describe('translateFlagDescription', () => {
+  it('strips the (supports @file, - reads stdin ...) suffix', () => {
+    const desc = 'Untyped initial data as one 2D JSON array (supports @file, - reads stdin (one flag per call; use @file for others))';
+    expect(translateFlagDescription(desc)).toBe('Untyped initial data as one 2D JSON array');
+  });
+
+  it('rewrites --flag references to snake_case parameter names', () => {
+    const desc = 'Mutually exclusive with --values. Pair with --styles for number formats.';
+    expect(translateFlagDescription(desc)).toBe('Mutually exclusive with values. Pair with styles for number formats.');
+  });
+
+  it('rewrites the run --print-schema advice to point at the embedded schema', () => {
+    const desc = 'JSON: {config, sparklines}; run `--print-schema` for the full structure';
+    const out = translateFlagDescription(desc);
+    expect(out).not.toContain('--print-schema');
+    expect(out).toContain('payload_schema');
+  });
+
+  it('rewrites lark-cli <shortcut> --help advice without leaking CLI usage', () => {
+    const desc = 'For basic flags use lark-cli sheets <shortcut> --help; for composite JSON flags use --print-schema --flag-name <flag>.';
+    const out = translateFlagDescription(desc);
+    expect(out).not.toContain('lark-cli');
+    expect(out).not.toContain('--print-schema');
+  });
+
+  it('keeps +cmd payload literals intact (batch-update operations use them)', () => {
+    const desc = 'JSON array: [{"shortcut":"+xxx-yyy","input":{...}}, ...]. shortcut uses CLI names.';
+    expect(translateFlagDescription(desc)).toContain('"+xxx-yyy"');
+  });
+
+  it('leaves a clean description unchanged', () => {
+    expect(translateFlagDescription('Spreadsheet title')).toBe('Spreadsheet title');
+  });
+
+  // Remaining real-catalog leak shapes (found by translating all 2816 flag
+  // descriptions of the 1.0.69 catalog): variant stdin hints, inline "or
+  // @file" alternatives, `lark-cli skills read` advice, and prose citing the
+  // equivalent lark-cli command.
+  it('strips the (supports - reads stdin ...) variant without @file prefix', () => {
+    const desc = 'Inline SQL text; mutually exclusive with file (supports - reads stdin (one flag per call; use @file for others))';
+    const out = translateFlagDescription(desc);
+    expect(out).not.toContain('stdin');
+    expect(out).not.toContain('@file');
+  });
+
+  it('strips inline "or @file" alternatives', () => {
+    const desc = 'filter JSON object or @file, same shape as view filter';
+    const out = translateFlagDescription(desc);
+    expect(out).not.toContain('@file');
+    expect(out).toContain('filter JSON object');
+  });
+
+  it('strips "supports @file or -" tails', () => {
+    const desc = 'JSON array of pages ({slide_id, content}); supports @file or -';
+    const out = translateFlagDescription(desc);
+    expect(out).not.toContain('@file');
+  });
+
+  it('rewrites `lark-cli skills read <domain> <path>` advice to lark_get_skill', () => {
+    const desc = 'AI agents MUST read lark-cli skills read lark-doc references/lark-doc-xml.md before writing content.';
+    const out = translateFlagDescription(desc);
+    expect(out).not.toContain('lark-cli');
+    expect(out).toContain('lark_get_skill');
+  });
+
+  it('neutralizes prose citing an equivalent lark-cli command', () => {
+    const desc = 'Local output path for the download. Note: the equivalent `lark-cli drive +export doc_type sheet` writes to cwd.';
+    const out = translateFlagDescription(desc);
+    expect(out).not.toContain('lark-cli');
+  });
+
+  it('keeps the literal default value "created by lark-cli" (data, not usage)', () => {
+    // A default-value literal is data the agent may see in API output — leave it.
+    const desc = 'source title for display (default "created by lark-cli")';
+    expect(translateFlagDescription(desc)).toContain('created by lark-cli');
+  });
+
   it('returns no flags when there is no flag section', () => {
-    expect(parseFlags('Just a description, no flags here')).toEqual({ flags: [], supportsYes: false });
+    expect(parseFlags('Just a description, no flags here')).toEqual({ flags: [], supportsYes: false, supportsPrintSchema: false });
   });
 
   it('ignores lines that are not indented flag definitions', () => {
