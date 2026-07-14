@@ -201,6 +201,55 @@ describe('parseFlags', () => {
     expect(flags[0]).toMatchObject({ name: 'page-all', type: 'boolean' });
   });
 
+  // Regression: lark-cli >=1.0.60 renders composite/JSON flags with an EXAMPLE
+  // as the cobra type token (`--sheets +table-put`, `--values [["alice",95]]`,
+  // `--range A1:Z200`, `--cells [[{cell},...],...]`) instead of the bare word
+  // `string`. These are string-valued flags, but the old whitelist-only check
+  // saw an unrecognized token and fell back to boolean — so server.js emitted a
+  // valueless `--sheets` switch and dropped the JSON payload, and lark-cli
+  // rejected the call with "unknown error". Any single token between the flag
+  // name and the 2-space description gap means the flag TAKES a value.
+  it('treats an example type token (+table-put) as string', () => {
+    const { flags } = parseFlags('Flags:\n      --sheets +table-put       Typed table payload as JSON');
+    expect(flags[0]).toMatchObject({ name: 'sheets', type: 'string' });
+  });
+
+  it('treats a JSON-array example token ([["alice",95]]) as string', () => {
+    const { flags } = parseFlags('Flags:\n      --values [["alice",95]]   Untyped initial data as one 2D JSON array');
+    expect(flags[0]).toMatchObject({ name: 'values', type: 'string' });
+  });
+
+  it('treats a range example token (A1:Z200) as string', () => {
+    const { flags } = parseFlags('Flags:\n      --range A1:Z200   range to verify');
+    expect(flags[0]).toMatchObject({ name: 'range', type: 'string' });
+  });
+
+  it('treats a nested-array example token ([[{cell},...],...]) as string', () => {
+    const { flags } = parseFlags('Flags:\n      --cells [[{cell},...],...]   typed cells payload');
+    expect(flags[0]).toMatchObject({ name: 'cells', type: 'string' });
+  });
+
+  // Some example tokens contain INTERNAL spaces (`--border-styles { top: {...},
+  // bottom: ... }`, `--sort-keys [{"column":"x","ascending":true}, ...]`). The
+  // token still ends at the 2+ space description gap — capturing only up to the
+  // first inner space misreads these as boolean and drops their JSON payload.
+  it('treats a space-containing example token ({ top: {...} }) as string', () => {
+    const { flags } = parseFlags('Flags:\n      --border-styles { top: {style,color}, bottom: ... }   Border config JSON');
+    expect(flags[0]).toMatchObject({ name: 'border-styles', type: 'string' });
+  });
+
+  it('treats a JSON-array example token with inner spaces as string', () => {
+    const { flags } = parseFlags('Flags:\n      --sort-keys [{"column":"x","ascending":true}, ...]   JSON array');
+    expect(flags[0]).toMatchObject({ name: 'sort-keys', type: 'string' });
+  });
+
+  // XOR mutual-exclusivity hint (`--properties +cond-format-create --properties`)
+  // — the example references another command; still a value-taking string flag.
+  it('treats an XOR-style example token as string', () => {
+    const { flags } = parseFlags('Flags:\n      --properties +cond-format-create --properties   Rule config JSON');
+    expect(flags[0]).toMatchObject({ name: 'properties', type: 'string' });
+  });
+
   it('returns no flags when there is no flag section', () => {
     expect(parseFlags('Just a description, no flags here')).toEqual({ flags: [], supportsYes: false });
   });

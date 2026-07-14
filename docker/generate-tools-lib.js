@@ -11,26 +11,33 @@
 //   server.js adds --yes itself when needed (gated by supportsYes).
 const HIDDEN_FLAGS = new Set(['yes', 'dry-run', 'jq']);
 
-// cobra renders a flag as `--name <type-token>   <description>`, EXCEPT for
-// booleans, which render as `--name   <description>` with NO type token. So the
-// token immediately after the flag name is the type — and its absence means the
-// flag is a boolean. Map the known cobra type tokens; anything else (including
-// no token) is handled by the caller.
+// cobra renders a value flag as `--name <type-token>   <description>` and a
+// boolean as `--name   <description>` with NO token. The two gaps differ: the
+// name→token gap is a single space, the token→description gap is 2+ spaces of
+// alignment padding. `parseFlags`'s greedy `\s+` collapses the name→token gap,
+// but the token→description gap survives at the START of `rest` — so leading
+// text up to the first 2+ space run is the TYPE TOKEN (the flag takes a value),
+// and the absence of any 2+ space run means the flag is a boolean switch. We do
+// NOT whitelist the token: lark-cli >=1.0.60 renders composite/JSON flags with
+// an EXAMPLE as the token (`+table-put`, `[["alice",95]]`, `A1:Z200`,
+// `{ top: {...}, bottom: ... }`, `[{"column":"x"}, ...]`) rather than the bare
+// word `string`; a whitelist misread those as boolean and server.js dropped
+// their JSON payload. The example may contain INTERNAL single spaces, so the
+// token runs up to the first 2+ space gap, not the first space. Only NUMBER
+// tokens need recognizing; every other value-taking flag is a string.
 const NUMBER_TYPE_TOKENS = new Set(['int', 'int8', 'int16', 'int32', 'int64', 'uint', 'uint8', 'uint16', 'uint32', 'uint64', 'float', 'float32', 'float64', 'count']);
-const STRING_TYPE_TOKENS = new Set(['string', 'stringArray', 'stringSlice', 'strings', 'duration', 'bytesHex', 'ip']);
 
 // Resolve a flag's JSON-schema type from the text following its name (`rest`).
-// A leading known type token decides string vs number; no recognized token
-// means cobra omitted it, i.e. the flag is a boolean switch.
-// Special case: lark-cli uses `--flag --other-flag <desc>` to show XOR mutual-
-// exclusivity. The second `--xxx` is NOT a type token — treat as string.
-// Exception: `--flag --flag=false` (contains `=`) is a boolean negation hint.
+// The type token is everything up to the first 2+ space description gap: NUMBER
+// tokens → number, anything else → string (covers real type tokens like
+// `string`/`duration`, single- and multi-word example tokens, and the XOR
+// `--other-flag` mutual-exclusivity hint). No 2+ space gap → cobra omitted the
+// token → boolean switch.
 function flagTypeFromRest(rest) {
-  const firstToken = rest.match(/^(\S+)/)?.[1];
-  if (firstToken && NUMBER_TYPE_TOKENS.has(firstToken)) return 'number';
-  if (firstToken && STRING_TYPE_TOKENS.has(firstToken)) return 'string';
-  if (firstToken && firstToken.startsWith('--') && !firstToken.includes('=')) return 'string';
-  return 'boolean';
+  const token = rest.match(/^(.+?)\s{2,}/)?.[1];
+  if (!token) return 'boolean';
+  if (NUMBER_TYPE_TOKENS.has(token)) return 'number';
+  return 'string';
 }
 
 function parseFlags(helpText) {
