@@ -9,6 +9,20 @@
 > `lark_mindnotes_nodes_create` 是新增/更新节点接口，**不是**新建一个新的思维笔记。
 > 如果用户要**新建思维笔记**，不要走本链路，改走 `lark_get_skill(domain="doc", section="whiteboard")`。
 
+## 获取 `mindnote_id`
+
+`mindnote_id` 传 **Mindnote 文档 token**，不是节点 ID。`lark_mindnotes_*` 只负责读取和写入思维笔记内部节点。
+
+```
+# 用户给了 Mindnote URL，或给了可能包着 Mindnote 的 Wiki URL
+lark_drive_inspect(url="<mindnote_or_wiki_url>")
+```
+
+处理规则：
+
+- 普通 Mindnote URL：`lark_drive_inspect` 返回的 Mindnote token 可作为 `mindnote_id`。
+- Wiki URL：不要把 `/wiki/` 路径里的 wiki token 当作 `mindnote_id`；必须先 `lark_drive_inspect` 解包，确认底层类型是 `mindnote` 后再使用返回的真实 token。直接把 wiki token 传给 `lark_mindnotes_nodes_list` 通常会返回 `3410003 resource not found`。
+
 ## 命令
 
 ```
@@ -99,8 +113,8 @@ lark_invoke(tool_name="lark_mindnotes_nodes_create", args={
 
 1. 先判断用户目标是不是“新建一个思维笔记”。
 2. 如果是新建思维笔记，切到 `lark_get_skill(domain="doc", section="whiteboard")`。
-3. 如果是操作已有思维笔记，先通过 token 类别判断。
-4. 确认是 **Mindnote** 后再拿到 `mindnote_id`。
+3. 如果是操作已有思维笔记，先按上方「获取 `mindnote_id`」确认已拿到 Mindnote 文档 token。
+4. 确认目标类型是 **Mindnote** 后，把真实 Mindnote token 作为 `mindnote_id`。
 5. 先执行 `lark_mindnotes_nodes_list`，确认目标 `parent_id`。
 6. 新增子节点时，在 `nodes[]` 里传 `parent_id`；更新已有节点时，在 `nodes[]` 里传已有 `node_id`。
 7. 再执行 `lark_mindnotes_nodes_create`。
@@ -113,3 +127,4 @@ lark_invoke(tool_name="lark_mindnotes_nodes_create", args={
 
 - `lark_get_skill(domain="doc", section="fetch")` — 获取文档内容
 - `lark_get_skill(domain="doc", section="whiteboard")` — 新建思维笔记走画板链路
+- `lark_get_skill(domain="drive")` — 解析 Mindnote / Wiki 等云空间资源

@@ -43,6 +43,8 @@
 
 **正确做法（两步走）**：
 
+Step 1 的 `lark_sheets_cells_set` 及 `copy_to_range` 等参数以 `lark_get_skill(domain="sheets", section="write-cells")` 为准。
+
 ```
 Step 1: lark_sheets_cells_set 在新列写判断公式（形成"是/否"或布尔辅助列）
   range="H2", cells=[[{formula: "=IF(A2>B2, \"是\", \"否\")"}]], copy_to_range="H2:H100"

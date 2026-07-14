@@ -23,7 +23,13 @@ lark_apps_html_publish(app_id="app_xxx", path="./index.html", dry_run=true)
 
 ## 输出契约
 
-- 成功默认 JSON envelope 只关心 `data.url`；这是本轮 HTML 发布后的发布态访问链接。
+根据应用类型，输出字段不同：
+
+- **静态 HTML 应用**：`data.url` 是本轮发布后的访问链接，一步完成发布。
+- **其他 HTML 应用**：`data.release_id` 是发布标识，命令内部已完成产物上传和发布创建。用 `lark_apps_release_get(app_id="<app_id>", release_id="<release_id>")` 轮询发布状态直到 `finished`。
+
+判断走哪条路径：有 `url` 字段说明已直接发布完成；有 `release_id` 字段说明需要用 `lark_apps_release_get` 轮询。
+
 - 业务失败如构建失败、应用不存在通常带 `error.hint`；优先转述 hint。网络/服务端失败则建议稍后重试。
 
 ## 链接边界

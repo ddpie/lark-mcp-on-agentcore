@@ -39,7 +39,7 @@
 **常见配置错误（必须注意）**：
 - **插入列直接用字母**：`lark_sheets_dim_insert` 的 `position` 在列场景直接传字母（如 `C`），不要把列字母换算成 0-based 索引
 - **插入后引用偏移**：插入行/列后，原有数据的行号 / 列字母会发生偏移。如果插入后还需要对原有区域执行写入操作，必须重新计算偏移后的位置
-- **删除行列前先确认范围**：删除操作不可逆，执行前应确认 `range` 精确无误。可先用 `lark_sheets_csv_get` 读取目标区域验证内容
+- **删除行列前先确认范围**：删除操作不可逆，执行前应确认 `range` 精确无误。可先用 `lark_sheets_csv_get` 读取目标区域验证内容（`lark_sheets_csv_get` / `lark_sheets_cells_get` 见 `lark_get_skill(domain="sheets", section="read-data")`）
 - **"在 D 列左侧新增一列"的正确写法**：`position="D", count=1`（新列插在 D 列之前）；要继承左侧列样式加 `inherit_style="before"`
 - **`lark_sheets_dim_move` 同维度约束**：`source_range` 是行区间时 `target` 必须是行号（数字），是列区间时 `target` 必须是列字母——不可一行一列混用
 - **插入列后必须检查多行表头合并区域**：很多表格有 2-3 行的合并表头。插入列后，原有的合并区域不会自动扩展到新列。必须先用 `lark_sheets_sheet_info(include="merges")` 读取合并区域，插入后将跨越插入位置的合并区域重新设置（用 `lark_sheets_cells_{merge|unmerge}`），否则新列的表头会是空的、格式不连续
@@ -129,7 +129,7 @@ _公共四件套_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `depth` | int | optional | 要取消的分组层级，默认 1（最外层） |
+| `depth` | int | optional | 要取消的分组层级，默认 1（1=最外层，数字越大越内层） |
 | `range` | string | required | 要取消分组的行/列闭区间；行如 `3:7`，列如 `C:F` |
 
 ### `lark_sheets_dim_move`
@@ -191,7 +191,7 @@ lark_sheets_dim_move(url="...", sheet_id="$SID", source_range="C:F", target="H")
 
 > ⚠️ 这两条 shortcut 来自 `lark_get_skill(domain="sheets", section="range-operations")` 的 `lark_sheets_rows_resize` / `lark_sheets_cols_resize` tool（分组在"工作表"是为了发现性）。详细参数和示例在 `lark-sheets-range-operations.md`。
 >
-> 行 vs 列底层 schema 有差异：`lark_sheets_rows_resize` 的 `type` 支持 `pixel` / `standard` / `auto`，`lark_sheets_cols_resize` 的 `type` 只支持 `pixel` / `standard`（列宽不支持自动适应）。
+> 常规写法：行高走 `range` + `height`（像素）、列宽走 `range` + `width`（像素），无需再传 `type`（等价于 `type="pixel"`）；多行 / 多列不同尺寸用 map 形态 `heights` / `widths`（如 `widths={"A":100,"C:E":120}`）一次原子完成，不要拆多次调用或走 `lark_sheets_batch_update`。`type="standard"` / `type="auto"` 用于非像素模式，不能与像素参数同给。`lark_sheets_cols_resize` 的 `type` 不接受 `auto`（列宽不支持自动适应）。⚠️ 单位是像素（不是 Excel 字符单位 / 磅）。
 
 ### `lark_sheets_dim_freeze`
 
@@ -206,6 +206,6 @@ lark_sheets_dim_freeze(url="...", sheet_id="$SID", dimension="row", count="1")
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`range` / `source_range` 必须是合法 A1 闭区间（行用数字、列用字母，不可混用）；`lark_sheets_dim_insert` 的 `count` > 0；`lark_sheets_dim_move` 的 `target` 必须与 `source_range` 同维度（行 vs 列）；`lark_sheets_dim_delete` 强制 `yes` 或 `dry_run`；`lark_sheets_rows_resize` / `lark_sheets_cols_resize` 的 `type` 必填，`type="pixel"` 时 `size` 必填、其它 type 时 `size` 会被忽略（传了无害）；`lark_sheets_rows_resize` / `lark_sheets_cols_resize` 的行 vs 列 `type` 差异详见 `lark-sheets-range-operations.md`。
+- `Validate`：XOR 公共四件套；`range` / `source_range` 必须是合法 A1 闭区间（行用数字、列用字母，不可混用）；`lark_sheets_dim_insert` 的 `count` > 0；`lark_sheets_dim_move` 的 `target` 必须与 `source_range` 同维度（行 vs 列）；`lark_sheets_dim_delete` 强制 `yes` 或 `dry_run`；`lark_sheets_rows_resize` / `lark_sheets_cols_resize` 的统一形态（`range` + `height`/`width` 或 `type`）与 map 形态（`heights`/`widths`）二选一、不可混用；详见 `lark-sheets-range-operations.md`。
 - `DryRun`：写操作输出"将要 PATCH 的目标范围 + 目标参数"。
 - `Execute`：写后不自动回读；如需确认，自行调用 `lark_sheets_sheet_info(include="row_heights,col_widths,hidden_rows,hidden_cols,groups,frozen")` 查看受影响的范围。

@@ -29,9 +29,9 @@
 
 - **`image`（本地路径，首选，最省事）**：直接给本地图片文件路径（PNG/JPEG/GIF/BMP/HEIC 等）。会自动把它以 `parent_type=sheet_image` 上传，拿到 file_token 后创建浮动图，**不用你手动上传 / 取 token**。
 - `image_token`：复用**已存在**的图片 file_token。常见来源：① `lark_sheets_float_image_list` 返回的 `image_token`（适合"换皮不换位置"复用同一张图）；② `lark_sheets_cells_set_image` 成功返回里的 `file_token`（它也是 `sheet_image` 上传句柄）。适合"同一张图复用到多处"，省去重复上传。
-- `image_uri`：图片 reference_id（image URI），由系统自动转 file_token。注意 `image_uri` 是图片上传链路返回的上传句柄 / reference_id，与 `image_token`（已有 file_token）取值来源不同，别混用。
+- `image_uri`：图片 URI（上传链路返回的句柄），**非**表内对象 reference_id；由系统自动转 file_token。注意 `image_uri` 是图片上传链路返回的上传句柄，与 `image_token`（已有 file_token）取值来源不同，别混用。
 
-> ⚠️ **`image` 仅 `lark_sheets_float_image_create` 支持**。`lark_sheets_float_image_update` 换图仍只接受 `image_token` / `image_uri`，而且**图片源是 update 唯一可省的部分**——三者全不传则保留原图。但 `image_name` / `position_row` / `position_col` / `size_width` / `size_height` 在 update 时和 create 一样**必填**（`lark_sheets_float_image_update` 强制要求这套核心字段，且 `lark_sheets_float_image_list` 不回传 `image_name`）。要在 update 里换一张本地新图，先用 `lark_sheets_cells_set_image` 上传到任意临时单元格、从返回取 `file_token`，再把它作为 update 的 `image_token` 传入。
+> ⚠️ **`image` 仅 `lark_sheets_float_image_create` 支持**。`lark_sheets_float_image_update` 换图仍只接受 `image_token` / `image_uri`，而且**图片源是 update 唯一可省的部分**——三者全不传则保留原图。但 `image_name` / `position_row` / `position_col` / `size_width` / `size_height` 在 update 时和 create 一样**必填**（`lark_sheets_float_image_update` 强制要求这套核心字段，且 `lark_sheets_float_image_list` 不回传 `image_name`）。要在 update 里换一张本地新图，先用 `lark_sheets_cells_set_image` 上传到任意临时单元格、从返回取 `file_token`，再把它作为 update 的 `image_token` 传入；用完清除该临时单元格，避免残留多余图片。
 
 ## Shortcuts
 
@@ -56,7 +56,7 @@
 | --- | --- | --- | --- |
 | `image_name` | string | required | 图片名称，含扩展名（如 `logo.png`） |
 | `image_token` | string | xor | 图片 file_token（与 `image_uri` 二选一）。常见来源：`lark_sheets_float_image_list` 返回的 `image_token` |
-| `image_uri` | string | xor | 图片 reference_id（与 `image_token` 二选一）；图片上传链路返回的 reference_id |
+| `image_uri` | string | xor | 图片 URI（上传链路返回的句柄，非表内对象 reference_id；与 `image_token` 二选一）；系统自动转换为 file_token |
 | `position_row` | int | required | 图片左上角所在行（0-based） |
 | `position_col` | string | required | 图片左上角所在列（列字母，如 `A` / `B`） |
 | `size_width` | int | required | 图片宽度（像素） |
@@ -72,8 +72,8 @@
 | --- | --- | --- | --- |
 | `float_image_id` | string | required | 目标图片 id |
 | `image_name` | string | required | 图片名称，含扩展名（如 `logo.png`） |
-| `image_token` | string | xor | 图片 file_token（与 `image_uri` 二选一）。常见来源：`lark_sheets_float_image_list` 返回的 `image_token` |
-| `image_uri` | string | xor | 图片 reference_id（与 `image_token` 二选一）；图片上传链路返回的 reference_id |
+| `image_token` | string | optional | 可选图片 file_token；与 `image_uri` 互斥，二者均省略时保留原图。常见来源：`lark_sheets_float_image_list` 返回的 `image_token` |
+| `image_uri` | string | optional | 可选图片 URI（上传链路返回的句柄，非表内对象 reference_id）；与 `image_token` 互斥，二者均省略时保留原图；系统自动转换为 file_token |
 | `position_row` | int | required | 图片左上角所在行（0-based） |
 | `position_col` | string | required | 图片左上角所在列（列字母，如 `A` / `B`） |
 | `size_width` | int | required | 图片宽度（像素） |
@@ -112,7 +112,7 @@ lark_sheets_float_image_create(url="...", sheet_id="<SID>", image="./logo.png", 
 # 用已有 file_token（从 lark_sheets_float_image_list 的 image_token 或 lark_sheets_cells_set_image 返回的 file_token）
 lark_sheets_float_image_create(url="...", sheet_id="<SID>", image_name="logo.png", image_token="<TOKEN>", position_row=0, position_col="A", size_width=200, size_height=150)
 
-# 用 reference_id（图片上传链路返回的 image reference_id；与 image_token 二选一）
+# 用 image URI（上传链路返回的句柄，非表内对象 reference_id；与 image_token 二选一）
 lark_sheets_float_image_create(url="...", sheet_id="<SID>", image_name="logo.png", image_uri="<IMAGE_URI>", position_row=2, position_col="B", size_width=300, size_height=200, z_index=1)
 ```
 

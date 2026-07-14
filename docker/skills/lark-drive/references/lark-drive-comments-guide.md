@@ -1,6 +1,6 @@
 # Drive 评论查询、统计与回复指南
 
-> 前置条件：先调用 `lark_get_skill(domain="drive")` 的"评论能力入口"，添加评论参数细节见 `lark_get_skill(domain="drive", section="add-comment")`，reaction 见 `lark_get_skill(domain="drive", section="reactions")`。
+> 前置条件：先调用 `lark_get_skill(domain="drive")` 的"评论能力入口"，添加评论参数细节见 `lark_get_skill(domain="drive", section="add-comment")`，获取评论列表优先使用 `lark_get_skill(domain="drive", section="list-comments")`，reaction 见 `lark_get_skill(domain="drive", section="reactions")`。
 
 ## 评论模式
 
@@ -16,14 +16,20 @@
 
 ## 查询默认口径
 
-`lark_invoke(tool_name="lark_drive_file_comments_list", ...)` 默认必须传 `is_solved:false`，即仅查询未解决评论。即使用户说"所有评论""全部评论""把评论都列出来"，只要没有明确提到要包含已解决评论，仍然按默认口径查询未解决评论。仅当用户明确要求包含已解决评论时，才可省略 `is_solved` 参数。
+优先使用 `lark_drive_list_comments()`，不要优先手写 `lark_invoke(tool_name="lark_drive_file_comments_list", ...)`。shortcut 默认 `solved_status="false"`，即仅查询未解决评论。即使用户说"所有评论""全部评论""把评论都列出来"，只要没有明确提到包含已解决评论，仍然按默认口径查询未解决评论；仅当用户明确要求包含已解决评论时，才传 `solved_status="all"`。只查已解决评论时传 `solved_status="true"`。
 
 ```
 # 默认查询：仅未解决评论
-lark_invoke(tool_name="lark_drive_file_comments_list", args={params: {"file_token": "xxx", "file_type": "docx", "is_solved": false}})
+lark_drive_list_comments(url="<DOC_URL>")
 
-# 包含已解决评论：仅当用户明确要求时使用
-lark_invoke(tool_name="lark_drive_file_comments_list", args={params: {"file_token": "xxx", "file_type": "docx"}})
+# 全部评论：包含已解决和未解决
+lark_drive_list_comments(url="<DOC_URL>", solved_status="all")
+
+# 已解决评论
+lark_drive_list_comments(url="<DOC_URL>", solved_status="true")
+
+# 裸 wiki token
+lark_drive_list_comments(token="<WIKI_TOKEN>", type="wiki")
 ```
 
 ## 评论卡片与统计
@@ -53,12 +59,13 @@ lark_invoke(tool_name="lark_drive_file_comments_list", args={params: {"file_toke
 ## batch_query 与 list
 
 - `lark_invoke(tool_name="lark_drive_file_comments_batch_query", ...)` 用于已知评论 ID 后的批量查询，需要传入具体评论 ID 列表。
-- `lark_invoke(tool_name="lark_drive_file_comments_list", ...)` 用于分页获取评论列表，适合统计评论总数、遍历所有评论、获取最新或最后 N 条评论等场景。
+- `lark_drive_list_comments()` 用于分页获取评论列表；如果要统计全量评论数、遍历包含已解决评论在内的所有评论、获取全量最新评论或最后 N 条评论，请先传 `solved_status="all"` 并拉完所有分页。它会处理 URL、wiki token 和 token/type 匹配问题。
+- `lark_invoke(tool_name="lark_drive_file_comments_list", ...)` 是原生命令。需要 shortcut 未暴露的字段时才使用。
 
 ## 评论定位字段
 
-- 需要根据评论定位到文档正文位置时（例如根据评论 review 文档、区分多处相同引用文本、把评论落点映射到 `lark_docs_fetch` 的 block），先确认目标是 `file_type=docx`，再调用 `lark_get_skill(domain="drive", section="comment-location")`。
-- 其他文档类型暂不支持返回定位字段。
+- 需要根据评论定位到文档正文位置时（例如根据评论 review 文档、区分多处相同引用文本、把评论落点映射到 `lark_docs_fetch` 的 block），先确认目标是 `file_type=docx`，再调用 `lark_get_skill(domain="drive", section="comment-location")`，并使用 `lark_drive_list_comments(need_relation=true)`。
+- `need_relation` 仅 docx 生效；其他文档类型会静默忽略。
 
 ## 原生 API
 
