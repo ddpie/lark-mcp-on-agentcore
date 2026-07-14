@@ -15,6 +15,7 @@ description: "妙搭（Spark/Miaoda）应用开发与托管：应用创建、HTM
 |---|---|---|
 | 创建**新**应用资产、拿 app_id | `lark_apps_create` | `lark_get_skill(domain="apps", section="create")` |
 | 找已有 app_id、按名字过滤应用 | `lark_apps_list(keyword="<name>")` | `lark_get_skill(domain="apps", section="list")` |
+| 查单个应用详情（类型、名称、发布状态等） | `lark_apps_get(app_id="<app_id>")` | `lark_get_skill(domain="apps", section="get")` |
 | 改应用名或描述 | `lark_apps_update` | `lark_get_skill(domain="apps", section="update")` |
 | 发布本地 `index.html` 或静态目录为可访问 URL | `lark_apps_html_publish` | `lark_get_skill(domain="apps", section="html-publish")` |
 | 开发已有应用 / 初始化本地仓库（开发方式已定为本地后；先解析 app_id，勿 `lark_apps_create` 新建） | `lark_apps_init`（或手动 `lark_apps_git_credential_init` + 原生 git）。**执行前必读** `lark_get_skill(domain="apps", section="local-dev")`，含端到端流程和领域规则 | `lark_get_skill(domain="apps", section="init")`、`lark_get_skill(domain="apps", section="git-credential")` |

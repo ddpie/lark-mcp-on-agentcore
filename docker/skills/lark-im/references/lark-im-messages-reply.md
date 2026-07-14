@@ -180,7 +180,7 @@ lark_im_messages_reply(message_id="om_xxx", msg_type="interactive", content="<ca
 | `video_cover` | **Required with `video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`) |
 | `audio` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
 | `reply_in_thread` | No | Reply inside the thread. The reply appears in the target message's thread instead of the main chat stream |
-| `idempotency_key` | No | Idempotency key; the same key sends only one reply within 1 hour |
+| `idempotency_key` | No | Idempotency key, max 50 characters; the same key sends only one reply within 1 hour |
 
 > **Mutual exclusivity rule:** `text`, `markdown`, `content`, and `image`/`file`/`video`/`audio` cannot be used together. Media parameters are also mutually exclusive with each other.
 >

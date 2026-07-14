@@ -210,9 +210,193 @@ function createSingleFlight(fn) {
   };
 }
 
+// Agents naturally pass structured data for a parameter whose description
+// shows a JSON shape. String([[10],[20]]) silently corrupts that to "10,20"
+// and lark-cli rejects it downstream with an opaque error. Accept BOTH
+// conventions: a string passes through; an object/array is stringified;
+// primitives keep String() (ordinary CLI flag values).
+function coerceFlagValue(value) {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return String(value);
+}
+
+// Pre-spawn payload validation against the embedded --print-schema contract
+// (def.payloadSchemas[flag], extracted at build time). Returns null when OK,
+// or a self-correction hint in MCP language. Shallow on purpose: root type +
+// first-level items type — enough to catch the two observed failure classes
+// (non-JSON text; 1D array where the contract wants 2D) without reimplementing
+// a JSON-Schema validator. Deeper mistakes still reach lark-cli, whose
+// validation error is translated and passed through.
+function validatePayload(value, schema) {
+  if (!schema || !schema.type) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return `not valid JSON. This parameter takes a JSON ${schema.type} (as a JSON value or a JSON-encoded string). ${schema.description ? `Contract: ${schema.description}` : ''}`.trim();
+  }
+  const rootIsArray = Array.isArray(parsed);
+  if (schema.type === 'array' && !rootIsArray) {
+    return `expected a JSON array at the root, got ${typeof parsed}. ${schema.description || ''}`.trim();
+  }
+  if (schema.type === 'object' && (rootIsArray || typeof parsed !== 'object' || parsed === null)) {
+    return `expected a JSON object at the root, got ${rootIsArray ? 'array' : typeof parsed}. ${schema.description || ''}`.trim();
+  }
+  // First-level dimensionality: schema says array-of-arrays (e.g. cells is
+  // rows×cols) but the payload's first element is not an array → the classic
+  // "single cell, so I flattened to 1D" mistake.
+  const itemsType = schema.items && !Array.isArray(schema.items) ? schema.items.type : undefined;
+  if (schema.type === 'array' && itemsType === 'array' && parsed.length > 0 && !Array.isArray(parsed[0])) {
+    return `expected an array of arrays (2D: rows × columns) — even a single cell must be nested, e.g. [[{...}]]. Got a 1D array. ${schema.description || ''}`.trim();
+  }
+  return null;
+}
+
+// lark-cli's structured validation errors speak CLI ("--values: trailing data
+// after JSON value") — the MCP parameter is `values`, so an agent correcting
+// against the flag name gets more confused. For `type:"validation"` errors,
+// rewrite --flag references to snake_case parameter names and mark the result
+// self-correctable: the caller returns it with isError:false so lenient
+// clients (which swallow isError:true content as a generic "unknown error")
+// let the agent read the hint and fix its own input. Auth/permission errors
+// keep their dedicated paths (patchPermissionError / isAuthError) untouched.
+//
+// Rewriting is ALLOWLIST-ONLY (`flagNames` = the invoked tool's real flags):
+// validation messages echo arbitrary user input — a formula like
+// `=SUMPRODUCT(--(a1:a10>5))` or a payload fragment contains `--` sequences
+// that a blind /--\w+/ rewrite would corrupt. Only `--<known-flag>` of THIS
+// tool is translated; longest name first so --sheet-name is never half-matched
+// by a shorter --sheet; a word-boundary guard keeps --sheet-id intact when
+// only `sheet` is in the allowlist.
+function translateCliError(raw, flagNames = []) {
+  let data;
+  try { data = JSON.parse(raw); } catch { return { text: raw, selfCorrectable: false }; }
+  if (data?.error?.type !== 'validation') return { text: raw, selfCorrectable: false };
+  if (typeof data.error.message === 'string' && flagNames.length > 0) {
+    const byLength = [...flagNames].sort((a, b) => b.length - a.length);
+    let msg = data.error.message;
+    for (const flag of byLength) {
+      msg = msg.split(`--${flag}`).map((part, i, arr) => {
+        // Only join with the replacement when the next char is not a flag-name
+        // char (word boundary) — prevents --sheet matching inside --sheet-id.
+        if (i === arr.length - 1) return part;
+        const next = arr[i + 1];
+        const boundary = next === '' || !/^[a-z0-9-]/.test(next);
+        return part + (boundary ? flag.replace(/-/g, '_') : `--${flag}`);
+      }).join('');
+    }
+    data.error.message = msg;
+  }
+  return { text: JSON.stringify(data), selfCorrectable: true };
+}
+
+// lark-cli appends `_notice.update` ("run: lark-cli update") to every response
+// when a newer CLI exists. That's operator guidance — the agent can't run
+// terminal commands, and the notice burns tokens in EVERY tool response until
+// the pin is bumped. Strip it (keep any other _notice keys); version drift
+// stays visible to operators via ops.sh and container logs.
+//
+// The strip is SURGICAL, not a JSON.parse→stringify round-trip: parsing the
+// whole response reads numbers as doubles and silently corrupts integers
+// > 2^53 (7304827392019283746 → …4000) — and this path is active whenever
+// upstream lark-cli is newer than the pin, i.e. most of the time. A string-
+// aware scan locates the TOP-LEVEL "_notice" key (depth-1 check also defuses
+// a literal "_notice" inside user data), and only that value span — lark-cli's
+// own small notice object, never user data — is re-encoded. Every other byte
+// of the response passes through untouched.
+function stripCliNotice(output) {
+  if (!output.includes('"_notice"')) return output;
+  if (output[0] !== '{') return output;
+
+  // Scan for the top-level "_notice" key: track string/escape state and brace
+  // depth; a depth-1 string followed by `:` is a top-level key.
+  let i = 1, depth = 1, keyIdx = -1, valStart = -1, valEnd = -1;
+  const n = output.length;
+  while (i < n) {
+    const c = output[i];
+    if (c === '"') {
+      const strStart = i;
+      i++;
+      while (i < n) {
+        if (output[i] === '\\') i += 2;
+        else if (output[i] === '"') break;
+        else i++;
+      }
+      const str = output.slice(strStart, i + 1);
+      i++;
+      // Key position: at depth 1 and followed by a colon.
+      let k = i;
+      while (k < n && /\s/.test(output[k])) k++;
+      if (depth === 1 && output[k] === ':' && str === '"_notice"') {
+        keyIdx = strStart;
+        k++;
+        while (k < n && /\s/.test(output[k])) k++;
+        if (output[k] !== '{') return output; // unexpected shape — leave as-is
+        // Capture the balanced object span.
+        let d = 0, j = k, inStr = false;
+        while (j < n) {
+          const cj = output[j];
+          if (inStr) {
+            if (cj === '\\') j++;
+            else if (cj === '"') inStr = false;
+          } else if (cj === '"') inStr = true;
+          else if (cj === '{') d++;
+          else if (cj === '}') { d--; if (d === 0) { j++; break; } }
+          j++;
+        }
+        valStart = k; valEnd = j;
+        break;
+      }
+      continue;
+    }
+    if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') depth--;
+    i++;
+  }
+  if (keyIdx < 0) return output;
+
+  // Re-encode ONLY the notice object (lark-cli's own metadata, no big ints).
+  let notice;
+  try { notice = JSON.parse(output.slice(valStart, valEnd)); } catch { return output; }
+  delete notice.update;
+
+  if (Object.keys(notice).length > 0) {
+    return output.slice(0, valStart) + JSON.stringify(notice) + output.slice(valEnd);
+  }
+  // Notice empty → drop the whole `"_notice": {...}` member plus one adjacent
+  // comma (preceding if present, else following).
+  let start = keyIdx, end = valEnd;
+  let p = keyIdx - 1;
+  while (p >= 0 && /\s/.test(output[p])) p--;
+  if (output[p] === ',') start = p;
+  else {
+    let q = valEnd;
+    while (q < n && /\s/.test(output[q])) q++;
+    if (output[q] === ',') end = q + 1;
+  }
+  return output.slice(0, start) + output.slice(end);
+}
+
+// Skill-domain lookup with service-name aliases. The tool namespace says
+// `lark_docs_*` (service "docs") but the skill domain is `doc` — an agent
+// deriving the domain from a tool name naturally guesses "docs" and got
+// unknown_domain. Accept: exact domain, dir name, lark-<domain>, and the
+// domain+'s' plural (docs→doc) so the service-name guess just works.
+function resolveSkillDomain(skillIndex, domain) {
+  return skillIndex.find(s =>
+    s.domain === domain || s.dir === domain || s.dir === `lark-${domain}` ||
+    `${s.domain}s` === domain);
+}
+
 module.exports = {
   PERMISSION_ERROR_CODE,
   ServerBusyError,
+  coerceFlagValue,
+  validatePayload,
+  translateCliError,
+  stripCliNotice,
+  resolveSkillDomain,
   createSingleFlight,
   toToolName,
   toSchemaKey,

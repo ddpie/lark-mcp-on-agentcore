@@ -185,7 +185,7 @@ lark_im_messages_send(chat_id="oc_xxx", msg_type="interactive", content="<card_j
 | `video_cover` | **Required with `video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically |
 | `audio` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
 | `msg_type` | No | Message type (default `text`). If you use `text` / `markdown` / media parameters, the effective type is inferred automatically. Explicitly setting a conflicting `msg_type` fails validation |
-| `idempotency_key` | No | Idempotency key; the same key sends only one message within 1 hour |
+| `idempotency_key` | No | Idempotency key, max 50 characters; the same key sends only one message within 1 hour |
 
 > **Mutual exclusivity rule:** `text`, `markdown`, `content`, and `image`/`file`/`video`/`audio` cannot be used together. Media parameters are also mutually exclusive with each other.
 >

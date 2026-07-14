@@ -45,13 +45,29 @@ const FAKE_TOOL_DEF_DELETE = {
   supportsYes: true,
   flags: [{ name: 'table-id', type: 'string', description: 'Table id', required: true }],
 };
+// Tier-1 tool WITH a composite-flag payloadSchema: exercises the pre-spawn
+// validatePayload wiring in executeTool (R9 below) — the lib-level unit tests
+// alone can't catch a broken payloadSchemas key lookup or a wrong isError.
+const FAKE_TOOL_DEF_CELLS = {
+  service: 'sheets',
+  command: '+cells-set',
+  description: 'Write cells',
+  risk: 'write',
+  flags: [
+    { name: 'cells', type: 'string', description: '2D cell payload', required: true },
+    { name: 'range', type: 'string', description: 'target range', required: false },
+  ],
+  payloadSchemas: {
+    cells: { type: 'array', items: { type: 'array', items: { type: 'object' } }, description: '2D rows×cols' },
+  },
+};
 // One raw API for lark_invoke paths: a high-risk-write delete (confirmation gate)
 // that doubles as the JSON-validation target via its params/data flags.
 const FAKE_RAW_DELETE = { service: 'drive', resource: 'file', method: 'delete', description: 'Delete a drive file', risk: 'high-risk-write', supportsYes: true };
 // A read-risk raw API (no confirmation gate) for exercising the permission path.
 const FAKE_RAW_READ = { service: 'contact', resource: 'user_profiles', method: 'batch_query', description: 'Bulk fetch profiles', risk: 'read' };
-const FAKE_CATALOG = { _larkCliVersion: 'test', _scopeMapVersion: 'test', tools: [FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DELETE], rawApis: [FAKE_RAW_DELETE, FAKE_RAW_READ] };
-const FAKE_TIER1 = ['lark_calendar_agenda', 'lark_base_delete_table'];
+const FAKE_CATALOG = { _larkCliVersion: 'test', _scopeMapVersion: 'test', tools: [FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DELETE, FAKE_TOOL_DEF_CELLS], rawApis: [FAKE_RAW_DELETE, FAKE_RAW_READ] };
+const FAKE_TIER1 = ['lark_calendar_agenda', 'lark_base_delete_table', 'lark_sheets_cells_set'];
 
 // Controllable child_process mock. Each test sets `execFileBehavior` to steer
 // how the next lark-cli call resolves.
@@ -61,6 +77,7 @@ const FAKE_TIER1 = ['lark_calendar_agenda', 'lark_base_delete_table'];
 //   { mode: 'maxbuffer', partial }              -> err.code=ERR_CHILD_PROCESS_STDIO_MAXBUFFER
 let execFileBehavior = { mode: 'instant' };
 let lastExecFileOpts = null; // captured opts of the most recent execFile call
+let execFileCalls = 0; // total spawns — lets tests assert pre-spawn rejection
 const OK_STDOUT = '{"ok":true,"data":{"events":[]}}';
 
 const originalReadFileSync = fs.readFileSync.bind(fs);
@@ -82,6 +99,7 @@ Module._load = function (request) {
     return {
       execFile: (cmd, args, opts, cb) => {
         lastExecFileOpts = opts;
+        execFileCalls++;
         const child = { kill: () => {}, pid: 4242 };
         const b = execFileBehavior;
         if (b.mode === 'slow') {
@@ -107,6 +125,11 @@ Module._load = function (request) {
         } else if (b.mode === 'stdout') {
           // Inject arbitrary lark-cli stdout (e.g. a permission-error envelope).
           setTimeout(() => cb(null, b.stdout ?? OK_STDOUT, ''), 0);
+        } else if (b.mode === 'fail') {
+          // Non-zero exit with structured stdout (lark-cli's validation errors
+          // exit 2 but still print the JSON envelope on stdout).
+          const err = Object.assign(new Error('Command failed'), { code: 2, stdout: b.stdout ?? '', stderr: b.stderr ?? '' });
+          setTimeout(() => cb(err, b.stdout ?? '', b.stderr ?? ''), 0);
         } else {
           setTimeout(() => cb(null, OK_STDOUT, ''), 0);
         }
@@ -399,5 +422,53 @@ describe('R8: missing-scope responses carry an authorize_url and are non-error',
     const r = await callTool('lark_calendar_agenda', {}, 83);
     expect(r.data?.result?.isError).toBe(true);
     expect(JSON.parse(textOf(r)).error.user_action).toContain('reconnect');
+  });
+});
+
+// Cross-review finding: the contract-layer wiring (validatePayload pre-spawn,
+// translateCliError in the catch path, stripCliNotice on success) had only
+// lib-level unit tests — a wrong payloadSchemas key, a mispassed flag list, or
+// a flipped isError in server.js would go unnoticed. These run the REAL server.
+describe('R9: contract-layer wiring in executeTool', () => {
+  const textOf = r => r.data?.result?.content?.[0]?.text ?? '';
+
+  it('1D cells payload → invalid_payload, isError:false, before spawning lark-cli', async () => {
+    execFileBehavior = { mode: 'instant' };
+    const before = execFileCalls;
+    const r = await callTool('lark_sheets_cells_set', { cells: '[{"formula":"=A1+1"}]', range: 'B1' }, 90);
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.error).toBe('invalid_payload');
+    expect(p.parameter).toBe('cells');
+    expect(p.message).toMatch(/2D|array of arrays/i);
+    expect(p.hint).toContain('lark_discover');
+    expect(execFileCalls).toBe(before); // rejected pre-spawn
+  });
+
+  it('a native array payload is stringified and accepted (passes validation)', async () => {
+    execFileBehavior = { mode: 'instant' };
+    const r = await callTool('lark_sheets_cells_set', { cells: [[{ value: 1 }]], range: 'A1' }, 91);
+    expect(r.data?.result?.isError).toBeUndefined();
+  });
+
+  it('lark-cli validation error → --flag refs translated, isError:false', async () => {
+    execFileBehavior = { mode: 'fail', stdout: JSON.stringify({
+      ok: false,
+      error: { type: 'validation', subtype: 'invalid_argument', message: 'specify at least one of --sheet-id or --range' },
+    }) };
+    const r = await callTool('lark_sheets_cells_set', { cells: '[[{"value":1}]]', range: 'A1' }, 92);
+    expect(r.data?.result?.isError).toBe(false);
+    const p = JSON.parse(textOf(r));
+    expect(p.error.message).not.toContain('--range');
+    expect(p.error.message).toContain('range');
+  });
+
+  it('success responses have _notice.update stripped', async () => {
+    execFileBehavior = { mode: 'stdout', stdout: '{"ok":true,"data":{"revision":2},"_notice":{"update":{"message":"lark-cli 9.9.9 available"}}}' };
+    const r = await callTool('lark_calendar_agenda', {}, 93);
+    expect(r.data?.result?.isError).toBeUndefined();
+    const text = textOf(r);
+    expect(text).not.toContain('_notice');
+    expect(text).toContain('"revision":2');
   });
 });

@@ -9,7 +9,7 @@ description: "飞书云文档（Docx / Wiki 文档）：读取和编辑飞书文
 
 ```
 # 常用示例
-lark_docs_fetch(doc="文档URL或token")
+lark_docs_fetch(doc="文档URL或token；若 URL 存在 #share-... 锚点，优先使用锚点方式读取，不要全文拉取")
 lark_docs_create(content='<title>标题</title><p>内容</p>')
 lark_docs_update(doc="文档URL或token", command="append", content='<p>内容</p>')
 ```

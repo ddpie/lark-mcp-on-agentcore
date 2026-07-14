@@ -22,6 +22,11 @@ const {
   patchPermissionError: patchPermissionErrorLib,
   createSemaphore,
   createSingleFlight,
+  coerceFlagValue,
+  validatePayload,
+  translateCliError,
+  stripCliNotice,
+  resolveSkillDomain,
 } = require('./server-lib');
 
 process.on('uncaughtException', (err) => {
@@ -350,8 +355,26 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     const key = toSchemaKey(flag.name);
     const value = args[key];
     if (value === undefined || value === null || value === '') continue;
-    if (flag.type === 'boolean') { if (value) cliArgs.push(`--${flag.name}`); }
-    else cliArgs.push(`--${flag.name}`, String(value));
+    if (flag.type === 'boolean') { if (value) cliArgs.push(`--${flag.name}`); continue; }
+    // Accept both conventions for JSON parameters: string passes through,
+    // object/array is stringified (String() would corrupt it to "[object
+    // Object]"/comma-joins and fail deep inside lark-cli).
+    const coerced = coerceFlagValue(value);
+    // Validate composite payloads against the embedded --print-schema contract
+    // BEFORE spawning. NOT isError (raw-API params/data precedent): a malformed
+    // payload is self-correctable — isError:true makes lenient clients hide the
+    // hint behind a generic "unknown error".
+    const shapeError = validatePayload(coerced, def.payloadSchemas?.[flag.name]);
+    if (shapeError) {
+      return { content: [{ type: 'text', text: JSON.stringify({
+        error: 'invalid_payload',
+        parameter: key,
+        tool: toolName,
+        message: `args.${key} ${shapeError}`,
+        hint: `Call lark_discover(query="${toolName}") for this parameter's full JSON Schema.`,
+      }) }], isError: false };
+    }
+    cliArgs.push(`--${flag.name}`, coerced);
   }
   // lark-cli's --yes is per-command. Only inject it for commands that declare
   // it (recorded as supportsYes at build time); other high-risk-write commands
@@ -378,7 +401,10 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     // client disconnect kills the child and frees the slot immediately, rather
     // than leaking it until the timeout.
     const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, LARK_CLI_TIMEOUT_MS, abortSignal), abortSignal);
-    const output = stdout.trim() || '{"ok":true,"data":null}';
+    // Strip lark-cli's `_notice.update` ("run: lark-cli update") — operator
+    // guidance the agent can't act on, repeated in EVERY response until the
+    // pin is bumped. Version drift stays visible in ops.sh / container logs.
+    const output = stripCliNotice(stdout.trim() || '{"ok":true,"data":null}');
     const patched = patchPermissionError(output, toolName, incrAuthToken);
     if (patched !== output) {
       return permissionResult(patched);
@@ -411,6 +437,14 @@ async function executeTool(def, args, userToken, toolName, incrAuthToken, abortS
     }
     if (isAuthError(message)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
+    }
+    // Validation errors are self-correctable: translate this tool's --flag refs
+    // to MCP parameter names (allowlist = def.flags; echoed user data with --
+    // sequences stays intact) and return isError:false so lenient clients
+    // surface the hint instead of swallowing it as a generic "unknown error".
+    const translated = translateCliError(message, def.flags.map(f => f.name));
+    if (translated.selfCorrectable) {
+      return { content: [{ type: 'text', text: translated.text }], isError: false };
     }
     return { content: [{ type: 'text', text: message }], isError: true };
   }
@@ -502,7 +536,10 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
 
   try {
     const { stdout } = await withSemaphore(() => runLarkCli(cliArgs, env, LARK_CLI_TIMEOUT_MS, abortSignal), abortSignal);
-    const output = stdout.trim() || '{"ok":true,"data":null}';
+    // Strip lark-cli's `_notice.update` ("run: lark-cli update") — operator
+    // guidance the agent can't act on, repeated in EVERY response until the
+    // pin is bumped. Version drift stays visible in ops.sh / container logs.
+    const output = stripCliNotice(stdout.trim() || '{"ok":true,"data":null}');
     const patched = patchPermissionError(output, toolName, incrAuthToken);
     if (patched !== output) {
       return permissionResult(patched);
@@ -532,6 +569,14 @@ async function executeRawApi(toolName, args, userToken, incrAuthToken, abortSign
     }
     if (isAuthError(message)) {
       return { content: [{ type: 'text', text: buildReauthResponse(incrAuthToken) }], isError: true };
+    }
+    // Validation errors are self-correctable: translate the raw-API standard
+    // flags to their MCP parameter names (allowlist; echoed user data with --
+    // sequences stays intact) and return isError:false so lenient clients
+    // surface the hint instead of swallowing it as a generic "unknown error".
+    const translated = translateCliError(message, ['params', 'data', 'page-all']);
+    if (translated.selfCorrectable) {
+      return { content: [{ type: 'text', text: translated.text }], isError: false };
     }
     return { content: [{ type: 'text', text: message }], isError: true };
   }
@@ -673,9 +718,14 @@ async function handleRequest(req, res, body) {
     if (toolName === 'lark_get_skill') {
       const domain = toolArgs.domain || '';
       const section = toolArgs.section || '';
-      const entry = skillIndex.find(s => s.domain === domain || s.dir === domain || s.dir === `lark-${domain}`);
+      // Alias-aware lookup: accepts the docs→doc service-name guess (agents
+      // derive the domain from lark_docs_* tool names). The three correction
+      // responses below are NOT isError: the fix is in the payload (available
+      // lists the right names) and isError:true makes lenient clients hide it
+      // behind a generic "unknown error" — same convention as unknown_tool.
+      const entry = resolveSkillDomain(skillIndex, domain);
       if (!entry) {
-        sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_domain', domain, available: skillIndex.map(s => s.domain) }) }], isError: true } });
+        sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_domain', domain, available: skillIndex.map(s => s.domain) }) }], isError: false } });
         return;
       }
       const skillDir = `${SKILLS_DIR}/${entry.dir}`;
@@ -683,14 +733,14 @@ async function handleRequest(req, res, body) {
       let content;
       if (section) {
         if (isUnsafeSection(section)) {
-          sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'invalid_section', message: 'section must not contain .. or backslash' }) }], isError: true } });
+          sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'invalid_section', message: 'section must not contain .. or backslash' }) }], isError: false } });
           return;
         }
         // Resolve markdown (no extension) or a text asset (.html/.txt/.csv, with
         // extension + relative path). See skill-sections.js for the search order.
         const filePath = resolveSection(skillDir, entry.domain, section);
         if (!filePath) {
-          sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_section', section, available: listAllSections(skillDir) }) }], isError: true } });
+          sseResponse(res, { jsonrpc: '2.0', id: mcpReq.id, result: { content: [{ type: 'text', text: JSON.stringify({ error: 'unknown_section', section, available: listAllSections(skillDir) }) }], isError: false } });
           return;
         }
         content = fs.readFileSync(filePath, 'utf8');
@@ -714,13 +764,28 @@ async function handleRequest(req, res, body) {
 
     // lark_discover
     if (toolName === 'lark_discover') {
-      const results = searchCatalog(toolArgs.query, toolArgs.category);
+      // Exact-name query = the agent's self-correction pattern (a call failed,
+      // it re-queries THAT tool for the real contract) → include the embedded
+      // --print-schema payload contracts. Broad searches only advertise their
+      // existence (has_payload_schemas): the schemas run up to ~70KB and would
+      // bury a 20-result list.
+      //
+      // The exact match MUST be placed explicitly: searchCatalog splits the
+      // query on whitespace, so a full tool name is a single token whose
+      // "lark" prefix matches every tool — fuzzy scoring ties across the
+      // catalog and the true match routinely falls outside top-20.
+      const exact = findByName(toolArgs.query);
+      let results = searchCatalog(toolArgs.query, toolArgs.category);
+      if (exact && !results.includes(exact)) results = [exact, ...results.slice(0, 19)];
       const output = results.map(e => ({
         name: e.name,
         description: `[${e.def.risk}] ${e.def.description}`,
         category: e.def.service,
         inputSchema: buildInputSchema(e.def),
         annotations: toolAnnotations(e.def),
+        ...(e.def.payloadSchemas && (exact === e
+          ? { payload_schemas: e.def.payloadSchemas }
+          : { has_payload_schemas: true })),
       }));
       // Also search raw APIs by dotted query (e.g. "drive.file.comments.list")
       const q = (toolArgs.query || '').toLowerCase();

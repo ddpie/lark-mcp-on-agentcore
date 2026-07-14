@@ -4,7 +4,7 @@
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
-const { parseFlags, detectRisk, parseShortcuts } = require('./generate-tools-lib');
+const { parseFlags, detectRisk, parseShortcuts, translateFlagDescription } = require('./generate-tools-lib');
 
 const OUTPUT = '/app/generated-tools.json';
 const SCOPES_FILE = '/app/shortcut-scopes.json';
@@ -77,19 +77,44 @@ console.log(`lark-cli version: ${version}`);
 const services = discoverServices();
 console.log(`Found ${services.length} services`);
 
+// Extract the machine-readable JSON Schemas lark-cli embeds for composite
+// flags. `--print-schema` (no flag-name) lists the introspectable flags;
+// `--print-schema --flag-name <f>` dumps that flag's full JSON Schema (payload
+// dimensionality, per-field types, enums). These are the authoritative payload
+// contracts — the prose description alone reliably loses the shape (e.g. the
+// 2D [[{cell}]] requirement) by the time an agent reads it.
+function extractPayloadSchemas(service, command) {
+  const listRaw = run('lark-cli', service, command, '--print-schema');
+  let flagNames;
+  try { flagNames = JSON.parse(listRaw).introspectable_flags || []; } catch { return undefined; }
+  const schemas = {};
+  for (const flagName of flagNames) {
+    const schemaRaw = run('lark-cli', service, command, '--print-schema', '--flag-name', flagName);
+    try { schemas[flagName] = JSON.parse(schemaRaw); } catch { /* skip unparseable */ }
+  }
+  return Object.keys(schemas).length > 0 ? schemas : undefined;
+}
+
 const tools = [];
 let scopeMapped = 0;
+let schemaExtracted = 0;
 for (const service of services) {
   const { shortcuts } = discoverShortcuts(service, noPlusShortcuts[service] || new Set());
   for (const { command, description } of shortcuts) {
     const cmdHelp = run('lark-cli', service, command, '--help');
-    const { flags, supportsYes } = parseFlags(cmdHelp);
+    const { flags, supportsYes, supportsPrintSchema } = parseFlags(cmdHelp);
+    // Translate CLI-speak out of every agent-facing description (@file/stdin
+    // hints, --flag refs, lark-cli advice) — agents can't run terminal commands.
+    for (const f of flags) f.description = translateFlagDescription(f.description);
     const risk = detectRisk(cmdHelp, command);
     const scopes = scopeMap[`${service}:${command}`] || [];
     if (scopes.length > 0) scopeMapped++;
-    tools.push({ service, command, description, risk, flags, ...(supportsYes && { supportsYes: true }), ...(scopes.length > 0 && { scopes }) });
+    const payloadSchemas = supportsPrintSchema ? extractPayloadSchemas(service, command) : undefined;
+    if (payloadSchemas) schemaExtracted += Object.keys(payloadSchemas).length;
+    tools.push({ service, command, description: translateFlagDescription(description), risk, flags, ...(supportsYes && { supportsYes: true }), ...(scopes.length > 0 && { scopes }), ...(payloadSchemas && { payloadSchemas }) });
   }
 }
+console.log(`Payload schemas extracted: ${schemaExtracted} composite flags`);
 
 // Parse cobra subcommand names from a "--help" output. Only lines inside the
 // "Available Commands:" section count — cobra prefixes service/resource help

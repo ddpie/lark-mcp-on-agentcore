@@ -18,6 +18,11 @@ import {
   patchPermissionError,
   createSemaphore,
   createSingleFlight,
+  coerceFlagValue,
+  validatePayload,
+  translateCliError,
+  stripCliNotice,
+  resolveSkillDomain,
 } from '../server-lib.js';
 
 const FAKE_CATALOG = {
@@ -192,6 +197,207 @@ describe('findByName', () => {
   });
   it('returns undefined for an unknown name', () => {
     expect(findByName(catalogIndex, 'lark_nope_nope')).toBeUndefined();
+  });
+});
+
+// Agents naturally pass structured data for a parameter whose description shows
+// a JSON shape — String([[10],[20]]) silently produces "10,20" and lark-cli
+// rejects it downstream with an opaque error. Accept BOTH conventions: a JSON
+// string passes through, an object/array is stringified.
+describe('coerceFlagValue', () => {
+  it('passes a string through unchanged', () => {
+    expect(coerceFlagValue('[[10],[20]]')).toBe('[[10],[20]]');
+  });
+  it('stringifies an array (String() would corrupt it)', () => {
+    expect(coerceFlagValue([[10], [20]])).toBe('[[10],[20]]');
+  });
+  it('stringifies an object', () => {
+    expect(coerceFlagValue({ sheets: [{ name: 'S1' }] })).toBe('{"sheets":[{"name":"S1"}]}');
+  });
+  it('stringifies numbers/booleans via String (CLI flag values)', () => {
+    expect(coerceFlagValue(7)).toBe('7');
+    expect(coerceFlagValue(true)).toBe('true');
+  });
+});
+
+// Pre-spawn payload validation against the embedded --print-schema contract.
+// Catches the observed failure classes BEFORE spawning lark-cli, returning a
+// self-correction hint in MCP language (mirrors the raw-API params/data
+// validation precedent). Shallow on purpose: root type + first-level items
+// type — enough to catch non-JSON and 1D-vs-2D, without reimplementing a full
+// JSON-Schema validator.
+describe('validatePayload', () => {
+  const CELLS_SCHEMA = {
+    description: '2D array of cell objects',
+    type: 'array',
+    items: { type: 'array', items: { type: 'object' } },
+  };
+
+  it('accepts a valid 2D JSON string', () => {
+    expect(validatePayload('[[{"value":1}]]', CELLS_SCHEMA)).toBeNull();
+  });
+
+  it('rejects non-JSON text with a hint', () => {
+    const err = validatePayload('10\n20\n30', CELLS_SCHEMA);
+    expect(err).toContain('JSON');
+  });
+
+  it('rejects a 1D array when the schema wants 2D (the observed cells mistake)', () => {
+    const err = validatePayload('[{"formula":"=SUM(A1:A5)"}]', CELLS_SCHEMA);
+    expect(err).toBeTruthy();
+    expect(err).toMatch(/array of arrays|2D|nested/i);
+  });
+
+  it('rejects a root-type mismatch (object where array expected)', () => {
+    expect(validatePayload('{"a":1}', CELLS_SCHEMA)).toBeTruthy();
+  });
+
+  it('accepts an object payload for an object schema', () => {
+    expect(validatePayload('{"sheets":[]}', { type: 'object' })).toBeNull();
+  });
+
+  it('returns null when there is no schema to check against', () => {
+    expect(validatePayload('anything', undefined)).toBeNull();
+  });
+});
+
+// lark-cli's structured validation errors speak CLI ("--values: trailing data
+// after JSON value") — an agent correcting against `--values` gets more
+// confused, since its parameter is `values`. Translate flag references to MCP
+// parameter names and mark the result self-correctable (the caller returns it
+// with isError:false so lenient clients don't swallow the hint).
+describe('translateCliError', () => {
+  // The invoked tool's real flag names — rewriting is ALLOWLIST-ONLY. Error
+  // messages echo arbitrary user input (formulas, payload fragments), so a
+  // blind /--\w+/ rewrite would corrupt echoed data; only --<known-flag> of
+  // this specific tool may be translated.
+  const FLAGS = ['values', 'sheet-id', 'sheet-name'];
+  const CLI_VALIDATION = JSON.stringify({
+    ok: false, identity: 'user',
+    error: { type: 'validation', subtype: 'invalid_argument', message: '--values: trailing data after JSON value' },
+  });
+
+  it('rewrites known --flag references to parameter names and flags it self-correctable', () => {
+    const r = translateCliError(CLI_VALIDATION, FLAGS);
+    expect(r.selfCorrectable).toBe(true);
+    expect(r.text).not.toContain('--values');
+    expect(JSON.parse(r.text).error.message).toContain('values');
+  });
+
+  it('leaves auth errors untouched and NOT self-correctable', () => {
+    const authErr = JSON.stringify({ ok: false, error: { type: 'authentication', message: 'token expired' } });
+    const r = translateCliError(authErr, FLAGS);
+    expect(r.selfCorrectable).toBe(false);
+    expect(r.text).toBe(authErr);
+  });
+
+  it('passes non-JSON text through untouched', () => {
+    const r = translateCliError('some raw stderr text', FLAGS);
+    expect(r.selfCorrectable).toBe(false);
+    expect(r.text).toBe('some raw stderr text');
+  });
+
+  it('rewrites multiple known flag references in one message', () => {
+    const err = JSON.stringify({ ok: false, error: { type: 'validation', message: 'either --sheet-id or --sheet-name is required' } });
+    const r = translateCliError(err, FLAGS);
+    expect(r.text).not.toContain('--sheet-id');
+    expect(JSON.parse(r.text).error.message).toContain('sheet_id');
+    expect(JSON.parse(r.text).error.message).toContain('sheet_name');
+  });
+
+  it('does NOT touch -- sequences in echoed user data (Excel double-negation)', () => {
+    // A validation message may echo the user's own payload. `--(a1:a10>5)` is
+    // the common Excel coercion idiom; `--a1` is not a flag of this tool and
+    // must survive verbatim.
+    const err = JSON.stringify({ ok: false, error: { type: 'validation', message: 'invalid formula: =SUMPRODUCT(--(a1:a10>5)) --values must be JSON' } });
+    const r = translateCliError(err, FLAGS);
+    const msg = JSON.parse(r.text).error.message;
+    expect(msg).toContain('--(a1:a10>5)');
+    expect(msg).toContain(' values must be JSON');
+  });
+
+  it('does NOT rewrite an unknown --flag (not in this tool\'s flag set)', () => {
+    const err = JSON.stringify({ ok: false, error: { type: 'validation', message: 'unknown flag: --frobnicate' } });
+    const r = translateCliError(err, FLAGS);
+    expect(JSON.parse(r.text).error.message).toContain('--frobnicate');
+  });
+
+  it('longer flag names win over prefixes (sheet-name vs a hypothetical sheet flag)', () => {
+    const err = JSON.stringify({ ok: false, error: { type: 'validation', message: '--sheet-name is required' } });
+    const r = translateCliError(err, ['sheet', 'sheet-name']);
+    expect(JSON.parse(r.text).error.message).toContain('sheet_name');
+  });
+});
+
+// lark-cli appends `_notice.update` ("run: lark-cli update") to every response
+// when a newer CLI exists. That's operator guidance — the agent can't run
+// terminal commands, and the notice burns tokens in EVERY tool response until
+// the pin is bumped. Strip it; version drift is visible in ops.sh/logs.
+describe('stripCliNotice', () => {
+  it('removes _notice.update from a success payload', () => {
+    const payload = JSON.stringify({ ok: true, data: { x: 1 }, _notice: { update: { message: 'lark-cli 1.0.69 available' } } });
+    const out = JSON.parse(stripCliNotice(payload));
+    expect(out._notice).toBeUndefined();
+    expect(out.data).toEqual({ x: 1 });
+  });
+
+  it('keeps other _notice keys if present', () => {
+    const payload = JSON.stringify({ ok: true, _notice: { update: { v: 1 }, other: 'keep' } });
+    const out = JSON.parse(stripCliNotice(payload));
+    expect(out._notice).toEqual({ other: 'keep' });
+  });
+
+  it('passes non-JSON and notice-free payloads through unchanged', () => {
+    expect(stripCliNotice('plain text')).toBe('plain text');
+    const clean = JSON.stringify({ ok: true, data: null });
+    expect(stripCliNotice(clean)).toBe(clean);
+  });
+
+  // Cross-review finding: a JSON.parse→stringify round-trip reads numbers as
+  // doubles, silently corrupting integers > 2^53 (7304827392019283746 →
+  // 7304827392019284000). Feishu responses can carry such numeric ids, and
+  // the _notice path is ACTIVE whenever upstream lark-cli is newer than the
+  // pin — i.e. most of the time. The strip must preserve every other byte.
+  it('preserves >2^53 integers while stripping _notice.update', () => {
+    const payload = '{"ok":true,"data":{"chat_id":7304827392019283746},"_notice":{"update":{"message":"lark-cli 1.0.70 available"}}}';
+    const out = stripCliNotice(payload);
+    expect(out).toContain('7304827392019283746');
+    expect(out).not.toContain('_notice');
+    expect(out).not.toContain('1.0.70');
+  });
+
+  it('preserves >2^53 integers when _notice has other keys to keep', () => {
+    const payload = '{"ok":true,"data":{"rev":123456789012345678},"_notice":{"update":{"v":1},"other":"keep"}}';
+    const out = stripCliNotice(payload);
+    expect(out).toContain('123456789012345678');
+    expect(out).toContain('"other":"keep"');
+    expect(out).not.toContain('"update"');
+  });
+});
+
+// The tool namespace says `lark_docs_*` (service "docs") but the skill domain
+// is `doc` — an agent deriving the domain from a tool name naturally guesses
+// "docs" and gets unknown_domain. Accept service-name aliases.
+describe('resolveSkillDomain', () => {
+  const INDEX = [
+    { domain: 'doc', dir: 'lark-doc' },
+    { domain: 'sheets', dir: 'lark-sheets' },
+  ];
+
+  it('resolves an exact domain name', () => {
+    expect(resolveSkillDomain(INDEX, 'doc')?.domain).toBe('doc');
+  });
+
+  it('resolves the lark- prefixed dir form', () => {
+    expect(resolveSkillDomain(INDEX, 'lark-doc')?.domain).toBe('doc');
+  });
+
+  it('resolves the docs service-name alias to the doc domain', () => {
+    expect(resolveSkillDomain(INDEX, 'docs')?.domain).toBe('doc');
+  });
+
+  it('returns undefined for a truly unknown domain', () => {
+    expect(resolveSkillDomain(INDEX, 'nonexistent')).toBeUndefined();
   });
 });
 

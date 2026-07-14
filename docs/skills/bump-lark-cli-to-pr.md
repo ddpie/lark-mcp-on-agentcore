@@ -63,6 +63,18 @@ after manual approval.
    - `scripts/extract-rawapi-scopes.sh lark-mcp-bump:tmp`
    - `scripts/build-scope-allowlist.sh`
    - `scripts/check-lark-cli-version.sh` (must pass)
+   - Flag-type scan on the built image's `/app/generated-tools.json` (the
+     runbook's "No value-taking flag misread as boolean" checklist item — the
+     jq one-liner there). This failure mode is SILENT and the phase-6 offline
+     gate cannot catch it; a non-empty result that traces to a genuinely new
+     affordance help-line shape is a **hard stop** (fix `flagTypeFromRest` +
+     tests by hand), not a repair-budget item.
+   - The runbook's other two catalog checks, same silent-failure reasoning and
+     same hard-stop rule: **CLI-speak leak scan** on catalog descriptions
+     (`translateFlagDescription` missing a new phrasing) and the **payload-
+     schema extraction count** (`Payload schemas extracted: <N>` in the build
+     log; N dropping vs the previous bump means `--print-schema` output
+     changed).
    - Step 6b scope-gap check → **record** any missing scopes for the PR body. Do
      NOT edit `config/oauth-scopes.json` (Ask-first; see the scope guardrail).
    - `npx vitest run infra/test/snapshot.test.ts --update`

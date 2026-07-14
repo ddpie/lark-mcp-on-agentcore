@@ -3,6 +3,8 @@
 // Limits incremental-auth `extra_scope=` to scopes the deployment knows about,
 // preventing attackers from broadening the consent screen via a phishing link.
 export const SCOPE_ALLOWLIST: ReadonlySet<string> = new Set([
+  "application:app_slash_command:read",
+  "application:app_slash_command:write",
   "approval:approval:read",
   "approval:instance:read",
   "approval:instance:write",
