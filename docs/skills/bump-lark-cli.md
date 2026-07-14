@@ -332,6 +332,28 @@ Include all changed files:
   that prose. `detectRisk` (anchored `Risk:` line + affordance-aware keyword fallback) and
   `parseFlags` are covered by the "affordance block does not poison risk detection" tests in
   `docker/__tests__/generate-tools.test.js` — extend them if a new affordance shape appears.
+- [ ] **No value-taking flag misread as boolean** — affordance renders composite/JSON flags
+  with an EXAMPLE as the cobra type token (`--sheets +table-put`, `--values [["alice",95]]`,
+  `--range A1:Z200`, multi-word `{ top: {...} }`); `flagTypeFromRest` classifies by the
+  2+-space token→description gap, not a token whitelist. The failure mode is SILENT: a
+  misread flag stays boolean in the schema, server.js pushes the bare switch and **drops the
+  agent's payload**, and every unit/smoke test still passes — only a real tool call fails
+  ("unknown error"). After the image build, scan the generated catalog from the NEW image:
+
+  ```bash
+  docker run --rm --entrypoint cat lark-mcp-bump:tmp /app/generated-tools.json \
+    | jq -r '.tools[] as $t | $t.flags[]
+        | select(.type=="boolean")
+        | select(.description|test("\\[\\[|JSON array|payload|@file|:\\["))
+        | "\($t.service)/\($t.command)/\(.name): \(.description[0:60])"'
+  ```
+
+  Expected: **empty**. Any hit → inspect that command's `--help` in the image; if a value
+  flag's help line lacks the 2+-space gap (a new affordance shape), fix `flagTypeFromRest`
+  and add the new shape to the "example type token" tests in
+  `docker/__tests__/generate-tools.test.js`. (A genuine boolean whose *description prose*
+  happens to match the grep — e.g. `--allow-sensitive` mentioning file paths — is fine;
+  verify against `--help` and move on.)
 
 ## MCP Skill Tools
 
