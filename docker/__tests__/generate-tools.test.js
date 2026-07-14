@@ -250,6 +250,37 @@ describe('parseFlags', () => {
     expect(flags[0]).toMatchObject({ name: 'properties', type: 'string' });
   });
 
+  // Regression (cross-review finding): lark-cli 1.0.69 renders SOME booleans
+  // WITH a token — the default value (`--skip-hidden false`) or a negation
+  // hint (`--highlight --highlight=false`). A bare true/false token or a
+  // `--flag=` token means boolean, NOT a value flag; misreading these as
+  // string made server.js emit `--skip-hidden true`, which lark-cli rejects
+  // as a positional arg ("unknown error" downstream).
+  it('treats a bare false default-token as boolean (--skip-hidden false)', () => {
+    const { flags } = parseFlags('Flags:\n      --skip-hidden false         Skip hidden rows and columns; default false');
+    expect(flags[0]).toMatchObject({ name: 'skip-hidden', type: 'boolean' });
+  });
+
+  it('treats a bare true default-token as boolean', () => {
+    const { flags } = parseFlags('Flags:\n      --has-header true           first row is a header; default true');
+    expect(flags[0]).toMatchObject({ name: 'has-header', type: 'boolean' });
+  });
+
+  it('treats a --flag=false negation-hint token as boolean (--highlight --highlight=false)', () => {
+    const { flags } = parseFlags('Flags:\n      --highlight --highlight=false    Pill-highlight switch; default false');
+    expect(flags[0]).toMatchObject({ name: 'highlight', type: 'boolean' });
+  });
+
+  it('honors a colon-less (default true) annotation as boolean (--include-row-prefix [row=N])', () => {
+    const { flags } = parseFlags('Flags:\n      --include-row-prefix [row=N]   prefix each row; default `true` (default true)');
+    expect(flags[0]).toMatchObject({ name: 'include-row-prefix', type: 'boolean' });
+  });
+
+  it('does not misread a quoted string default as boolean', () => {
+    const { flags } = parseFlags('Flags:\n      --format string           output format (default "json")');
+    expect(flags[0]).toMatchObject({ name: 'format', type: 'string' });
+  });
+
   // --print-schema / --flag-name are build-time introspection controls (the
   // generator uses them to extract composite-flag JSON Schemas); they are not
   // user intent and must be hidden from the LLM-facing schema, with the
@@ -353,6 +384,16 @@ describe('translateFlagDescription', () => {
     // A default-value literal is data the agent may see in API output — leave it.
     const desc = 'source title for display (default "created by lark-cli")';
     expect(translateFlagDescription(desc)).toContain('created by lark-cli');
+  });
+
+  // Cross-review finding: the print-schema rewrite left a dangling em-dash —
+  // "Deeply nested — run `--print-schema ...`" became "Deeply nested —; full
+  // structure ...". The connector before "run" must be consumed too.
+  it('does not leave a dangling em-dash when rewriting print-schema advice', () => {
+    const desc = 'Full chart config JSON. Deeply nested — run `--print-schema --flag-name properties` for the full structure.';
+    const out = translateFlagDescription(desc);
+    expect(out).not.toMatch(/—\s*;/);
+    expect(out).toContain('payload_schema');
   });
 
   it('returns no flags when there is no flag section', () => {

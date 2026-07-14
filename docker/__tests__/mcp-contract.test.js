@@ -76,10 +76,25 @@ const FAKE_TOOL_DEF_WITH_SCHEMA = {
   },
 };
 
+// 25 filler tools to reproduce the real catalog's scoring dilution: every tool
+// name starts with `lark_`, so an exact-name query's single token matches ALL
+// of them via the "lark" prefix and the true exact match cannot be assumed to
+// survive fuzzy top-20 ranking — discover must place it explicitly.
+const FAKE_FILLER_TOOLS = Array.from({ length: 25 }, (_, i) => ({
+  service: 'sheets',
+  command: `+filler-${i}`,
+  description: `Filler tool ${i} for ranking dilution`,
+  risk: 'read',
+  flags: [],
+}));
+
 const FAKE_CATALOG = {
   _larkCliVersion: '1.0.0-test',
   _scopeMapVersion: '1.0.0-test',
-  tools: [FAKE_TOOL_DEF_WRITE, FAKE_TOOL_DEF_DESTRUCTIVE, FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DISCOVERABLE, FAKE_TOOL_DEF_WITH_SCHEMA],
+  // Fillers FIRST: with tied fuzzy scores (every name matches the "lark"
+  // prefix), stable sort preserves catalog order, so a late-positioned target
+  // falls outside top-20 — the real catalog's failure mode (409 tools).
+  tools: [FAKE_TOOL_DEF_WRITE, FAKE_TOOL_DEF_DESTRUCTIVE, FAKE_TOOL_DEF_READ, FAKE_TOOL_DEF_DISCOVERABLE, ...FAKE_FILLER_TOOLS, FAKE_TOOL_DEF_WITH_SCHEMA],
 };
 
 // Only first 3 tools in tier1; the wiki tool is discoverable
@@ -642,9 +657,12 @@ describe('MCP Protocol Contract Tests (spec 2024-11-05)', () => {
     });
 
     it('lark_discover broad search does NOT include payload_schemas', async () => {
+      // Keyword query (not the exact tool name): description tokens rank the
+      // tool into results, but the large schemas stay out — only the
+      // has_payload_schemas marker is advertised.
       const { body } = await sendMcpRequest('tools/call', {
         name: 'lark_discover',
-        arguments: { category: 'sheets' },
+        arguments: { query: 'write cells', category: 'sheets' },
       }, 53, { 'x-user-access-token': 'fake-token' });
       const { data } = parseSSE(body);
 

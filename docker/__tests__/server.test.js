@@ -352,6 +352,27 @@ describe('stripCliNotice', () => {
     const clean = JSON.stringify({ ok: true, data: null });
     expect(stripCliNotice(clean)).toBe(clean);
   });
+
+  // Cross-review finding: a JSON.parse→stringify round-trip reads numbers as
+  // doubles, silently corrupting integers > 2^53 (7304827392019283746 →
+  // 7304827392019284000). Feishu responses can carry such numeric ids, and
+  // the _notice path is ACTIVE whenever upstream lark-cli is newer than the
+  // pin — i.e. most of the time. The strip must preserve every other byte.
+  it('preserves >2^53 integers while stripping _notice.update', () => {
+    const payload = '{"ok":true,"data":{"chat_id":7304827392019283746},"_notice":{"update":{"message":"lark-cli 1.0.70 available"}}}';
+    const out = stripCliNotice(payload);
+    expect(out).toContain('7304827392019283746');
+    expect(out).not.toContain('_notice');
+    expect(out).not.toContain('1.0.70');
+  });
+
+  it('preserves >2^53 integers when _notice has other keys to keep', () => {
+    const payload = '{"ok":true,"data":{"rev":123456789012345678},"_notice":{"update":{"v":1},"other":"keep"}}';
+    const out = stripCliNotice(payload);
+    expect(out).toContain('123456789012345678');
+    expect(out).toContain('"other":"keep"');
+    expect(out).not.toContain('"update"');
+  });
 });
 
 // The tool namespace says `lark_docs_*` (service "docs") but the skill domain

@@ -769,8 +769,14 @@ async function handleRequest(req, res, body) {
       // --print-schema payload contracts. Broad searches only advertise their
       // existence (has_payload_schemas): the schemas run up to ~70KB and would
       // bury a 20-result list.
+      //
+      // The exact match MUST be placed explicitly: searchCatalog splits the
+      // query on whitespace, so a full tool name is a single token whose
+      // "lark" prefix matches every tool — fuzzy scoring ties across the
+      // catalog and the true match routinely falls outside top-20.
       const exact = findByName(toolArgs.query);
-      const results = searchCatalog(toolArgs.query, toolArgs.category);
+      let results = searchCatalog(toolArgs.query, toolArgs.category);
+      if (exact && !results.includes(exact)) results = [exact, ...results.slice(0, 19)];
       const output = results.map(e => ({
         name: e.name,
         description: `[${e.def.risk}] ${e.def.description}`,

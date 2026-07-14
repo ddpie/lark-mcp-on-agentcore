@@ -36,9 +36,18 @@ const NUMBER_TYPE_TOKENS = new Set(['int', 'int8', 'int16', 'int32', 'int64', 'u
 // `string`/`duration`, single- and multi-word example tokens, and the XOR
 // `--other-flag` mutual-exclusivity hint). No 2+ space gap → cobra omitted the
 // token → boolean switch.
+//
+// EXCEPT boolean-shaped tokens: lark-cli 1.0.69 renders SOME booleans WITH a
+// token — the default value (`--skip-hidden false`) or a negation hint
+// (`--highlight --highlight=false`). A bare `true`/`false` token, or a
+// `--x=true/false` token, is a boolean switch, not a value flag; treating it
+// as string made server.js emit `--skip-hidden true`, which lark-cli rejects
+// as an unexpected positional arg.
 function flagTypeFromRest(rest) {
   const token = rest.match(/^(.+?)\s{2,}/)?.[1];
   if (!token) return 'boolean';
+  if (token === 'true' || token === 'false') return 'boolean';
+  if (/^--\S+=(true|false)$/.test(token)) return 'boolean';
   if (NUMBER_TYPE_TOKENS.has(token)) return 'number';
   return 'string';
 }
@@ -58,9 +67,12 @@ function parseFlags(helpText) {
     if (name === 'print-schema') { supportsPrintSchema = true; continue; }
     if (HIDDEN_FLAGS.has(name)) continue;
     let type = flagTypeFromRest(rest);
-    // A `(default: false/true)` annotation is an explicit boolean signal even if
-    // some other leading token were present.
-    if (rest.toLowerCase().includes('(default: false)') || rest.toLowerCase().includes('(default: true)')) type = 'boolean';
+    // A `(default false)` / `(default: false)` annotation is an explicit
+    // boolean signal even if some other leading token were present. lark-cli
+    // 1.0.69 renders the colon-less form; keep both. A quoted default like
+    // (default "json") is a string default, NOT a boolean — hence the bare
+    // true/false requirement.
+    if (/\(default:? (false|true)\)/i.test(rest)) type = 'boolean';
     const required = rest.includes('(required)');
     const enumMatch = rest.match(/\(enum:\s*([^)]+)\)/);
     const enumValues = enumMatch ? enumMatch[1].split(',').map(s => s.trim()) : undefined;
@@ -87,8 +99,10 @@ function translateFlagDescription(desc) {
   out = out.replace(/;?\s*supports @file[^.;)]*/gi, '');
   // inline "or @file" alternatives ("filter JSON object or @file, ...")
   out = out.replace(/\s+or @file/gi, '');
-  // "run `--print-schema` for the full structure" → point at the embedded schema
-  out = out.replace(/;?\s*run\s+`?--print-schema`?[^.;]*/gi, '; full structure is in this tool\'s payload_schema (fetch via lark_discover with the exact tool name)');
+  // "run `--print-schema` for the full structure" → point at the embedded
+  // schema. Consume a leading connector (`;`, `—`, `-`) so "Deeply nested —
+  // run …" doesn't leave a dangling dash before the replacement.
+  out = out.replace(/[;—–-]?\s*run\s+`?--print-schema`?[^.;]*/gi, '; full structure is in this tool\'s payload_schema (fetch via lark_discover with the exact tool name)');
   // "For basic flags use lark-cli <svc> <shortcut> --help; ... use --print-schema --flag-name <flag>."
   out = out.replace(/For basic flags use lark-cli[^.;]*[.;]?\s*/gi, '');
   out = out.replace(/for composite JSON flags use\s+--print-schema[^.;]*[.;]?\s*/gi, 'composite JSON flag structures are in this tool\'s payload_schema (fetch via lark_discover with the exact tool name). ');

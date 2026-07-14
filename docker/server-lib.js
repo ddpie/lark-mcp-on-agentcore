@@ -296,14 +296,86 @@ function translateCliError(raw, flagNames = []) {
 // terminal commands, and the notice burns tokens in EVERY tool response until
 // the pin is bumped. Strip it (keep any other _notice keys); version drift
 // stays visible to operators via ops.sh and container logs.
+//
+// The strip is SURGICAL, not a JSON.parse→stringify round-trip: parsing the
+// whole response reads numbers as doubles and silently corrupts integers
+// > 2^53 (7304827392019283746 → …4000) — and this path is active whenever
+// upstream lark-cli is newer than the pin, i.e. most of the time. A string-
+// aware scan locates the TOP-LEVEL "_notice" key (depth-1 check also defuses
+// a literal "_notice" inside user data), and only that value span — lark-cli's
+// own small notice object, never user data — is re-encoded. Every other byte
+// of the response passes through untouched.
 function stripCliNotice(output) {
   if (!output.includes('"_notice"')) return output;
-  let data;
-  try { data = JSON.parse(output); } catch { return output; }
-  if (!data || typeof data !== 'object' || !data._notice) return output;
-  delete data._notice.update;
-  if (Object.keys(data._notice).length === 0) delete data._notice;
-  return JSON.stringify(data);
+  if (output[0] !== '{') return output;
+
+  // Scan for the top-level "_notice" key: track string/escape state and brace
+  // depth; a depth-1 string followed by `:` is a top-level key.
+  let i = 1, depth = 1, keyIdx = -1, valStart = -1, valEnd = -1;
+  const n = output.length;
+  while (i < n) {
+    const c = output[i];
+    if (c === '"') {
+      const strStart = i;
+      i++;
+      while (i < n) {
+        if (output[i] === '\\') i += 2;
+        else if (output[i] === '"') break;
+        else i++;
+      }
+      const str = output.slice(strStart, i + 1);
+      i++;
+      // Key position: at depth 1 and followed by a colon.
+      let k = i;
+      while (k < n && /\s/.test(output[k])) k++;
+      if (depth === 1 && output[k] === ':' && str === '"_notice"') {
+        keyIdx = strStart;
+        k++;
+        while (k < n && /\s/.test(output[k])) k++;
+        if (output[k] !== '{') return output; // unexpected shape — leave as-is
+        // Capture the balanced object span.
+        let d = 0, j = k, inStr = false;
+        while (j < n) {
+          const cj = output[j];
+          if (inStr) {
+            if (cj === '\\') j++;
+            else if (cj === '"') inStr = false;
+          } else if (cj === '"') inStr = true;
+          else if (cj === '{') d++;
+          else if (cj === '}') { d--; if (d === 0) { j++; break; } }
+          j++;
+        }
+        valStart = k; valEnd = j;
+        break;
+      }
+      continue;
+    }
+    if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') depth--;
+    i++;
+  }
+  if (keyIdx < 0) return output;
+
+  // Re-encode ONLY the notice object (lark-cli's own metadata, no big ints).
+  let notice;
+  try { notice = JSON.parse(output.slice(valStart, valEnd)); } catch { return output; }
+  delete notice.update;
+
+  if (Object.keys(notice).length > 0) {
+    return output.slice(0, valStart) + JSON.stringify(notice) + output.slice(valEnd);
+  }
+  // Notice empty → drop the whole `"_notice": {...}` member plus one adjacent
+  // comma (preceding if present, else following).
+  let start = keyIdx, end = valEnd;
+  let p = keyIdx - 1;
+  while (p >= 0 && /\s/.test(output[p])) p--;
+  if (output[p] === ',') start = p;
+  else {
+    let q = valEnd;
+    while (q < n && /\s/.test(output[q])) q++;
+    if (output[q] === ',') end = q + 1;
+  }
+  return output.slice(0, start) + output.slice(end);
 }
 
 // Skill-domain lookup with service-name aliases. The tool namespace says
