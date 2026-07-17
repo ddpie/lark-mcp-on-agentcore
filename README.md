@@ -6,6 +6,13 @@
 
 [中文](#lark-mcp-on-agentcore) | [English](#english)
 
+> [!IMPORTANT]
+> **本仓库已停止维护，迁移至 AWS Samples：https://github.com/aws-samples/sample-lark-mcp-on-agentcore**
+>
+> 后续更新与维护都在新仓库进行，请到那里获取最新代码、提 issue 和 PR。
+>
+> **已部署的用户如何升级：** 把本地的 `.local` 目录（保存了你的部署配置）复制到新仓库根目录下，然后在新仓库执行 `./scripts/deploy.sh -y` 即可一键升级——不需要在本仓库拉分支或手动改配置。
+
 **在 [lark-cli](https://github.com/larksuite/cli) 之上构建的托管远程 MCP 服务——让支持远程 MCP 的客户端（如 [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/)、[Kiro](https://kiro.dev/)、[Claude Code](https://docs.anthropic.com/en/docs/claude-code)、[Codex](https://openai.com/index/introducing-codex/)）能通过 200+ 工具调用飞书 2500+ API，并以正确的参数、顺序、前置条件完成多步操作。**
 
 [lark-cli](https://github.com/larksuite/cli) 是飞书官方命令行工具，封装了 2500+ API 为 200+ 工具，并附带 20+ 个业务域 Skill 沉淀多步编排的最佳实践（参数格式、调用顺序、前置条件）。本项目由容器内的 lark-cli 执行所有 API 调用，继承其全部能力（其中 Skill 已适配为 MCP 形态，按需加载）。在此基础上，补齐 lark-cli 在团队场景下的不足：
@@ -227,6 +234,13 @@ MIT
 ---
 
 # English
+
+> [!IMPORTANT]
+> **This repository is no longer maintained. It has moved to AWS Samples: https://github.com/aws-samples/sample-lark-mcp-on-agentcore**
+>
+> All future updates and maintenance happen in the new repo — go there for the latest code, and to file issues and PRs.
+>
+> **Upgrading an existing deployment:** copy your local `.local` directory (it holds your deployment config) into the root of the new repo, then run `./scripts/deploy.sh -y` there to upgrade in one shot — no need to pull a branch or re-enter config in this repo.
 
 **A hosted remote MCP service built on top of [lark-cli](https://github.com/larksuite/cli) — so remote MCP clients (e.g. [Amazon Quick Desktop](https://aws.amazon.com/quick/desktop/), [Kiro](https://kiro.dev/), [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://openai.com/index/introducing-codex/)) can call Feishu's 2500+ APIs via 200+ tools, and complete multi-step operations with the right parameters, order, and preconditions.**
 
